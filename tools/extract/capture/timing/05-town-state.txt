@@ -1,0 +1,8 @@
+loadstate hturn
+autopress 300
+untildl 1ec2
+autopress 0
+trig0 0
+wait 30
+savestate town
+shot town

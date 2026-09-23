@@ -1,0 +1,5 @@
+/muleserver
+/web/assets/*
+!/web/assets/.gitkeep
+/tools/extract/__pycache__/
+*.atr

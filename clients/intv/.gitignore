@@ -1,0 +1,8 @@
+build/
+*.rom
+*.bin
+*.cfg
+*.lst
+*.asm
+gen/
+*.sym

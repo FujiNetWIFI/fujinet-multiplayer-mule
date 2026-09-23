@@ -1,0 +1,4 @@
+loadstate lauction
+trace la2.csv d3
+wait 1600
+trace off

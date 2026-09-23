@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M.U.L.E. Tournament</title>
+<!-- fujinet-multiplayer-mule web test client. GPLv3 - see LICENSE. -->
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <form id="join">
+    <label>name <input id="name" maxlength="8" required></label>
+    <label>table <select id="table"></select></label>
+    <button>join</button>
+    <span id="status"></span>
+  </form>
+</header>
+<main>
+  <div id="screen"><canvas id="c" width="320" height="208"></canvas></div>
+  <aside>
+    <section id="help"></section>
+    <section id="log"></section>
+    <details id="debug">
+      <summary>protocol debug</summary>
+      <label><input type="checkbox" id="binmode"> poll binary (?bin=1) and decode</label>
+      <pre id="bininfo"></pre>
+      <pre id="hex"></pre>
+    </details>
+  </aside>
+</main>
+<p id="noassets" hidden>Graphics not found. Run <code>python3 tools/extract/extract.py your-mule.atr</code> to generate
+<code>web/assets/</code> from your own copy of the Atari 8-bit disk. Until then the client draws plain shapes.</p>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

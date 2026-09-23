@@ -1,0 +1,13 @@
+loadstate sel
+wait 60
+joy0 1
+wait 60
+joy0 0
+wait 60
+shot s1
+trig0 1
+wait 10
+trig0 0
+wait 120
+shot s2
+savestate chosen

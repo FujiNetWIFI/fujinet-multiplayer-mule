@@ -1,0 +1,15 @@
+loadstate lauction
+trace la_bid.csv d3,da,db,f0,9f,a0,a1,a2
+wait 60
+mark hold_up
+joy0 1
+wait 400
+mark release
+joy0 0
+wait 300
+mark hold_down
+joy0 2
+wait 200
+joy0 0
+wait 900
+trace off

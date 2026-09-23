@@ -1,0 +1,13 @@
+loadstate chosen
+autopress 1800
+trig0 1
+wait 6
+trig0 0
+untilframe 5330
+savestate grant
+untilframe 7152
+savestate lauction
+untilframe 13387
+savestate hturn
+untilframe 20519
+savestate gdeclare

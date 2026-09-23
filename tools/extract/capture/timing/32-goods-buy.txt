@@ -1,0 +1,8 @@
+loadstate fooddecl
+untilframe 24160
+trace ga_buy.csv d3,da,db,e0,b1cd,b214,ae
+joy0 1
+wait 1100
+joy0 0
+wait 200
+trace off

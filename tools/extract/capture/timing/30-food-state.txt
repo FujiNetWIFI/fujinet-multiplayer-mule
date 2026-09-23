@@ -1,0 +1,7 @@
+loadstate gdeclare
+autopress 1800
+untilframe 23304
+autopress 0
+trig0 0
+savestate fooddecl
+shot fooddecl

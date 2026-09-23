@@ -1,0 +1,23 @@
+loadstate town
+joy0 4
+untildl 1e75 600
+wait 10
+joy0 0
+wait 10
+savestate map
+trace walk4.csv
+mark left
+joy0 4
+wait 240
+mark down
+joy0 2
+wait 150
+mark right
+joy0 8
+wait 500
+mark up
+joy0 1
+wait 300
+joy0 0
+trace off
+shot map2

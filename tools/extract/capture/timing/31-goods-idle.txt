@@ -1,0 +1,5 @@
+loadstate fooddecl
+trace ga_idle.csv d3,da,f0,9f,a0,a1,a2
+autoshot 1
+wait 2600
+trace off

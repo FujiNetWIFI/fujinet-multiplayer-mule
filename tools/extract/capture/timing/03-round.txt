@@ -1,0 +1,9 @@
+loadstate chosen
+trace round.csv
+autoshot 1
+autopress 1800
+trig0 1
+wait 6
+trig0 0
+wait 60000
+trace off
