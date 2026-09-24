@@ -1,0 +1,11 @@
+# build output
+/build/
+/r2r/
+/_cache/
+/release/
+# generated -- gen/apple2/gfx.c holds graphics converted from the Atari
+# disk (copyright Electronic Arts): never commit it
+/gen/
+/tools/**/__pycache__/
+# the Atari disk (or a link to it)
+*.atr

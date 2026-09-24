@@ -58,7 +58,7 @@ The phase ends when every seat has claimed a plot or the sweep finishes. If two 
 - Player-listed plots are auctioned first. Then Normal(1, amp 2) colony plots are auctioned, capped by the number of free plots.
 - **Before each auction:** the plot for sale blinks on the map for 255 BTU. The display ends early when every human presses.
 - **Length:** the auction runs for 70 time-bar ticks. A tick is 25 jiffies while any bidder pushes their stick, and 6 jiffies otherwise.
-- **Bidding:** bids move one $4 step every 8 jiffies. A released bid drifts back down.
+- **Bidding:** bids move one $4 step every 8 jiffies. A released bid drifts back down. A bid has no top price, only the bidder's money: the scale scrolls up with the high bid.
 - **Starting price:**
   - $160 for the first auction of the game.
   - The first auction of each later round starts at the previous round's average price minus $60.

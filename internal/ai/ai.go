@@ -181,13 +181,10 @@ func (b *Brain) DevTurn(g *rules.Game, seat int) {
 		used += 25 + 2*rules.StoreDistance[plot]
 	}
 
-	// Spend the rest at the pub. The turn plays out for the time used.
-	t.AIUsed = used
+	// Spend the rest at the pub.
 	t.Deadline = t.Begin + (budget-used)*ptu
 	if budget-used >= 3 {
 		g.Pub(seat)
-	} else {
-		t.AIUsed = budget
 	}
 }
 

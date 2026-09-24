@@ -448,21 +448,18 @@ func (g *Game) startTurn() {
 	seat := g.Order[g.OrderIdx]
 	g.Turn = &Turn{Seat: seat, WaitFrom: g.T, Carrying: NoGood}
 	if g.Players[seat].AI {
-		// A computer turn is computed at once but plays out on the map for
-		// the time it used, followed by its result display.
+		// A computer turn is computed at once and shown only as its result
+		// display: clients don't animate its walk, so waiting out the time
+		// it used would look like a hang. [IMPL]
 		g.beginTurn()
 		t := g.Turn
 		g.brain.DevTurn(g, seat)
-		used := t.AIUsed
-		if used <= 0 || used*PTUOf(g.Players[seat].Species) > t.Length {
-			used = t.Length / PTUOf(g.Players[seat].Species)
-		}
 		pause := TurnOverDisplay
 		if t.Pub {
 			pause = PubDisplay
 		}
 		t.Ended = true
-		t.EndAt = t.Begin + used*PTUOf(g.Players[seat].Species) + pause
+		t.EndAt = t.Begin + pause
 	}
 }
 
@@ -871,16 +868,38 @@ func (g *Game) SetTarget(seat, price int) error {
 	if l.Role == RoleNone {
 		return ErrSeat
 	}
-	l.Target = clamp(price, a.Lo, a.Hi)
+	l.Target = clamp(price, a.Lo, g.lineTop(seat))
 	return nil
+}
+
+// lineTop is the highest price a seat's line may reach. A land bid has no
+// top but the bidder's money: the scale scrolls up with it. [Atari]
+func (g *Game) lineTop(seat int) int {
+	a := g.Auction
+	if a.Land && a.Lines[seat].Role == RoleBuyer {
+		m := g.Players[seat].Money
+		return max(a.Lo, m-m%LandStep)
+	}
+	return a.Hi
 }
 
 // Push is a joystick push up (+1), down (-1) or release (0) in an auction.
 // Releasing in a land auction lets a bid drift back down. [measured]
-func (g *Game) Push(seat, dir int) error {
+func (g *Game) Push(seat, dir int) error { return g.PushSeen(seat, dir, -1) }
+
+// PushSeen is Push with the Traded count the player last saw (-1 unknown).
+// A push that arrives before the lines are released (the plot-for-sale
+// display, or the lead into trading) is held and applied the moment they
+// are, so a human starts moving on the same jiffy as the computers. [IMPL]
+func (g *Game) PushSeen(seat, dir, seen int) error {
 	a := g.Auction
 	if a == nil {
 		return ErrPhase
+	}
+	l := &a.Lines[seat]
+	if a.Stage == StageLead || (a.Land && a.Stage == StageShow) {
+		l.Push = dir
+		return nil
 	}
 	if g.Phase == PhaseDeclare {
 		switch {
@@ -891,17 +910,86 @@ func (g *Game) Push(seat, dir int) error {
 		}
 		return nil
 	}
-	l := &a.Lines[seat]
 	l.Push = dir
+	if dir != 0 && !a.Land && a.Stage == StageActive {
+		g.breakContact(seat, dir, seen)
+	}
+	return g.applyPush(seat)
+}
+
+// applyPush sets a line's target from its stick.
+func (g *Game) applyPush(seat int) error {
+	a := g.Auction
+	l := &a.Lines[seat]
 	switch {
-	case dir > 0:
-		return g.SetTarget(seat, a.Hi)
-	case dir < 0:
-		return g.SetTarget(seat, a.Lo)
-	case a.Land && l.Role == RoleBuyer:
+	case l.Push > 0:
+		return g.SetTarget(seat, g.lineTop(seat))
+	case l.Push < 0, a.Land && l.Role == RoleBuyer:
 		return g.SetTarget(seat, a.Lo)
 	}
 	return g.SetTarget(seat, l.Pos)
+}
+
+// applyHeldPushes starts the humans' lines held before the auction began.
+func (g *Game) applyHeldPushes() {
+	for s, p := range g.Players {
+		if !p.AI && g.Auction.Lines[s].Push != 0 {
+			g.applyPush(s)
+		}
+	}
+}
+
+// breakContact: a trader pushing away from the line they are trading with
+// leaves it at once, rather than at the next line step, so no further unit
+// trades. Units that traded after the count the player had seen, within
+// TradeUndoWindow, are given back: the player was reacting to an older
+// screen (poll and network latency). [IMPL]
+func (g *Game) breakContact(seat, dir, seen int) {
+	a := g.Auction
+	if a.Contact < 0 {
+		return
+	}
+	buyer, seller := a.Contact/8-1, a.Contact%8-1
+	if !(seat == buyer && dir < 0) && !(seat == seller && dir > 0) {
+		return
+	}
+	if seen >= 0 && a.Traded < MaxStock {
+		for i := len(a.Recent) - 1; i >= 0; i-- {
+			r := a.Recent[i]
+			if r.N <= seen || g.T-r.T > TradeUndoWindow {
+				break
+			}
+			g.undoTrade(r)
+			a.Recent = a.Recent[:i]
+		}
+	}
+	l := &a.Lines[seat]
+	l.Pos = clamp(l.Pos+dir*a.Step, a.Lo, a.Hi)
+	a.Contact = -1
+	a.Recent = a.Recent[:0]
+}
+
+// undoTrade gives back one unit traded in the current contact.
+func (g *Game) undoTrade(r TradeRec) {
+	a := g.Auction
+	gd := a.Good
+	if r.Buyer >= 0 {
+		g.Players[r.Buyer].Money += r.Price
+		g.Players[r.Buyer].Goods[gd]--
+		a.Lines[r.Buyer].Units--
+	} else {
+		g.Store.Stock[gd]--
+	}
+	if r.Seller >= 0 {
+		g.Players[r.Seller].Money -= r.Price
+		g.Players[r.Seller].Goods[gd]++
+		a.Lines[r.Seller].Units++
+	} else {
+		g.Store.Stock[gd]++
+	}
+	a.Traded--
+	a.TradeSum -= r.Price
+	a.ContactN--
 }
 
 // Collude registers a collusion press.
@@ -1020,6 +1108,7 @@ func (g *Game) tickAuction() {
 			if a.Land {
 				a.Stage = StageActive
 				a.TickLeft = ATU
+				g.applyHeldPushes()
 			} else {
 				a.Stage = StageDeclare
 				a.TickLeft = ATUIdle
@@ -1058,6 +1147,7 @@ func (g *Game) tickAuction() {
 				l.Pos, l.Target = l.Home, l.Home
 			}
 			g.setPhase(PhaseTrading)
+			g.applyHeldPushes()
 		}
 		return
 	case StageDone:
@@ -1140,11 +1230,9 @@ func (g *Game) moveLines() {
 		if l.Role == RoleNone {
 			continue
 		}
-		np := clamp(step(l.Pos, l.Target, a.Step), a.Lo, a.Hi)
+		np := clamp(step(l.Pos, l.Target, a.Step), a.Lo, g.lineTop(s))
 		if a.Land {
-			if l.Role == RoleBuyer {
-				np = min(np, max(a.Lo, g.Players[s].Money-g.Players[s].Money%LandStep))
-			} else {
+			if l.Role == RoleSeller {
 				np = max(np, a.Start)
 			}
 		} else if l.Role == RoleBuyer {
@@ -1215,6 +1303,7 @@ func (g *Game) trade() bool {
 	key := (buyer+1)*8 + seller + 1
 	if key != a.Contact {
 		a.Contact, a.ContactN, a.TradeWait = key, 0, TradeFirstBTU
+		a.Recent = a.Recent[:0]
 		a.NextTrade = g.T + TradeFirstBTU*BTU
 		return true
 	}
@@ -1239,6 +1328,10 @@ func (g *Game) trade() bool {
 	a.TradeSum += price
 	a.LastTrade = price
 	a.ContactN++
+	if len(a.Recent) >= 16 {
+		a.Recent = append(a.Recent[:0], a.Recent[1:]...)
+	}
+	a.Recent = append(a.Recent, TradeRec{T: g.T, Buyer: buyer, Seller: seller, Price: price, N: a.Traded})
 	if a.ContactN >= 2 {
 		a.TradeWait = max(TradeMinBTU, a.TradeWait-2)
 	}

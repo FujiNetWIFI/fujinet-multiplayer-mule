@@ -38,7 +38,6 @@ au_col_x: DATA 47, 71, 95, 119
     DIM au_show_t               ' per-good status: animation step shown
     DIM au_bar(5), au_bar_t(5)  ' status bars (4 players + store): now, target
     DIM au_msg                  ' message on row 11
-    DIM au_traded               ' units traded so far (a blip for each new one)
     DIM au_blink                ' seats whose sprite blinks (bit per seat)
 
 ' ---------------------------------------------------------------------------
@@ -158,6 +157,8 @@ au_stage_begin: PROCEDURE
         t_pos = i * 20 : GOSUB clear_row
     NEXT i
     au_ln1 = 255 : POKE AU_LN2, 255 : au_msg = 255 : bar_last = 255 : POKE AU_SB, 255 : POKE AU_SB + 1, 255
+    ' A new plot or good: the server has no push for us yet.
+    IF au_stage = STAGE_SHOW THEN au_push = 0
     IF au_kind = 2 AND au_stage = STAGE_SHOW THEN
         ' Per-good status: bars grow from the previous amount (au_status_tick).
         au_on = 0 : anim = AN_NONE
@@ -454,6 +455,7 @@ auction_tick: PROCEDURE
         END IF
         GOSUB msg_tick_run
         IF ev_btn THEN act = ACT_READY : poll_wait = 0
+        IF my_seat < 4 THEN GOSUB au_stick
         RETURN
     END IF
     IF scr_now <> SCR_AUCTION THEN RETURN
@@ -471,30 +473,38 @@ auction_tick: PROCEDURE
         GOSUB au_draw
         RETURN
     END IF
-    IF au_stage = STAGE_ACTIVE AND my_seat < 4 THEN
-        ' The stick: tell the server when it changes (up, down, released).
-        k = 0
-        IF inp_dir AND 4 THEN k = 1
-        IF inp_dir AND 1 THEN k = 2
-        IF k <> au_push AND act = ACT_NONE THEN
-            au_push = k : act = ACT_PUSH : #act_arg = k : poll_wait = 0
-            ' Move our own line straight away; the server confirms.
-            IF k = 1 THEN
-                ' Land: as high as our money goes (the server's limit for a
-                ' land buyer); goods: the top of the range.
-                IF au_kind = 1 THEN
-                    #w = pl16(my_seat, S_PLAYER_MONEY)
-                    #au_tgt(my_seat) = #w - (#w AND 3)
-                ELSE
-                    #au_tgt(my_seat) = st16(ST_AUCTION_HI)
-                END IF
-            END IF
-            IF k = 2 THEN #au_tgt(my_seat) = st16(ST_AUCTION_LO)
-            IF k = 0 THEN #au_tgt(my_seat) = #au_pos(my_seat)
-        END IF
-        IF ev_btn AND au_kind = 2 THEN act = ACT_COLLUDE : poll_wait = 0
+    IF (au_stage = STAGE_ACTIVE OR au_stage = STAGE_LEAD) AND my_seat < 4 THEN
+        GOSUB au_stick
+        IF ev_btn AND au_kind = 2 AND au_stage = STAGE_ACTIVE THEN act = ACT_COLLUDE : poll_wait = 0
     END IF
     ' The clock bar runs between polls.
+END
+
+' au_stick: tell the server when our stick changes (up, down, released).
+' It is sent before the lines are released too (the plot for sale, the lead
+' into trading): the server holds it, so we start moving with the computers.
+' The push carries au_traded, so the server can give back units that traded
+' after what we have shown when we back off (net.bas compose).
+au_stick: PROCEDURE
+    k = 0
+    IF inp_dir AND 4 THEN k = 1
+    IF inp_dir AND 1 THEN k = 2
+    IF k = au_push OR act <> ACT_NONE THEN RETURN
+    au_push = k : act = ACT_PUSH : #act_arg = k : poll_wait = 0
+    IF au_stage <> STAGE_ACTIVE THEN RETURN
+    ' Move our own line straight away; the server confirms.
+    IF k = 1 THEN
+        ' Land: as high as our money goes (the server's limit for a land
+        ' buyer; the scale scrolls up with it); goods: the top of the range.
+        IF au_kind = 1 THEN
+            #w = pl16(my_seat, S_PLAYER_MONEY)
+            #au_tgt(my_seat) = #w - (#w AND 3)
+        ELSE
+            #au_tgt(my_seat) = st16(ST_AUCTION_HI)
+        END IF
+    END IF
+    IF k = 2 THEN #au_tgt(my_seat) = st16(ST_AUCTION_LO)
+    IF k = 0 THEN #au_tgt(my_seat) = #au_pos(my_seat)
 END
 
 ' ---------------------------------------------------------------------------

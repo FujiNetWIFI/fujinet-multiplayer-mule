@@ -1,0 +1,8 @@
+-Isrc
+-Isrc/platform-specific
+-Isrc/apple2
+-I..
+-Igen
+-I../../../fujinet-lib
+-D__APPLE2__
+-Wno-main-return-type

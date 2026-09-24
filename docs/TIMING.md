@@ -79,6 +79,8 @@ Game modes (`$C1`), with each mode's screen:
 | 137 | start price |
 | 67 | top: start + 35 steps |
 
+A bid can go past the top: the scale scrolls up with it, and only the bidder's money limits the bid.
+
 **End.** "Auction is over" is shown for 191 (91 + 100). (M)
 
 ### Development
@@ -96,7 +98,7 @@ Game modes (`$C1`), with each mode's screen:
 | Screen change between town and map | 25 | M |
 | "Time has run out" | 200 | M |
 | Pub result ("won $X gambling!") | 277 (156 + 121) | M |
-| Computer turns | play out on the map for the PTU the computer uses (25 + 2·distance per M.U.L.E., 10 + 2·distance per assay), then the pub result | RE, M |
+| Computer turns | end at once; only the result display is shown (pub result, or "time has run out") | IMPL |
 
 ### Production
 
@@ -140,5 +142,8 @@ Each step is 2 scanlines: $1 for Food, Energy and Smithore, $4 for Crystite. The
 ## Where the server departs from these timings
 
 - **Claim latency allowance.** A land-grant claim can name the plot the cursor left up to 24 jiffies earlier. This covers the round trip for a player pressing just as the cursor steps.
+- **Computer turn pace.** In the original, a computer's development turn plays out on the map for the PTU it uses (25 + 2·distance per M.U.L.E., 10 + 2·distance per assay). Clients don't animate the computer's walk, so the server ends the turn at once and shows only its result display.
 - **Button waits.** The original has no timeouts on its button waits. The server keeps that, but a player who stops polling for 2 minutes hands their seat to the computer, so an idle player can't block a network game.
 - **Collusion length.** 10 ticks. This hasn't been measured yet.
+- **Early pushes.** A stick pushed during the plot-for-sale display (land) or the lead into trading (goods) is held and applied on the first active jiffy. Without this, a human always starts a poll and a round trip behind the computers.
+- **Backing off a trade.** When a trader in contact pushes away from the line they are trading with, their line steps away at once, not at the next 8-jiffy step, and no further unit trades. The push can carry the units-traded count the client last showed. Units traded after that count, within the last 60 jiffies (`TradeUndoWindow`), are given back.

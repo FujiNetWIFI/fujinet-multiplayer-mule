@@ -133,6 +133,14 @@ type Auction struct {
 	Done      bool
 	Winner    int
 	Price     int
+	Recent    []TradeRec // units traded in the current contact, oldest first
+}
+
+// TradeRec is one unit traded, kept so a trader backing off can give back
+// units they had not yet seen (PushSeen).
+type TradeRec struct {
+	T, Buyer, Seller, Price int
+	N                       int // Auction.Traded after this unit
 }
 
 // Wampus appearance during a turn.
@@ -160,7 +168,6 @@ type Turn struct {
 	Event     int // player event id, 0 none
 	EventText string
 	Log       []string
-	AIUsed    int // PTU used by a computer turn (its turn plays out for this long)
 	Pub       bool
 }
 

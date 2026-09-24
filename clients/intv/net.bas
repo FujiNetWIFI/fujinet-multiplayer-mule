@@ -44,6 +44,7 @@
     DIM act_sent                ' the action the state in STATE answers
     DIM #net_i, #net_n
     DIM net_have                ' 1 = STATE holds a fresh reply
+    DIM au_traded               ' auction units traded so far, as shown (auction.bas); sent with a push
 
 ' ---------------------------------------------------------------------------
 ' put_lit: append DATA-string #lit_addr (length word, then chars - 32) to FN_TX.
@@ -94,6 +95,9 @@ compose: PROCEDURE
     IF PEEK(#lit_addr + PEEK(#lit_addr)) = 15 THEN     ' ends in '/': argument
         IF act = ACT_PUSH THEN
             #lit_addr = VARPTR lit_push(0) : lit_n = #act_arg : GOSUB lit_nth : GOSUB put_lit
+            ' /seen: the units traded we have shown (server gives back later ones).
+            POKE (FN_TX + #fn_txlen), 47 : #fn_txlen = #fn_txlen + 1
+            #val = au_traded : GOSUB put_num
         ELSEIF act = ACT_DECLARE THEN
             #lit_addr = VARPTR lit_declare(0) : lit_n = #act_arg : GOSUB lit_nth : GOSUB put_lit
         ELSE

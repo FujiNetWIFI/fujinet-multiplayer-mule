@@ -19,6 +19,9 @@ PYTHON   ?= python3
 # so a later plain `make` (run.sh runs one) keeps what you last chose.
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
+ifeq ($(strip $(ATR)),)
+$(warning *** No M.U.L.E. ATR (ATR= or mule.atr): gen/gfx.bas uses STAND-IN ART, not the Atari graphics ***)
+endif
 
 PRODUCT = mule
 SOURCES = mule.bas memory.bas fujinet.bas input.bas net.bas screen.bas isr.bas \

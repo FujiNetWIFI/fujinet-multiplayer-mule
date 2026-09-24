@@ -152,6 +152,7 @@ const (
 	TradeFirstBTU     = 12  // first unit after lines meet [measured, $B374]
 	TradeMinBTU       = 2   // fastest unit rate [code $912E]
 	ColludeTicks      = 10  // [IMPL] not measured
+	TradeUndoWindow   = 60  // [IMPL] network allowance: a trader backing off gives back units traded this recently that they had not yet seen
 
 	TurnWaitWampusCap = 255 * BTU // Ta cap for the wampus delay [RE]
 	TurnOverDisplay   = 200       // "time has run out" [measured]

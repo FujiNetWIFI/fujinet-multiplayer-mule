@@ -16,12 +16,14 @@
 ' ===========================================================================
 
     CONST MOUNT_COL = C_BLACK
-    CONST RIVER_COL = C_BLUE       ' (the Atari's is yellow)
+    CONST RIVER_COL = C_CYAN       ' (the Atari's is yellow)
 
     DIM map_dots                ' 1 = draw production dots
     DIM map_blink               ' plot for sale (blinks), 255 = none
     DIM map_blink_on            ' 1 = draw it outlined in white now
     DIM mp, mo, mt, mm, mg, mc
+    DIM bar_col, bar_rows, bar_px, bar_last     ' the time bar (bar_draw)
+    DIM bar_colr                ' its colour (0..15; 0..7 in the town)
 
 ' map_enter: switch to the map screen and draw everything.
 map_enter: PROCEDURE
@@ -33,6 +35,9 @@ map_enter: PROCEDURE
     g_slot = G_MULE : g_n = 2 : #g_src = VARPTR gfx_mule(0) : GOSUB gram_load
     g_slot = G_WAMPUS : g_n = 2 : #g_src = VARPTR gfx_cursor(0) : GOSUB gram_load
     scr_now = SCR_MAP
+    ' The map's time bar (the town's is at column 17 and would cover plot
+    ' column 8); bar_last = 255 redraws it on the cleared screen.
+    bar_col = 19 : bar_rows = 10 : bar_last = 255
     map_blink = 255 : map_blink_on = 0
     GOSUB map_draw_all
     GOSUB river_show
@@ -221,8 +226,6 @@ END
 ' town), one pixel for every 2 PTU of turn time left (the Atari's bar loses a
 ' scanline per PTU; two scanlines are one pixel here).
 ' ---------------------------------------------------------------------------
-    DIM bar_col, bar_rows, bar_px, bar_last
-    DIM bar_colr                ' its colour (0..15; 0..7 in the town)
 bar_draw: PROCEDURE                ' bar_px = height in pixels
     IF bar_px = bar_last THEN RETURN
     bar_last = bar_px

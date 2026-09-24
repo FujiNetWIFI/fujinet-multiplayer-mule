@@ -42,7 +42,6 @@
     INCLUDE "events.bas"
     INCLUDE "status.bas"
     INCLUDE "boot.bas"
-    INCLUDE "gen/config.bas"
 
     ' $2100-$2FFF: a static segment in MAP 2 (safe on flash carts).
     SEGMENT 3
@@ -58,6 +57,8 @@
 
     SEGMENT 1
     INCLUDE "gen/gfx.bas"
+    ' Segment 2 is full up to $F7FF.
+    INCLUDE "gen/config.bas"
 
     SEGMENT 0
 

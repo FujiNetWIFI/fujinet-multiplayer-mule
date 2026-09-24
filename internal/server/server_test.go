@@ -223,3 +223,14 @@ func TestDropHandsSeatToAIAndGameCompletes(t *testing.T) {
 	}
 	t.Fatalf("game did not finish: round %d phase %s", v.Round, v.Phase)
 }
+
+func TestPushRouteWithSeen(t *testing.T) {
+	h := newHarness(t)
+	startSolo(h, "dev2")
+	// Both forms route to the auction stick (no auction yet: a phase error).
+	for _, p := range []string{"/auction/push/down", "/auction/push/down/3", "/auction/push/up/0"} {
+		if v := h.view(p + "?table=dev2&player=solo"); v.Err != proto.ErrPhase {
+			t.Fatalf("%s: err=%d", p, v.Err)
+		}
+	}
+}

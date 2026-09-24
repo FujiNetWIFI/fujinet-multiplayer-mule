@@ -120,6 +120,7 @@ func (s *Server) Routes(r *gin.Engine) {
 	route("/auction/at/:price", s.act(actBidAt))
 	route("/auction/move/:dir", s.act(actBidMove))
 	route("/auction/push/:dir", s.act(actBidMove))
+	route("/auction/push/:dir/:seen", s.act(actBidMove))
 	route("/declare/:role", s.act(actDeclare))
 	route("/collude", s.act(actCollude))
 	route("/turn/begin", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return 0, g.BeginTurn(seat) })))
@@ -235,13 +236,16 @@ func actBidMove(t *Table, seat int, c *gin.Context) (int, error) {
 	if g == nil || g.Auction == nil {
 		return 0, rules.ErrPhase
 	}
+	// :seen is the units-traded count the client last showed, so units it
+	// had not seen yet can be given back when the stick reverses.
+	seen := atoi(c.Param("seen"), -1)
 	switch c.Param("dir") {
 	case "up", "u", "1":
-		return 0, g.Push(seat, 1)
+		return 0, g.PushSeen(seat, 1, seen)
 	case "down", "d", "-1":
-		return 0, g.Push(seat, -1)
+		return 0, g.PushSeen(seat, -1, seen)
 	default:
-		return 0, g.Push(seat, 0)
+		return 0, g.PushSeen(seat, 0, seen)
 	}
 }
 

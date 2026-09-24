@@ -182,9 +182,9 @@ func TestComputerTurnDuration(t *testing.T) {
 		return
 	}
 	tu := g.Turn
-	// idleBrain uses no time: the turn lasts its full length, then the display.
-	if d := tu.EndAt - tu.Begin; d != tu.Length+TurnOverDisplay {
-		t.Fatalf("computer turn %d, want %d", d, tu.Length+TurnOverDisplay)
+	// A computer turn ends at once: only its result display is shown.
+	if d := tu.EndAt - tu.Begin; d != TurnOverDisplay {
+		t.Fatalf("computer turn %d, want %d", d, TurnOverDisplay)
 	}
 }
 
@@ -193,9 +193,113 @@ func TestLinesStayOnScale(t *testing.T) {
 	g.Continue(0)
 	g.Advance(g.T + 1)
 	a := g.Auction
+	// A land bid has no top but the bidder's money (the scale scrolls).
 	a.Lines[1].Target = a.Hi * 3 // a computer asking for too much
-	g.Advance(g.T + 400*LineStep)
-	if a.Lines[1].Pos > a.Hi {
-		t.Fatalf("line at %d above the top %d", a.Lines[1].Pos, a.Hi)
+	g.Advance(g.T + 60*LineStep)
+	if a.Done {
+		t.Fatal("auction over too soon")
+	}
+	m := g.Players[1].Money
+	if p := a.Lines[1].Pos; p > m-m%LandStep {
+		t.Fatalf("land bid %d above the bidder's money %d", p, m)
+	}
+	if a.Lines[1].Pos <= a.Hi && m-m%LandStep > a.Hi {
+		t.Fatalf("land bid stopped at %d, the old top %d", a.Lines[1].Pos, a.Hi)
+	}
+}
+
+func TestLandBidPastOldTop(t *testing.T) {
+	g := landAuction(t)
+	g.Players[0].Money = 5000
+	g.Continue(0)
+	g.Advance(g.T + 1)
+	a := g.Auction
+	must(t, g.Push(0, 1))
+	g.Advance(g.T + 60*LineStep)
+	if a.Lines[0].Pos <= a.Hi {
+		t.Fatalf("bid %d did not pass the top of the scale %d", a.Lines[0].Pos, a.Hi)
+	}
+	runTo(t, g, 5000, func() bool { return a.Done })
+	if a.Winner != 0 || a.Price <= a.Hi {
+		t.Fatalf("winner %d at %d", a.Winner, a.Price)
+	}
+}
+
+// A push held during the plot-for-sale display starts the line on the
+// first active jiffy.
+func TestLandPushHeldBeforeStart(t *testing.T) {
+	g := landAuction(t)
+	a := g.Auction
+	must(t, g.Push(0, 1))
+	runTo(t, g, 2000, func() bool { return a.Stage == StageActive })
+	if a.Lines[0].Target <= a.Start {
+		t.Fatalf("held push not applied: target %d", a.Lines[0].Target)
+	}
+	start := a.Lines[0].Pos
+	g.Advance(g.T + LineStep)
+	if a.Lines[0].Pos != start+a.Step {
+		t.Fatalf("line at %d after one step, want %d", a.Lines[0].Pos, start+a.Step)
+	}
+}
+
+func TestGoodsPushHeldInLead(t *testing.T) {
+	g := humanGame(6, Gollumer)
+	toGrant(t, g)
+	runTo(t, g, 60000, func() bool { return g.Phase == PhaseDeclare && g.Auction.Stage == StageLead })
+	a := g.Auction
+	a.Lines[0].Role = RoleBuyer
+	must(t, g.Push(0, 1))
+	runTo(t, g, 200, func() bool { return g.Phase == PhaseTrading })
+	if a.Lines[0].Target <= a.Lines[0].Pos {
+		t.Fatalf("held push not applied: pos %d target %d", a.Lines[0].Pos, a.Lines[0].Target)
+	}
+}
+
+// tradingWithStore puts seat 0 in contact with the store as a buyer.
+func tradingWithStore(t *testing.T) (*Game, *Auction) {
+	g := humanGame(6, Gollumer)
+	toGrant(t, g)
+	runTo(t, g, 60000, func() bool { return g.Phase == PhaseTrading })
+	a := g.Auction
+	for s := range a.Lines {
+		a.Lines[s].Role = RoleNone
+	}
+	g.Players[0].Money = 10000
+	g.Store.Stock[a.Good] = 40
+	a.Lines[0].Role, a.Lines[0].Home, a.Lines[0].Pos = RoleBuyer, a.Lo, a.StoreSell
+	must(t, g.Push(0, 1))
+	return g, a
+}
+
+func TestReverseStopsTradeAtOnce(t *testing.T) {
+	g, a := tradingWithStore(t)
+	runTo(t, g, 1000, func() bool { return a.Traded >= 5 })
+	must(t, g.Push(0, -1))
+	n := a.Traded
+	if a.Lines[0].Pos != a.StoreSell-a.Step {
+		t.Fatalf("line at %d, want one step below %d", a.Lines[0].Pos, a.StoreSell)
+	}
+	g.Advance(g.T + 200)
+	if a.Traded != n {
+		t.Fatalf("traded %d more after reversing", a.Traded-n)
+	}
+}
+
+func TestReverseGivesBackUnseenUnit(t *testing.T) {
+	g, a := tradingWithStore(t)
+	runTo(t, g, 1000, func() bool { return a.Traded >= 5 })
+	p := g.Players[0]
+	money, goods, stock := p.Money, p.Goods[a.Good], g.Store.Stock[a.Good]
+	must(t, g.PushSeen(0, -1, a.Traded-1))
+	if a.Traded != 4 || p.Money != money+a.StoreSell || p.Goods[a.Good] != goods-1 || g.Store.Stock[a.Good] != stock+1 {
+		t.Fatalf("traded %d money %d goods %d stock %d", a.Traded, p.Money-money, p.Goods[a.Good]-goods, g.Store.Stock[a.Good]-stock)
+	}
+	// Too long ago: nothing is given back.
+	g2, a2 := tradingWithStore(t)
+	runTo(t, g2, 1000, func() bool { return a2.Traded >= 2 })
+	a2.Recent[len(a2.Recent)-1].T = g2.T - TradeUndoWindow - 1
+	must(t, g2.PushSeen(0, -1, 1))
+	if a2.Traded != 2 {
+		t.Fatalf("undid a unit %d jiffies old", TradeUndoWindow+1)
 	}
 }
