@@ -25,6 +25,15 @@
 #define KEY_BACK   8        /* rub out (name entry) */
 #define KEY_SITOUT '0'      /* declare: sit this good out */
 
+/* What the keys are called, for the prompts (a platform's build may define
+ * its own). */
+#ifndef KEY_END_NAME
+#define KEY_END_NAME "RETURN"
+#endif
+#ifndef LOBBY_HINT
+#define LOBBY_HINT "<- -> SPECIES   SPACE READY   ESC LEAVE"
+#endif
+
 extern uint8_t inp_dir;     /* level */
 extern uint8_t inp_btn;     /* level: button held */
 extern uint8_t ev_btn;      /* taken: the button was pressed */

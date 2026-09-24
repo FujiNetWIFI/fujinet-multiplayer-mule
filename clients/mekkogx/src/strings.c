@@ -77,8 +77,8 @@ static const char *const msgs[] = {
     "TAKE A SAMPLE FIRST",
     "OUTFIT M.U.L.E. $%",
     "THE SHIP IS BACK!",
-    "RETURN ENDS YOUR TURN",
-    "<- -> SPECIES   SPACE READY   ESC LEAVE",
+    KEY_END_NAME " ENDS YOUR TURN",
+    LOBBY_HINT,
     "STARTING IN % SECONDS",
 };
 

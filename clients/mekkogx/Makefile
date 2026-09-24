@@ -1,6 +1,7 @@
 # clients/mekkogx/Makefile -- M.U.L.E. for FujiNet 8-bit computers (MekkoGX).
 #
 #   make apple2                        r2r/apple2/mule.po (ProDOS, 128K //e, IIc, IIgs)
+#   make coco                          r2r/coco/mule.dsk (DECB, 64K CoCo 1/2)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -10,7 +11,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2
+PLATFORMS = apple2 coco
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -62,16 +63,59 @@ apple2/disk-post::
 	for n in 1 2 3 4 5 6 7; do \
 	  ac -p $(DISK) MULE.$$n BIN 0x0000 < $(EXECUTABLE).$$n || exit 1; done
 
+# ---- CoCo 1/2 ---------------------------------------------------------------
+# 64K, all-RAM once running (src/coco/bank.c). CMOC has no section pragma:
+# tools/coco/lwasm-sect moves a module's code and constants to the section
+# named by MULE_SECT, and tools/coco/lwlink-mule.py links with
+# src/coco/mule.link and splits the result into mule.bin (LOADM'd),
+# mulehi.bin and the overlays mule1..5.bin.
+COCO_TOOLS = $(CURDIR)/tools/coco
+# -O1: CMOC 0.1.100's -O2 drops index reloads (a[i]; b[i]; read b[a[i]])
+CFLAGS_EXTRA_COCO += -O1 -funsigned-char -fomit-frame-pointer -Wno-const -DPLAT_BIG_ENDIAN \
+                     --lwasm=$(COCO_TOOLS)/lwasm-sect
+ASFLAGS_EXTRA_COCO += --lwasm=$(COCO_TOOLS)/lwasm-sect
+LDFLAGS_EXTRA_COCO += --lwlink=$(COCO_TOOLS)/lwlink-mule.py --initial-s=8000
+CFLAGS_EXTRA_COCO += -DKEY_END_NAME='"ENTER"' \
+                     -DLOBBY_HINT='"<- -> SPECIES  SPACE READY  BREAK LEAVE"'
+EXTRA_INCLUDE_COCO += src/coco/include
+EXECUTABLE_EXTRA_DEPS_COCO += src/coco/mule.link $(COCO_TOOLS)/lwlink-mule.py
+DECB ?= $(firstword $(wildcard $(HOME)/Workspace/toolshed/build/unix/decb/decb) decb)
+ifeq ($(PLATFORM),coco)
+  DISK_TOOL := $(DECB)
+endif
+
+COOBJ = build/$(PRODUCT)/coco
+$(COOBJ)/src/boot.o $(COOBJ)/src/teststart.o: export MULE_SECT = ov1
+$(COOBJ)/src/status.o:                        export MULE_SECT = ov2
+$(COOBJ)/src/grant.o $(COOBJ)/src/events.o:   export MULE_SECT = ov3
+$(COOBJ)/src/auction.o:                       export MULE_SECT = ov4
+$(COOBJ)/src/develop.o:                       export MULE_SECT = ov5
+$(COOBJ)/src/text.o $(COOBJ)/src/map.o $(COOBJ)/src/fx.o $(COOBJ)/src/test.o \
+  $(COOBJ)/src/coco/gfx.o $(COOBJ)/src/coco/input.o \
+  $(COOBJ)/src/coco/sound.o $(COOBJ)/gen/coco/gfx.o:   export MULE_SECT = hi
+
+# The loader: HDB-DOS runs AUTOEXEC.BAS, which LOADMs the low core. BASIC
+# programs start at $2601, where MULE.BIN goes: PCLEAR1 moves this one down
+# out of the way first (to $1601, the future PMODE 4 screen).
+coco/disk-post::
+	printf '10 PCLEAR1:LOADM"MULE":EXEC\n' > build/autoexec.bas
+	$(DECB) copy -0 -a -l -r build/autoexec.bas $(DISK),AUTOEXEC.BAS
+	$(DECB) copy -b -2 -r r2r/coco/$(PRODUCT)hi.bin $(DISK),MULEHI.BIN
+	for n in 1 2 3 4 5; do \
+	  $(DECB) copy -b -2 -r r2r/coco/$(PRODUCT)$$n.bin $(DISK),MULE$$n.BIN || exit 1; done
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 FORCE
+.PHONY: gen-apple2 gen-coco FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
+r2r/coco/$(PRODUCT): gen-coco
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
+gen-coco: gen/config.h gen/coco/gfx.c
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -88,6 +132,12 @@ gen/apple2/gfx.c: tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_hgr.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview $@
 
+gen/coco/gfx.c: tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/coco
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_pmode4.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/coco $@
+
 clean::
-	rm -rf gen/apple2 gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/preview gen/config.h
 endif

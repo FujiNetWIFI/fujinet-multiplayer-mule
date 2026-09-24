@@ -33,6 +33,7 @@
 #define C_LTBLUE  12
 #define C_DKGREEN 13
 #define C_PINK    14
+#define C_P3      15    /* player 3: orange where a platform can (the CoCo: stripes) */
 
 /* Screen layout helpers. */
 #define PLOT_X(p)   (8 + 16 * ((p) % 9))

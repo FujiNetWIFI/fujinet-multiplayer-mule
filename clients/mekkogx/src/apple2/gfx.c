@@ -39,7 +39,7 @@ void hgr_spr(void);
 #define H_BLUE   4
 #define H_ORANGE 5
 
-static const uint8_t hcol[15] = {
+static const uint8_t hcol[16] = {
     H_BLACK,    /* C_BLACK */
     H_WHITE,    /* C_WHITE */
     H_BLUE,     /* C_BLUE */
@@ -55,6 +55,7 @@ static const uint8_t hcol[15] = {
     H_BLUE,     /* C_LTBLUE */
     H_GREEN,    /* C_DKGREEN */
     H_VIOLET,   /* C_PINK */
+    H_ORANGE,   /* C_P3 */
 };
 
 /* Per HGR colour: the bits of an even / odd screen byte that show it, and

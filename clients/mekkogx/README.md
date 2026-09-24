@@ -5,7 +5,9 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-The first platform is the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound.
+There are two platforms:
+- the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
+- the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound.
 
 The code is split so other MekkoGX targets can follow:
 
@@ -14,6 +16,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/*.c` | the game, platform neutral: protocol, phases, walking, the sprite scripts, text |
 | `src/platform-specific/*.h` | what a platform provides: screen and sprites (`gfx.h`), input, sound, the 60 Hz clock (`plat.h`), far memory and overlays (`bank.h`) |
 | `src/apple2/` | the Apple II implementation |
+| `src/coco/` | the CoCo 1/2 implementation (CMOC) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -95,9 +98,87 @@ A joystick works too if one is centred when the game starts.
 
 **Soak tests against a real server.** `make apple2 AUTOPLAY=1` (after `make clean`) builds a client that plays by itself: it readies, claims, takes its turns and sits out goods. Run it in AppleWin (headless) with fujinet-pc against a private server, and watch the game go round.
 
+## The CoCo version
+
+**Building.**
+
+    make coco                                  # r2r/coco/mule.dsk (Disk BASIC, 160K)
+    make coco ENDPOINT=http://myhost:8080
+
+- **What it needs:** CMOC 0.1.100 and lwtools (`lwasm`, `lwlink`), ToolShed's `decb` (found in `~/Workspace/toolshed/build/unix/decb/`, or `make DECB=...`), Python 3 with Pillow, and fujinet-lib built for `coco`.
+- **Graphics:** `tools/mkgfx_pmode4.py` converts them from the same Atari disk (`ATR=`, or `mule.atr`), into `gen/coco/`. The Atari extraction is `mkgfx_hgr.py`'s. As on the Apple, there is stand-in art without the disk.
+- **Optimisation:** the build uses `-O1`. CMOC 0.1.100's `-O2` has a bug: after `x = a[i]`, a following `b[i]` is indexed by `x`.
+- **Rebuilding:** a module's section (below) is set by the Makefile. Changing it doesn't rebuild the module: `make clean` first.
+
+**Running.** Mount `mule.dsk` on the FujiNet and boot. HDB-DOS runs `AUTOEXEC.BAS`, which does `PCLEAR1:LOADM"MULE":EXEC`. The `PCLEAR1` moves the BASIC program out of the way of `MULE.BIN`.
+
+**The screen: PMODE 4 at $0E00.**
+- **Colours:** two neighbouring pixels are one artifact colour pixel (128 across). The players are blue, orange, white, and blue/orange stripes (blue on even lines, orange on odd).
+- **Colour phase:** a CoCo 1/2 comes up with blue and orange either way round, so the game asks at start-up ("IS THE BAR BLUE?"), and CLEAR swaps them at any time.
+- **Scaling:** Atari colour clocks x become colour pixels x - x/4 + 2 (160 -> 120).
+  - A map plot is 12 colour pixels, 3 bytes on a byte.
+  - Text is 40 columns of 6-pixel cells; the Atari font is squeezed from 7 pixels to 5.
+  - Coloured text is double width, as on the Apple.
+  - Characters' sprites keep their 8 colour pixels; the ship, cloud and plot cursor are squeezed like the map.
+- **Drawing:** sprites are software sprites with save-under (`src/coco/gfx.c`). The inner loops (sprite rows, glyphs, plots) are 6809 assembly.
+
+**Memory: 64K, all RAM once running.** See `src/coco/mule.link`.
+
+| Where | What |
+|---|---|
+| $0000-$0DFF | BASIC/DOS variables, kept: DSKCON and DriveWire use them |
+| $0E00-$25FF | the screen |
+| $2600-$7BFF | the low core, `MULE.BIN` (LOADM'd by BASIC): everything that runs before the rest is loaded, all variables, the strings, the town |
+| $7C00-$7FFF | the stack (1K) |
+| $8000-$BFEF | the high core, `MULEHI.BIN`: graphics code and data, text, input, sound |
+| $BFF0-$BFFF | the CPU vectors (in all-RAM mode the SAM fetches them from here) |
+| $C000-$DFFF | the Disk ROM, copied to RAM: DSKCON, and the DriveWire routines that fujinet-lib calls through $D93F/$D941 |
+| $E000-$F9FF | the overlay window: `MULE1`...`MULE5.BIN`, one phase's code at a time |
+| $FA00-$FEFF | the sprites' save-unders |
+
+How it gets there:
+- **Start-up:** `bank_init` copies the Disk ROM and the vectors to RAM, switches the SAM to all-RAM, and reads `MULEHI.BIN` with DSKCON.
+- **Overlays:** at a phase change, `bank_overlay` reads that phase's overlay the same way. Over DriveWire that takes about a second.
+- **Placing modules:** CMOC has no section pragma, so:
+  - `tools/coco/lwasm-sect` renames a module's sections, as the Makefile's `MULE_SECT` says;
+  - `tools/coco/lwlink-mule.py` links with the memory map, checks every region's limit, and splits the output into the files above.
+
+**Timing.**
+- **The clock:** the VDG's field-sync interrupt counts the frames and scans the keyboard, so a quick key press isn't lost while the game is busy.
+- **Network calls:** the DriveWire ROM masks interrupts while it talks to the FujiNet. The server's clock (`elapsed`) resynchronises the game after each call.
+
+**Testing.**
+- **Offline:** `tools/cocosim/cocosim.py` is `a2sim.py` for MAME's CoCo 2 (`coco2b`, Disk BASIC), with the same scenario language and test hooks:
+
+      python3 tools/cocosim/cocosim.py r2r/coco/mule.dsk build/mule-coco.map scenario.txt out/
+
+  - `tools/cocosim/snap.sh` takes plain timed screenshots.
+  - `addr2sym.py` turns `pc` samples into function names.
+  - The stack's unused part is filled with $A5 at start-up; `dump 7C00 7FFF` shows how deep it has been.
+- **Against a server:**
+  1. Start fujinet-pc (CoCo build) with BoIP on 65504 and the disk mounted.
+  2. Run cocosim with `COCO_BECKER=1 COCO_BIOS=hdbk12` and `-` as the disk. It boots HDB-DOS over the Becker port and runs in real time.
+  - `make coco AUTOPLAY=1` plays by itself.
+  - MAME's Becker port connects at start-up even when it is off, so an offline run waits while a FujiNet is listening on 65504.
+
+**Controls.**
+
+| Key | Does |
+|---|---|
+| arrows (or the right joystick) | walk, push, choose |
+| SPACE (or the joystick button) | the button |
+| ENTER | end your development turn |
+| BREAK | leave the table (lobby) |
+| 0 | declare: sit this good out |
+| LEFT | also rubs out when typing a name |
+| CLEAR | swap the artifact colours |
+| SHIFT-CLEAR | sound off / on |
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
 - **Other players' walks are reconstructed.** Computer turns are replayed as walks.
 - **Grey.** HGR has no grey: the plains are black and the mountains white.
-- **Network pauses.** Animations pause briefly while a network call runs, because the Apple II has nothing to run them during a SmartPort call.
+- **Network pauses.** Animations pause briefly while a network call runs, because the Apple II has nothing to run them during a SmartPort call (the CoCo, during a DriveWire call).
+- **CoCo: phase changes** pause about a second while the phase's overlay is read.
+- **CoCo: grey** is black or white, and the fourth player is striped.

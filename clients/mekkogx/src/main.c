@@ -14,7 +14,7 @@ MuleState st, prev;
 uint8_t phase, rnd, my_seat, last_phase, last_round, st_ok;
 uint16_t rx_pe, rx_frame, ph_t0;
 uint8_t scr_now, anim;
-const uint8_t pl_col[4] = { C_BLUE, C_PURPLE, C_GREEN, C_ORANGE };
+const uint8_t pl_col[4] = { C_BLUE, C_PURPLE, C_GREEN, C_P3 };
 
 /* tools/a2sim: once the title shows 3C C3 here, poke $5A into
  * test_hook[0] to start the offline test mode (see test.c); [1] phase,

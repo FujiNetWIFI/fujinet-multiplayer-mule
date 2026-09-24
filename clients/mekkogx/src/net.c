@@ -82,6 +82,9 @@ static void compose(uint8_t a)
     p = add(p, "&player=");
     p = add(p, sc_name);
     p = add(p, "&bin=1");
+#ifdef PLAT_BIG_ENDIAN
+    p = add(p, "&be=1");            /* the 16- and 32-bit fields in our order */
+#endif
     *p = 0;
 }
 
