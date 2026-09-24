@@ -205,6 +205,13 @@ uint8_t net_sync(void)
 
 uint8_t net_detect(void)
 {
+#ifdef PLAT_NET_PROBE
+    /* a platform whose network_init() can't tell (fujinet-lib-experimental's
+     * says yes always) asks its own way */
+    uint8_t plat_net_probe(void);
+    if (!plat_net_probe())
+        return 0;
+#endif
     return network_init() == FN_ERR_OK;
 }
 

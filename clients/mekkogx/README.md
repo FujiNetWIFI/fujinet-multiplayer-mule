@@ -5,9 +5,10 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are two platforms:
+There are three platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
-- the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound.
+- the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
+- the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS.
 
 The code is split so other MekkoGX targets can follow:
 
@@ -17,6 +18,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/platform-specific/*.h` | what a platform provides: screen and sprites (`gfx.h`), input, sound, the 60 Hz clock (`plat.h`), far memory and overlays (`bank.h`) |
 | `src/apple2/` | the Apple II implementation |
 | `src/coco/` | the CoCo 1/2 implementation (CMOC) |
+| `src/msdos/` | the PC / PCjr implementation (Open Watcom) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -61,7 +63,7 @@ The chosen table is written back to key 10, so restarting rejoins it.
 | space, or a joystick button / apple key | the button |
 | RETURN | end your development turn |
 | 0 | declare: sit this good out |
-| ESC | leave the table (lobby) |
+| ESC | leave the table (lobby); at the table list, quit |
 | ctrl-S | sound off / on |
 
 A joystick works too if one is centred when the game starts.
@@ -168,11 +170,65 @@ How it gets there:
 | arrows (or the right joystick) | walk, push, choose |
 | SPACE (or the joystick button) | the button |
 | ENTER | end your development turn |
-| BREAK | leave the table (lobby) |
+| BREAK | leave the table (lobby); at the table list, quit (a cold start) |
 | 0 | declare: sit this good out |
 | LEFT | also rubs out when typing a name |
 | CLEAR | swap the artifact colours |
 | SHIFT-CLEAR | sound off / on |
+
+## The MS-DOS version
+
+**Building.**
+
+    make msdos                                 # r2r/msdos/mule.img (360K, MULE.EXE + AUTOEXEC.BAT)
+    make msdos ENDPOINT=http://myhost:8080
+
+- **What it needs:** Open Watcom 2. If `wcc` isn't installed, `tools/dos/ow` runs it in the [defoogi](https://github.com/FozzTexx/defoogi) container, which sees only this repository.
+- **fujinet-lib:** fujinet-lib-experimental, from `~/Workspace/fujinet-lib-experimental` (or `make FNLIB_EXP=/path`). `tools/dos/mkfnlib.sh` builds it into `build/fnlib-msdos/` in the medium memory model; its release is small model and wouldn't link.
+- **Graphics:** `tools/mkgfx_dos.py` converts them from the same Atari disk into `gen/msdos/`, with previews of the town in both modes in `gen/preview/msdos/`.
+- **Rebuilding:** `make clean` after changing `AUTOPLAY`.
+
+**Running.** Boot DOS with FUJINET.SYS (for example `DEVICE=FUJINET.SYS FUJI_PORT=2 FUJI_BPS=115200` on a PCjr, `FUJI_PORT=1` elsewhere), mount `mule.img` and run `MULE`. ESC at the table list mounts the lobby (`ec.tnfs.io`, `msdos/lobby.img`) in device slot 0 and runs its `AUTOEXEC.BAT` when the game exits: the game types it into the keyboard buffer rather than spawning COMMAND.COM, so all its memory is free for the lobby.
+
+**The screen.** 320 x 200 is exactly two pixels a colour clock, so the Atari art is drawn unscaled: 40 columns of 8-pixel text, the 192 lines 4 down.
+- **CGA:** mode 4, palette 1 (cyan, magenta, white). The players are cyan, magenta, white, and cyan/magenta stripes. Colour 0 is the background register: grey behind the map, as on the Atari, black elsewhere. On EGA, VGA or a PCjr in this mode the BIOS also sets the palette registers, and cyan and magenta become light blue and light magenta. A real CGA ignores that.
+- **PCjr:** mode 9, 16 colours, each Atari colour its nearest RGBI: light blue, light magenta, green and orange (light red) players, a grey map with black mountains, the town in its own colours.
+- **The PCjr's screen memory:** in 16 colours the game draws straight into the 32K of RAM the screen is shown from (the CPU page, from INT 10h AX=0580h). The B800 window is only 16K wide on a real PCjr. MAME maps all 32K there, so it doesn't show the difference.
+- **Drawing:** sprites are software sprites with save-under (`src/msdos/gfx.c`, the CoCo's slot logic). Plots and sprite rows are drawn a word at a time through nibble-to-mask tables. The 8088's shifts by a count are too slow for anything else.
+
+**Memory.** Open Watcom's medium model: far code, near data. Each phase is an overlay (the Apple's groups), loaded from `MULE.EXE` by Watcom's dynamic overlay manager when it's first called (`tools/dos/wlink-mule.py`). The game is about 54K resident, with a 1K stack (about 300 bytes are used).
+- **The tight case is a 128K PCjr in 16 colours.** Its screen is the last 32K of the 128K (from 18000h). The BIOS keeps only the top 16K from DOS, so the game claims the rest itself, and everything must end below 18000h. With PC-DOS 2.1 and FUJINET.SYS that leaves about 5K, which goes to the overlay manager. If there isn't room (a bigger DOS, another resident program), the PCjr uses the 4-colour mode instead.
+- **Elsewhere** the overlay manager gets 16K more, so every overlay stays loaded after its first use.
+
+**Timing.**
+- **The clock:** the PIT runs at 60 Hz, and the timer interrupt counts the frames. Every 3.3rd tick goes on to the BIOS, so the time of day and the floppy motor still work.
+- **The keyboard:** INT 9 is hooked to know which keys are held. On a PC the scan code comes from port 60h; on a PCjr the BIOS passes it in AL. The BIOS still queues typed characters.
+- **Network calls** go through FUJINET.SYS (INT F5h) and block. The server's clock resynchronises the game after each one.
+- **Without FUJINET.SYS**, INT F5h may point anywhere (on the PCjr it's left over from BASIC). FUJINET.SYS is recognised by its device header (attributes 6002h) in the vector's segment. If it isn't there, the game answers INT F5h itself and says NO FUJINET FOUND.
+
+**Testing.** `tools/dossim/dossim.py` is `cocosim.py` for MAME's `ibmpcjr` (128K) or `ibm5150` (CGA). It boots a copy of a DOS disk (`DOSSIM_BOOT`, by default PC-DOS 2.1 with FUJINET.SYS) with `MULE.EXE` on it, and uses the same scenario language and test hooks:
+
+    python3 tools/dossim/dossim.py r2r/msdos/mule.exe build/mule-msdos.map scenario.txt out/
+    DOSSIM_MACHINE=ibm5150 DOSSIM_NOFN=1 python3 tools/dossim/dossim.py ...
+
+- The game's data segment is found at run time, from DS once the title has written `3C C3`.
+- `peek plat_late 2` counts the frames the game missed.
+- `stack` says how much of the stack (filled with A5h at start-up) was never used.
+- `DOSSIM_EARLYPC=frame` samples CS:IP before the game is found.
+- `DOSWAV=file.wav` records the sound.
+- **Against a server:** start fujinet-pc (RS232 build) with BoIP on a free port, then `DOSSIM_FUJINET=127.0.0.1:port`. MAME's serial port becomes a null modem to it, and the run is in real time. `make msdos AUTOPLAY=1` plays by itself.
+
+**Controls.**
+
+| Key | Does |
+|---|---|
+| arrows, keypad (7 9 1 3 diagonals), or joystick A | walk, push, choose |
+| SPACE (or a joystick button) | the button |
+| ENTER | end your development turn |
+| ESC | leave the table (lobby); at the table list, back to the FujiNet lobby |
+| 0 | declare: sit this good out |
+| BACKSPACE | rub out, when typing a name |
+| F1 | sound off / on |
 
 ## Known limits
 
@@ -182,3 +238,5 @@ How it gets there:
 - **Network pauses.** Animations pause briefly while a network call runs, because the Apple II has nothing to run them during a SmartPort call (the CoCo, during a DriveWire call).
 - **CoCo: phase changes** pause about a second while the phase's overlay is read.
 - **CoCo: grey** is black or white, and the fourth player is striped.
+- **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS at 9600 bps that is a few seconds, and every server poll stalls the animations (about 13 frames a second get drawn): use 115200.
+- **MS-DOS, CGA:** the fourth player is striped, and the fence around the town's corral is white.

@@ -53,7 +53,8 @@ static void name_entry(void)
 #define TB_MAX 9
 static uint8_t tbuf[1 + TB_MAX * sizeof(MuleTable)];
 
-/* Choose a table from /tables: up/down, then the button (or RETURN). */
+/* Choose a table from /tables: up/down, then the button (or RETURN);
+ * LEAVE quits (on the PC, back to the FujiNet lobby). */
 void table_select(void)
 {
     uint8_t n, i, sel = 0, rep = 0;
@@ -73,6 +74,8 @@ void table_select(void)
                 frame_wait();
                 input_poll();
                 input_take();
+                if (ev_key == KEY_LEAVE)
+                    plat_quit();
             } while (!ev_btn && ev_key != KEY_END);
             continue;
         }
@@ -85,7 +88,7 @@ void table_select(void)
             name[5] = 0;
             gfx_text(30, 4 + i * 2, name, C_WHITE);
         }
-        text_center(23, "UP/DOWN, THEN SPACE", C_WHITE);
+        text_center(23, "UP/DOWN, SPACE   " QUIT_HINT, C_WHITE);
         sel = 0;
         for (;;) {
             frame_wait();
@@ -109,6 +112,8 @@ void table_select(void)
             }
             if (ev_btn || ev_key == KEY_END)
                 break;
+            if (ev_key == KEY_LEAVE)
+                plat_quit();
         }
         memcpy(sc_table, t[sel].iD, 8);
         sc_table[8] = 0;

@@ -1,0 +1,11 @@
+#!/bin/sh
+# ow TOOL ARGS... -- run an Open Watcom tool (wcc, wlink, wlib...).
+# Watcom is used from the host if it is installed there, otherwise from the
+# defoogi container, which mounts only the repository: paths given to the
+# tool must stay inside it (they do: the build is all under clients/).
+if command -v wcc >/dev/null 2>&1; then
+    exec "$@"
+fi
+here=$(pwd -P)
+root=$(git -C "$here" rev-parse --show-toplevel)
+exec defoogi --directory "$root" sh -c 'cd "$0" && exec "$@"' "$here" "$@"

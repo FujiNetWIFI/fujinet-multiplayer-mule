@@ -2,6 +2,7 @@
 #
 #   make apple2                        r2r/apple2/mule.po (ProDOS, 128K //e, IIc, IIgs)
 #   make coco                          r2r/coco/mule.dsk (DECB, 64K CoCo 1/2)
+#   make msdos                         r2r/msdos/mule.img (MULE.EXE: 128K PC with CGA, or PCjr)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -11,7 +12,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco
+PLATFORMS = apple2 coco msdos
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -75,7 +76,7 @@ CFLAGS_EXTRA_COCO += -O1 -funsigned-char -fomit-frame-pointer -Wno-const -DPLAT_
                      --lwasm=$(COCO_TOOLS)/lwasm-sect
 ASFLAGS_EXTRA_COCO += --lwasm=$(COCO_TOOLS)/lwasm-sect
 LDFLAGS_EXTRA_COCO += --lwlink=$(COCO_TOOLS)/lwlink-mule.py --initial-s=8000
-CFLAGS_EXTRA_COCO += -DKEY_END_NAME='"ENTER"' \
+CFLAGS_EXTRA_COCO += -DKEY_END_NAME='"ENTER"' -DQUIT_HINT='"BREAK: QUIT"' \
                      -DLOBBY_HINT='"<- -> SPECIES  SPACE READY  BREAK LEAVE"'
 EXTRA_INCLUDE_COCO += src/coco/include
 EXECUTABLE_EXTRA_DEPS_COCO += src/coco/mule.link $(COCO_TOOLS)/lwlink-mule.py
@@ -104,18 +105,45 @@ coco/disk-post::
 	for n in 1 2 3 4 5; do \
 	  $(DECB) copy -b -2 -r r2r/coco/$(PRODUCT)$$n.bin $(DISK),MULE$$n.BIN || exit 1; done
 
+# ---- MS-DOS (CGA; PCjr 16 colours) ------------------------------------------
+# Open Watcom, medium model (far code, near data): the phases are overlays
+# (tools/dos/wlink-mule.py) so the game fits a 128K PCjr in its 16-colour
+# mode. Watcom runs from defoogi unless installed (tools/dos/ow). fujinet-lib
+# is fujinet-lib-experimental, rebuilt medium model (tools/dos/mkfnlib.sh).
+FNLIB_EXP ?= $(HOME)/Workspace/fujinet-lib-experimental
+DOS_TOOLS = $(CURDIR)/tools/dos
+ifeq ($(PLATFORM),msdos)
+  FUJINET_LIB := __UNDEFINED__
+  CC_OW2 = $(DOS_TOOLS)/ow wcc
+  AS_OW2 = $(DOS_TOOLS)/ow wasm
+  AR_OW2 = $(DOS_TOOLS)/ow wlib
+  LD_OW2 = $(DOS_TOOLS)/wlink-mule.py OPTION quiet
+endif
+CFLAGS_EXTRA_MSDOS += -zq -mm -os -s -of -zp1 -DKEY_END_NAME='"ENTER"' -DPLAT_NET_PROBE \
+                      -DQUIT_HINT='"ESC: LOBBY"'
+EXTRA_INCLUDE_MSDOS += build/fnlib-msdos/include
+# (-ad names the object in the .d without its directory: -adt names it)
+CFLAGS_EXTRA_MSDOS += -adt=$@
+EXECUTABLE_EXTRA_DEPS_MSDOS += $(DOS_TOOLS)/wlink-mule.py
+
+msdos/disk-post::
+	printf '@ECHO OFF\r\nMULE.EXE\r\n' > build/autoexec.bat
+	mcopy -o -i $(DISK) build/autoexec.bat "::AUTOEXEC.BAT"
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
+r2r/msdos/$(PRODUCT): gen-msdos
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
+gen-msdos: gen/config.h gen/msdos/gfx.c build/fnlib-msdos/fujinet-msdos.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -138,6 +166,15 @@ gen/coco/gfx.c: tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_pmode4.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/coco $@
 
+gen/msdos/gfx.c: tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/msdos
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_dos.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/msdos $@
+
+build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/msdos/*.c $(FNLIB_EXP)/include/*.h)
+	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
+
 clean::
-	rm -rf gen/apple2 gen/coco gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/msdos gen/preview gen/config.h
 endif
