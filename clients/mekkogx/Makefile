@@ -195,7 +195,7 @@ msxrom/r2r-post::
 # cc65, no DOS: picoboot loads MULE.COM, whose first chunk (src/atari/
 # start.s) switches BASIC off; the phases are overlays PHASE.1 .. PHASE.5 read
 # by sector (src/atari/bank.c). Memory: src/atari/mule-atari.cfg.
-CFLAGS_EXTRA_ATARI += -Os -Cl -DSND_EXTRA
+CFLAGS_EXTRA_ATARI += -Os -Cl -DSND_EXTRA -DPLAT_NETSTREAM
 LDFLAGS_EXTRA_ATARI += -C src/atari/mule-atari.cfg -m build/mule-atari.map
 EXECUTABLE_EXTRA_DEPS_ATARI += src/atari/mule-atari.cfg
 ifeq ($(PLATFORM),atari)

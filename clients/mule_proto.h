@@ -100,6 +100,23 @@
 #define STORE_PLOT 22
 #define MAX_WAMPUS 12
 
+/* stream mode (docs/PROTOCOL.md): frame types, limits */
+#define SC_HELLO 'H'
+#define SC_ACT 'A'
+#define SC_TABLES 'T'
+#define SC_RESYNC 'R'
+#define SC_BYE 'B'
+#define SC_PING 'P'
+#define SC_CREDIT 'C'
+#define CS_PATCH 'P'
+#define CS_COMMIT 'C'
+#define CS_TABLE 'T'
+#define CS_ERROR 'E'
+#define STREAM_VERSION 1
+#define STREAM_MAX_FRAME 128
+#define STREAM_WINDOW 192
+#define STREAM_PORT 9902
+
 typedef struct { /* 16 bytes */
   uint8_t magic; /* 'M' */
   uint8_t version; /* protocol version */

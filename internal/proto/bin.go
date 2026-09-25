@@ -314,6 +314,17 @@ func CHeader() string {
 	sb.WriteString("#define JIFFIES_PER_SECOND 60\n")
 	sb.WriteString("#define TF_STARTED 1\n#define TF_ENDED 2\n#define TF_HASMULE 4\n#define TF_CAUGHT 8\n\n")
 	fmt.Fprintf(&sb, "#define NUM_PLOTS %d\n#define STORE_PLOT %d\n#define MAX_WAMPUS %d\n\n", rules.NumPlots, rules.StorePlot, MaxWampus)
+	sb.WriteString("/* stream mode (docs/PROTOCOL.md): frame types, limits */\n")
+	for _, d := range []struct {
+		n string
+		v byte
+	}{{"SC_HELLO", SCHello}, {"SC_ACT", SCAct}, {"SC_TABLES", SCTables}, {"SC_RESYNC", SCResync},
+		{"SC_BYE", SCBye}, {"SC_PING", SCPing}, {"SC_CREDIT", SCCredit},
+		{"CS_PATCH", CSPatch}, {"CS_COMMIT", CSCommit}, {"CS_TABLE", CSTable}, {"CS_ERROR", CSError}} {
+		fmt.Fprintf(&sb, "#define %s '%c'\n", d.n, d.v)
+	}
+	fmt.Fprintf(&sb, "#define STREAM_VERSION %d\n#define STREAM_MAX_FRAME %d\n#define STREAM_WINDOW %d\n#define STREAM_PORT %d\n\n",
+		StreamVersion, StreamMaxFrame, StreamWindow, StreamPort)
 	for _, t := range []any{BinHeader{}, BinPlayer{}, BinMap{}, BinStore{}, BinGrant{}, BinAuction{},
 		BinWampus{}, BinTurn{}, BinColony{}, BinState{}, BinTable{}} {
 		writeCStruct(&sb, reflect.TypeOf(t))

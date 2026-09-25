@@ -142,7 +142,8 @@ dli:    pha
 
 ; The immediate VBI: row 0's registers (and the OS's shadows of them, which
 ; its second stage copies when SIO isn't busy), the rest, the sound.
-vbi:    lda     #1
+vbi:    cli                     ; the serial IRQ can't wait out the VBI
+        lda     #1
         sta     dli_row
         lda     #0
         sta     ATRACT

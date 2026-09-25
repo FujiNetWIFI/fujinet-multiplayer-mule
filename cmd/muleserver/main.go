@@ -21,6 +21,8 @@ import (
 func main() {
 	cheader := flag.Bool("cheader", false, "print the generated C header (clients/mule_proto.h) and exit")
 	webDir := flag.String("web", "web", "directory of the web client, served at /play/")
+	stream := flag.String("stream", envOr("MULE_STREAM_ADDR", ":"+strconv.Itoa(proto.StreamPort)),
+		"address for stream mode (TCP, FujiNet netstream clients); empty: off")
 	flag.Parse()
 
 	if *cheader {
@@ -50,6 +52,12 @@ func main() {
 	s := server.New(lobby)
 	go s.Run(50*time.Millisecond, nil)
 
+	if *stream != "" {
+		if err := s.ListenStream(*stream); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	r := gin.Default()
 	s.Routes(r)
 	r.Static("/play", *webDir)
@@ -64,4 +72,11 @@ func main() {
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func envOr(k, def string) string {
+	if v, ok := os.LookupEnv(k); ok {
+		return v
+	}
+	return def
 }

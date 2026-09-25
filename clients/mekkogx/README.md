@@ -1,7 +1,7 @@
 # M.U.L.E. for FujiNet 8-bit computers (MekkoGX)
 
 A C client for the M.U.L.E. Tournament server in this repository, built with the [MekkoGX](https://github.com/fozzTexx/MekkoGX) template and [fujinet-lib](https://github.com/FujiNetWIFI/fujinet-lib). It is a port of the Intellivision client (`../intv`), and plays the same way:
-- it polls `/state?bin=1` and draws what comes back the way the Atari 800 original does;
+- it polls `/state?bin=1` (the Atari: holds a stream-mode connection) and draws what comes back the way the Atari 800 original does;
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
@@ -316,6 +316,14 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 - **What it needs:** cc65 2.19, `dir2atr` (AtariSIO) and `atr` (jhallen/atari-tools, built in `~/Workspace/atari-tools`; the Makefile puts it on the path), Python 3, and fujinet-lib's Atari library in `~/Workspace/fujinet-lib/build`. The first build downloads `picoboot.bin` into `_cache/atari`.
 - **The disk** is `MULE.COM` and the overlays `PHASE.1`-`PHASE.5`. picoboot runs the first file, so the overlays are named to sort after it.
 
+**The network: stream mode** (`src/atari/nsnet.c`, `nstream.s`; see `docs/PROTOCOL.md`). The Atari doesn't poll over HTTP as the other versions do: SIO made each poll cost about 0.45 s of blocking. It uses FujiNet netstream instead, which turns the SIO line into a 19200-baud serial link to one TCP connection. The server's stream port is 9902, on the endpoint's host.
+- **The server pushes the state** whenever it changes, as patches to the copy the client already has. Actions go up as they happen. Only a clock change costs about 14 bytes every half second.
+- **Receiving:** the serial input IRQ fills a 256-byte ring. The main loop takes whole frames out of it once a frame (COBS, Fletcher-16, in assembly). The server never has more than 192 bytes the client hasn't taken, so the ring can't overflow while an overlay loads or a screen draws.
+- **Plain SIO** (the overlays, the appkeys) drops the motor line. FujiNet then answers SIO normally and holds the socket's data until the motor comes back.
+- **The immediate VBI starts with `CLI`**, so the serial IRQ is not held off while the VBI and the sound run.
+- **Quitting** sends a goodbye, then turns FujiNet's netstream off (`$F0` with host `STOP`).
+- **The other `net.c` platforms are unchanged.** `PLAT_NETSTREAM` compiles out `net.c`'s HTTP half and keeps its appkeys.
+
 **Memory** (a 48K 400/800; `src/atari/mule-atari.cfg`, `src/atari/atari.h`):
 
 | Range | Use |
@@ -355,7 +363,7 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
   - outfitting a M.U.L.E.
 
   These are scripts, written from how the original plays them. They are started through `SND_X()` in the shared code (`sound.h`), which is empty on the other platforms.
-- **During SIO,** which uses voices 3 and 4 and AUDCTL, only voices 1 and 2 are written.
+- **During SIO, and while the network stream is on,** only voices 1 and 2 are written: the serial port is clocked with voices 3 and 4 and AUDCTL. In practice the music is two-voice while you are online.
 - **Where the data lives:** the tunes are in the status overlay, the colony events in production's and the jingles in develop's. They stop when their overlay goes.
 
 **Keys:** the stick or the arrow keys (with CONTROL) walk, and the trigger or SPACE is the button. RETURN ends a turn, ESC leaves, 0 sits out, and CONTROL-S turns the sound off and on.
@@ -370,7 +378,7 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 
       asim -netsio 9995 - script.txt out/
 
-  In that script, `coldstart` once FujiNet is there. With NetSIO on, asim keeps to 60 frames a second and turns the SIO patch off.
+  In that script, `coldstart` once FujiNet is there. With NetSIO on, asim keeps to 60 frames a second and turns the SIO patch off. atari800's NetSIO carries netstream too (the motor line and the POKEY serial port). Start the server with `MULE_STREAM_DEBUG=1` to log every frame. Convert shots with `topng.py out/NAME.scr`: it takes `.scr` files only.
 
 ## Known limits
 

@@ -122,39 +122,30 @@ func (s *Server) Routes(r *gin.Engine) {
 	route("/auction/push/:dir/:seen", s.act(actBidMove))
 	route("/declare/:role", s.act(actDeclare))
 	route("/collude", s.act(actCollude))
-	route("/turn/begin", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return 0, g.BeginTurn(seat) })))
-	route("/turn/buymule", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return 0, g.BuyMule(seat) })))
-	route("/turn/outfit/:good", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) {
-		gd, ok := parseGood(c.Param("good"))
-		if !ok {
-			return 0, rules.ErrOutfit
-		}
-		return 0, g.Outfit(seat, gd)
-	})))
-	route("/turn/install/:plot", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) {
-		lost, err := g.Install(seat, atoi(c.Param("plot"), -1))
-		if lost {
-			return 1, err
-		}
-		return 0, err
-	})))
-	route("/turn/return", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return 0, g.ReturnMule(seat) })))
-	route("/turn/assay/:plot", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) {
-		return g.Assay(seat, atoi(c.Param("plot"), -1))
-	})))
-	route("/turn/sell/:plot", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) {
-		return 0, g.ListLand(seat, atoi(c.Param("plot"), -1), true)
-	})))
-	route("/turn/unsell/:plot", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) {
-		return 0, g.ListLand(seat, atoi(c.Param("plot"), -1), false)
-	})))
-	route("/turn/wampus", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return g.CatchWampus(seat) })))
-	route("/turn/pub", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return g.Pub(seat) })))
-	route("/turn/end", s.act(turnAct(func(g *rules.Game, seat int, c *gin.Context) (int, error) { return 0, g.EndTurn(seat) })))
+	route("/turn/begin", s.act(actBegin))
+	route("/turn/buymule", s.act(actBuyMule))
+	route("/turn/outfit/:good", s.act(actOutfit))
+	route("/turn/install/:plot", s.act(actInstall))
+	route("/turn/return", s.act(actReturn))
+	route("/turn/assay/:plot", s.act(actAssay))
+	route("/turn/sell/:plot", s.act(actSell))
+	route("/turn/unsell/:plot", s.act(actUnsell))
+	route("/turn/wampus", s.act(actWampus))
+	route("/turn/pub", s.act(actPub))
+	route("/turn/end", s.act(actEnd))
 }
 
+// params gives an action its route parameters (a *gin.Context, or the
+// stream mode's pmap).
+type params interface{ Param(string) string }
+
+// pmap is params from a map.
+type pmap map[string]string
+
+func (p pmap) Param(k string) string { return p[k] }
+
 // action is a table mutation for seat. It returns an action result and error.
-type action func(t *Table, seat int, c *gin.Context) (int, error)
+type action func(t *Table, seat int, c params) (int, error)
 
 func atoi(s string, def int) int {
 	v, err := strconv.Atoi(s)
@@ -174,8 +165,8 @@ func parseGood(s string) (rules.Good, bool) {
 	return rules.NoGood, false
 }
 
-func turnAct(f func(g *rules.Game, seat int, c *gin.Context) (int, error)) action {
-	return func(t *Table, seat int, c *gin.Context) (int, error) {
+func turnAct(f func(g *rules.Game, seat int, c params) (int, error)) action {
+	return func(t *Table, seat int, c params) (int, error) {
 		if t.game == nil {
 			return 0, rules.ErrPhase
 		}
@@ -183,7 +174,39 @@ func turnAct(f func(g *rules.Game, seat int, c *gin.Context) (int, error)) actio
 	}
 }
 
-func actReady(t *Table, seat int, c *gin.Context) (int, error) {
+var (
+	actBegin   = turnAct(func(g *rules.Game, seat int, c params) (int, error) { return 0, g.BeginTurn(seat) })
+	actBuyMule = turnAct(func(g *rules.Game, seat int, c params) (int, error) { return 0, g.BuyMule(seat) })
+	actOutfit  = turnAct(func(g *rules.Game, seat int, c params) (int, error) {
+		gd, ok := parseGood(c.Param("good"))
+		if !ok {
+			return 0, rules.ErrOutfit
+		}
+		return 0, g.Outfit(seat, gd)
+	})
+	actInstall = turnAct(func(g *rules.Game, seat int, c params) (int, error) {
+		lost, err := g.Install(seat, atoi(c.Param("plot"), -1))
+		if lost {
+			return 1, err
+		}
+		return 0, err
+	})
+	actReturn = turnAct(func(g *rules.Game, seat int, c params) (int, error) { return 0, g.ReturnMule(seat) })
+	actAssay  = turnAct(func(g *rules.Game, seat int, c params) (int, error) {
+		return g.Assay(seat, atoi(c.Param("plot"), -1))
+	})
+	actSell = turnAct(func(g *rules.Game, seat int, c params) (int, error) {
+		return 0, g.ListLand(seat, atoi(c.Param("plot"), -1), true)
+	})
+	actUnsell = turnAct(func(g *rules.Game, seat int, c params) (int, error) {
+		return 0, g.ListLand(seat, atoi(c.Param("plot"), -1), false)
+	})
+	actWampus = turnAct(func(g *rules.Game, seat int, c params) (int, error) { return g.CatchWampus(seat) })
+	actPub    = turnAct(func(g *rules.Game, seat int, c params) (int, error) { return g.Pub(seat) })
+	actEnd    = turnAct(func(g *rules.Game, seat int, c params) (int, error) { return 0, g.EndTurn(seat) })
+)
+
+func actReady(t *Table, seat int, c params) (int, error) {
 	v := c.Param("v")
 	if t.game == nil {
 		s := &t.seats[seat]
@@ -201,7 +224,7 @@ func actReady(t *Table, seat int, c *gin.Context) (int, error) {
 	return 0, nil
 }
 
-func actSpecies(t *Table, seat int, c *gin.Context) (int, error) {
+func actSpecies(t *Table, seat int, c params) (int, error) {
 	if t.game != nil {
 		return 0, rules.ErrPhase
 	}
@@ -215,14 +238,14 @@ func actSpecies(t *Table, seat int, c *gin.Context) (int, error) {
 	return 0, rules.ErrSeat
 }
 
-func actClaim(t *Table, seat int, c *gin.Context) (int, error) {
+func actClaim(t *Table, seat int, c params) (int, error) {
 	if t.game == nil {
 		return 0, rules.ErrPhase
 	}
 	return 0, t.game.Claim(seat, atoi(c.Param("plot"), -1))
 }
 
-func actBidAt(t *Table, seat int, c *gin.Context) (int, error) {
+func actBidAt(t *Table, seat int, c params) (int, error) {
 	if t.game == nil {
 		return 0, rules.ErrPhase
 	}
@@ -230,7 +253,7 @@ func actBidAt(t *Table, seat int, c *gin.Context) (int, error) {
 }
 
 // actBidMove is the auction joystick: up, down or release ("hold").
-func actBidMove(t *Table, seat int, c *gin.Context) (int, error) {
+func actBidMove(t *Table, seat int, c params) (int, error) {
 	g := t.game
 	if g == nil || g.Auction == nil {
 		return 0, rules.ErrPhase
@@ -248,7 +271,7 @@ func actBidMove(t *Table, seat int, c *gin.Context) (int, error) {
 	}
 }
 
-func actDeclare(t *Table, seat int, c *gin.Context) (int, error) {
+func actDeclare(t *Table, seat int, c params) (int, error) {
 	if t.game == nil {
 		return 0, rules.ErrPhase
 	}
@@ -262,7 +285,7 @@ func actDeclare(t *Table, seat int, c *gin.Context) (int, error) {
 	return 0, t.game.Declare(seat, role)
 }
 
-func actCollude(t *Table, seat int, c *gin.Context) (int, error) {
+func actCollude(t *Table, seat int, c params) (int, error) {
 	if t.game == nil {
 		return 0, rules.ErrPhase
 	}
@@ -277,36 +300,42 @@ func (s *Server) act(f action) gin.HandlerFunc {
 			s.writeError(c, proto.ErrBadRequest, "unknown table")
 			return
 		}
-		now := s.Now()
-		t.mu.Lock()
-		before := t.humans()
-		wasGame := t.game != nil
-		changed := t.update(now)
-		seat := t.seatOf(c.Query("player"), now, true)
-		var res int
-		var err error
-		if f != nil {
-			if seat < 0 {
-				err = rules.ErrSeat
-			} else {
-				res, err = f(t, seat, c)
-			}
-		}
-		if t.humans() != before || (t.game != nil) != wasGame {
-			changed = true
-		}
-		v := t.view(now, seat)
-		t.mu.Unlock()
-		if changed {
-			s.notifyLobby(t)
-		}
-		v.Result = res
-		v.Poll = pollHint(v)
-		if err != nil {
-			v.Err, v.ErrText = proto.ErrCode(err), err.Error()
-		}
-		s.writeView(c, v)
+		s.writeView(c, s.apply(t, c.Query("player"), f, c))
 	}
+}
+
+// apply runs f (nil: none, a poll) for player at t and returns the view the
+// player gets back, with the action's result and error in it.
+func (s *Server) apply(t *Table, player string, f action, p params) *proto.View {
+	now := s.Now()
+	t.mu.Lock()
+	before := t.humans()
+	wasGame := t.game != nil
+	changed := t.update(now)
+	seat := t.seatOf(player, now, true)
+	var res int
+	var err error
+	if f != nil {
+		if seat < 0 {
+			err = rules.ErrSeat
+		} else {
+			res, err = f(t, seat, p)
+		}
+	}
+	if t.humans() != before || (t.game != nil) != wasGame {
+		changed = true
+	}
+	v := t.view(now, seat)
+	t.mu.Unlock()
+	if changed {
+		s.notifyLobby(t)
+	}
+	v.Result = res
+	v.Poll = pollHint(v)
+	if err != nil {
+		v.Err, v.ErrText = proto.ErrCode(err), err.Error()
+	}
+	return v
 }
 
 func (s *Server) apiView(c *gin.Context) {
@@ -360,8 +389,7 @@ type TableInfo struct {
 	Round      int    `json:"r"`
 }
 
-func (s *Server) apiTables(c *gin.Context) {
-	dev := c.Query("dev") == "1"
+func (s *Server) tableList(dev bool) []TableInfo {
 	var list []TableInfo
 	for _, id := range s.order {
 		t := s.Table(id)
@@ -376,13 +404,23 @@ func (s *Server) apiTables(c *gin.Context) {
 		t.mu.Unlock()
 		list = append(list, ti)
 	}
+	return list
+}
+
+// binTable is one /tables?bin=1 entry (proto.BinTable).
+func binTable(ti TableInfo) []byte {
+	b := proto.FixedString(ti.Table, 8)
+	b = append(b, proto.FixedString(ti.Name, 20)...)
+	return append(b, proto.FixedString(strconv.Itoa(ti.CurPlayers)+" / "+strconv.Itoa(ti.MaxPlayers), 5)...)
+}
+
+func (s *Server) apiTables(c *gin.Context) {
+	list := s.tableList(c.Query("dev") == "1")
 	switch {
 	case c.Query("bin") == "1":
 		buf := []byte{byte(len(list))}
 		for _, ti := range list {
-			buf = append(buf, proto.FixedString(ti.Table, 8)...)
-			buf = append(buf, proto.FixedString(ti.Name, 20)...)
-			buf = append(buf, proto.FixedString(strconv.Itoa(ti.CurPlayers)+" / "+strconv.Itoa(ti.MaxPlayers), 5)...)
+			buf = append(buf, binTable(ti)...)
 		}
 		c.Data(http.StatusOK, "application/octet-stream", buf)
 	case c.Query("raw") == "1":
@@ -394,9 +432,8 @@ func (s *Server) apiTables(c *gin.Context) {
 
 // ---------------------------------------------------------------- output
 
-// viewHash hashes the view excluding fields that change every tick, so
-// clients can skip unchanged states with ?hash=.
-func viewHash(v *proto.View) uint32 {
+// steady is v without the fields that change every tick.
+func steady(v *proto.View) *proto.View {
 	cp := *v
 	cp.T, cp.Elapsed, cp.Count = 0, 0, 0
 	cp.Poll = 0
@@ -415,7 +452,13 @@ func viewHash(v *proto.View) uint32 {
 		ac.StageLeft, ac.TickLeft = 0, 0
 		cp.Auction = &ac
 	}
-	b, _ := json.Marshal(&cp)
+	return &cp
+}
+
+// viewHash hashes the view excluding fields that change every tick, so
+// clients can skip unchanged states with ?hash=.
+func viewHash(v *proto.View) uint32 {
+	b, _ := json.Marshal(steady(v))
 	h := fnv.New32a()
 	h.Write(b)
 	return h.Sum32()

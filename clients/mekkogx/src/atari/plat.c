@@ -23,8 +23,11 @@ const char *plat_init(void)
     return 0;
 }
 
+void ns_close(void);                    /* nsnet.c */
+
 void plat_quit(void)
 {
+    ns_close();                         /* the server and FujiNet: goodbye */
     asm("jmp $E477");                   /* COLDSV */
 }
 

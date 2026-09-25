@@ -23,6 +23,14 @@ uint16_t act_arg;
 uint8_t au_traded;
 char sc_name[9], sc_endpt[66], sc_table[9];
 
+static char *add(char *p, const char *s)
+{
+    while (*s)
+        *p++ = *s++;
+    return p;
+}
+
+#ifndef PLAT_NETSTREAM          /* the Atari talks stream mode: src/atari/nsnet.c */
 static char url[200];
 static uint8_t rx[sizeof(MuleState)];
 static uint16_t rx_got, bw_last;
@@ -47,13 +55,6 @@ static const char *const routes[] = {
 };
 static const char *const push_word[] = { "hold", "up", "down" };
 static const char *const declare_word[] = { "n", "b", "s" };
-
-static char *add(char *p, const char *s)
-{
-    while (*s)
-        *p++ = *s++;
-    return p;
-}
 
 static char *add_num(char *p, uint16_t v)
 {
@@ -259,17 +260,32 @@ uint8_t net_tables(uint8_t *buf, uint8_t max)
     return (uint8_t)n;
 }
 
+#endif /* PLAT_NETSTREAM */
+
 /* ---- appkeys: creator 1, app 1 (the FujiNet lobby's) ------------------- */
 #define AK_NAME   0
 #define AK_SERVER 10
 static uint8_t akbuf[66];
 
+#ifdef PLAT_NETSTREAM
+/* plain SIO while the stream is on: off, then on again (nsnet.c) */
+void ns_pause(void);
+void ns_resume(void);
+#else
+#define ns_pause()
+#define ns_resume()
+#endif
+
 static uint8_t ak_read(uint8_t key)
 {
     uint16_t count = 0;
+    uint8_t ok;
     memset(akbuf, 0, sizeof(akbuf));
+    ns_pause();
     fuji_set_appkey_details(1, 1, DEFAULT);
-    if (!fuji_read_appkey(key, &count, akbuf))
+    ok = fuji_read_appkey(key, &count, akbuf);
+    ns_resume();
+    if (!ok)
         return 0;
     if (count > 64)
         count = 64;
@@ -352,13 +368,17 @@ void appkey_save_room(void)
     char *p = add((char *)akbuf, sc_endpt);
     p = add(p, "/?table=");
     p = add(p, sc_table);
+    ns_pause();
     fuji_set_appkey_details(1, 1, DEFAULT);
     fuji_write_appkey(AK_SERVER, (uint16_t)(p - (char *)akbuf), akbuf);
+    ns_resume();
 }
 
 void appkey_clear_room(void)
 {
+    ns_pause();
     fuji_set_appkey_details(1, 1, DEFAULT);
     fuji_write_appkey(AK_SERVER, 0, akbuf);
+    ns_resume();
     sc_table[0] = 0;
 }

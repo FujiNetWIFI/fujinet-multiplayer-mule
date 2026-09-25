@@ -13,13 +13,14 @@
 ;   step    a footstep: voice 3 for one frame
 ;   v4      the original's voice-4 effects (the player blips, the message
 ;           beep): tables of pitch, length and volume
-; into shadow registers, then POKEY. While SIO is busy (CRITIC) only voices
-; 1 and 2 are written: SIO clocks the serial port with 3 and 4 (and AUDCTL).
+; into shadow registers, then POKEY. While SIO is busy (CRITIC), or the
+; network stream is on (nstream.s), only voices 1 and 2 are written: the
+; serial port is clocked with 3 and 4 (and AUDCTL).
 ;
         .export _snd_vbi, _snd_mute, _mus_desc, _mus_start, _mus_stop
         .export _seq_start, _seq_stop, _v4_play, _tm_set, _step_play
         .export _seq_ptr
-        .import _v4_tab
+        .import _v4_tab, _ns_on
 
 AUDF1   = $D200
 AUDCTL  = $D208
@@ -225,6 +226,7 @@ _snd_vbi:
         jsr     v4
 @4:     ldx     #8              ; out: all, or while SIO is busy
         lda     CRITIC          ; voices 1 and 2 only
+        ora     _ns_on
         beq     @w
         ldx     #3
 @w:     lda     sh,x

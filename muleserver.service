@@ -1,4 +1,5 @@
-# systemd unit for the M.U.L.E. server on port 9900.
+# systemd unit for the M.U.L.E. server: HTTP on port 9900, stream mode
+# (the Atari's FujiNet netstream, TCP) on 9902 -- open both.
 #
 # Install:
 #   go build -o /opt/mule/muleserver ./cmd/muleserver
@@ -14,6 +15,7 @@ Wants=network-online.target
 WorkingDirectory=/opt/mule
 ExecStart=/opt/mule/muleserver -web /opt/mule/web
 Environment=PORT=9900
+Environment=MULE_STREAM_ADDR=:9902
 # Lobby registration (QA lobby): uncomment and set the appkey and public URL.
 #Environment=GO_PROD=1
 #Environment=MULE_APPKEY=0

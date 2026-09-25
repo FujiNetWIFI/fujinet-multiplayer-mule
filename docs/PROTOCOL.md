@@ -4,7 +4,8 @@ This document describes the HTTP protocol spoken by `muleserver`. It follows
 the conventions of the other FujiNet game servers in fujinet-game-system:
 
 - Every route accepts both `GET` and `POST`.
-- The client polls `/state`. There is no socket.
+- The client polls `/state`. (Stream mode, below, is a TCP alternative for
+  FujiNet netstream clients: the Atari.)
 - Every call carries `?table=<id>&player=<name>`. The player name is the
   identity and is matched without regard to case. The first call from a new
   name at a table in its lobby takes a free seat.
@@ -115,7 +116,7 @@ over it shows the whole map.
 
 ## Binary state
 
-`MuleState` is 543 bytes, packed, with fields in this order. See
+`MuleState` is 550 bytes, packed, with fields in this order. See
 `clients/mule_proto.h` for the full field list.
 
 | Offset | Size | Struct |
@@ -134,6 +135,73 @@ cc65 does not pad structs, so the header can be used as-is.
 
 On an error that is not tied to a table (for example an unknown table), the
 server sends only a `MuleHeader`, with `msgType=0xFF` and `err` set.
+
+## Stream mode
+
+Stream mode is for clients whose network calls are slow. The Atari is one:
+it goes through SIO, and each HTTP poll costs about eight SIO frames and
+0.45 s of blocking. The client uses FujiNet's netstream, which turns the SIO
+line into a raw serial link to a TCP socket. It holds one connection to
+`-stream` (default `:9902`, `MULE_STREAM_ADDR`; empty turns it off). The
+server pushes the binary state as it changes, and the client sends actions
+as they happen. Constants and codes are in `clients/mule_proto.h`
+(`SC_*`, `CS_*`, `STREAM_*`), and the implementation is
+`internal/proto/stream.go` and `internal/server/stream.go`.
+
+**Framing.** Each frame is COBS-encoded and ends in a 0 byte, so a receiver
+that lost or garbled a byte picks up again at the next 0. A decoded frame is
+`type, payload…, sum1, sum2`. sum1 and sum2 are Fletcher-16, each mod 255,
+over the type and the payload. A decoded frame is at most 128 bytes.
+
+**Client → server**
+
+| Type | Payload | |
+|------|---------|--|
+| `H` | ver (1), flags (bit 0: big-endian), table[8], player[8] (NUL padded) | join: from now on the connection is a `/state` poll for this player at this table |
+| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH` |
+| `T` | (1: the hidden dev tables) | list the tables |
+| `R` | | send the whole state again (the client lost a frame) |
+| `C` | n | credit: bytes taken out of the receive ring since connecting, mod 256 |
+| `P` | | keepalive |
+| `B` | | leave the table and close |
+
+**Server → client**
+
+| Type | Payload | |
+|------|---------|--|
+| `P` | off lo, off hi, bytes… | patch the state being built |
+| `C` | ack seq | the state being built is complete: it becomes the client's state. When ack is an action's seq, `err` and `result` in the header answer that action; otherwise both are 0 |
+| `T` | index, count, `MuleTable` | one table (count 0: there are none) |
+| `E` | `ERR_*` | refused (an unknown table) |
+
+**Pushes.** Every 50 ms, and at once after an action, the server builds the
+player's view, exactly as `/state` would. The first push after `H`, and any
+push after `R`, sends the whole state; after that only the byte runs that
+changed are sent. If only the clocks changed (`t`, elapsed, countdown and the
+phase timers), the push waits until 500 ms after the last one. A connection
+keeps its seat online just as polling does. A connection that has sent
+nothing for 35 s is dropped.
+
+**Flow control.** A small machine's receive ring is small (the Atari's is 256
+bytes), and it may go a while without draining it, for example while it
+loads an overlay or draws a screen. So the server keeps no more than
+`STREAM_WINDOW` (192) encoded bytes unacknowledged. The client reports what
+it has taken with `C` frames. The count is cumulative mod 256, so a lost
+credit frame is made good by the next one. Set `MULE_STREAM_DEBUG=1` to log
+every frame.
+
+**On the Atari** (`clients/mekkogx/src/atari/nstream.s`, `nsnet.c`):
+- **Enabling the stream.** The Fuji device's `$70/$F0` command sends a
+  64-byte frame, `host\0 flags AUDF3`. `DAUX1/2` carry the port, high byte
+  first. The flags are `$05`: TCP, TX clock external. AUDF3 is 39, for
+  19200 baud.
+- **While the stream is on.** The motor line is asserted, POKEY's serial
+  input IRQ fills the ring, and channels 3 and 4 clock the port, so the
+  music keeps to voices 1 and 2.
+- **Plain SIO.** Loading an overlay or writing an appkey needs normal SIO.
+  For that the client drops the motor, and FujiNet holds the socket's data
+  until the motor comes back on.
+- **Quitting.** The client sends `B`, then `$F0` with host `STOP`.
 
 ## Lobby registration
 
