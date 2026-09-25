@@ -172,6 +172,7 @@ static void pr_event_start(void)
     }
     pr_started = 1;
     snd_play(SND_EVENT);
+    SND_XA(SNX_EVENT, pr_event);
 }
 
 void production_enter(void)
@@ -205,6 +206,7 @@ void production_tick(void)
         if (!map_dots) {
             map_dots = 1;
             map_draw_all();
+            SND_X(SNX_CHIRPS);
         }
         return;
     }
@@ -252,5 +254,6 @@ void production_tick(void)
         title_show(T_PRODUCTION, rnd);
         map_dots = 1;
         map_draw_all();
+        SND_X(SNX_CHIRPS);
     }
 }

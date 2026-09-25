@@ -9,3 +9,5 @@
 /tools/**/__pycache__/
 # the Atari disk (or a link to it)
 *.atr
+# tools/atarisim: the built harness
+/tools/atarisim/asim

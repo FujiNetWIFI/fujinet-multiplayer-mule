@@ -5,6 +5,7 @@
 #   make msdos                         r2r/msdos/mule.img (MULE.EXE: 128K PC with CGA, or PCjr)
 #   make adam                          r2r/adam/mule.ddp and mule.dsk (Coleco Adam)
 #   make msxrom                        r2r/msxrom/mule.rom (MSX, a FujiNet user ROM: ASCII8)
+#   make atari                         r2r/atari/mule.atr (48K Atari 400/800, XL/XE)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -14,7 +15,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom
+PLATFORMS = apple2 coco msdos adam msxrom atari
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -190,24 +191,55 @@ $(MXOBJ)/gen/tms9918/gfx.o:                   CFLAGS += --constseg=ART
 msxrom/r2r-post::
 	python3 tools/msx/mkrom.py r2r/msxrom
 
+# ---- Atari 400/800 (48K), XL/XE -------------------------------------------
+# cc65, no DOS: picoboot loads MULE.COM, whose first chunk (src/atari/
+# start.s) switches BASIC off; the phases are overlays PHASE.1 .. PHASE.5 read
+# by sector (src/atari/bank.c). Memory: src/atari/mule-atari.cfg.
+CFLAGS_EXTRA_ATARI += -Os -Cl -DSND_EXTRA
+LDFLAGS_EXTRA_ATARI += -C src/atari/mule-atari.cfg -m build/mule-atari.map
+EXECUTABLE_EXTRA_DEPS_ATARI += src/atari/mule-atari.cfg
+ifeq ($(PLATFORM),atari)
+  # jhallen/atari-tools' atr, which mekkogx/platforms/atari.mk wants
+  export PATH := $(HOME)/Workspace/atari-tools:$(PATH)
+endif
+
+ATOBJ = build/$(PRODUCT)/atari/src
+$(ATOBJ)/boot.o $(ATOBJ)/teststart.o: CFLAGS += --code-name OVERLAY1 --rodata-name OVERLAY1
+$(ATOBJ)/status.o:                    CFLAGS += --code-name OVERLAY2 --rodata-name OVERLAY2
+$(ATOBJ)/grant.o $(ATOBJ)/events.o:   CFLAGS += --code-name OVERLAY3 --rodata-name OVERLAY3
+$(ATOBJ)/auction.o:                   CFLAGS += --code-name OVERLAY4 --rodata-name OVERLAY4
+$(ATOBJ)/develop.o:                   CFLAGS += --code-name OVERLAY5 --rodata-name OVERLAY5
+# variables in low memory ($0400-$09FF, cleared by src/atari/sprite.s)
+$(ATOBJ)/text.o $(ATOBJ)/strings.o:   CFLAGS += --bss-name LOWBSS
+$(ATOBJ)/atari/gfx.o $(ATOBJ)/atari/bank.o: CFLAGS += --bss-name BSS2
+
+# The overlays go on the disk beside the program as PHASE.1 .. PHASE.5
+# (after MULE.COM: picoboot runs the first file): rebuild it with them.
+atari/disk-post::
+	for n in 1 2 3 4 5; do cp $(EXECUTABLE).$$n $(CACHE_PLATFORM)/disk/PHASE.$$n || exit 1; done
+	$(RM) $(DISK)
+	$(DISK_TOOL) $(DISK_TOOL_FLAGS_ATARI) $(DISK) $(CACHE_PLATFORM)/disk
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
 r2r/adam/$(PRODUCT): gen-adam
 r2r/msxrom/$(PRODUCT): gen-msxrom
+r2r/atari/$(PRODUCT): gen-atari
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
 gen-msdos: gen/config.h gen/msdos/gfx.c build/fnlib-msdos/fujinet-msdos.lib
 gen-adam: gen/config.h gen/tms9918/gfx.c build/fnlib-adam/fujinet-adam.lib
 gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
+gen-atari: gen/config.h gen/atari/gfx.c gen/atari/snd.s
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -242,6 +274,16 @@ gen/tms9918/gfx.c: tools/mkgfx_tms.py tools/mkgfx_dos.py tools/mkgfx_pmode4.py t
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_tms.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/tms9918 $@
 
+gen/atari/gfx.c: tools/mkgfx_atari.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/atari
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_atari.py $(if $(ATR),--atr "$(ATR)") $@
+
+gen/atari/snd.s: tools/mksnd_atari.py $(ATR)
+	@mkdir -p gen/atari
+	$(PYTHON) tools/mksnd_atari.py $(if $(ATR),--atr "$(ATR)") $@
+
 build/fnlib-adam/fujinet-adam.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/adam/* $(FNLIB_EXP)/include/*.h)
 	tools/z80/mkfnlib.sh $(FNLIB_EXP) build/fnlib-adam adam
 
@@ -252,5 +294,5 @@ build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
 
 clean::
-	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/preview gen/config.h
 endif

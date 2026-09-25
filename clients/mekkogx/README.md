@@ -5,12 +5,13 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are five platforms:
+There are six platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
 - the **Coleco Adam**, booted from a FujiNet disk or tape, with its SN76489;
-- the **MSX** (MSX1 and up), as a ROM the FujiNet cartridge runs, with its PSG.
+- the **MSX** (MSX1 and up), as a ROM the FujiNet cartridge runs, with its PSG;
+- the **Atari 400/800** with 48K (and the XL/XE), with the original's own graphics, music and sound effects, from its disk.
 
 The Adam and the MSX share their graphics code (`src/tms9918`): both have a TMS9918A.
 
@@ -25,6 +26,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/msdos/` | the PC / PCjr implementation (Open Watcom) |
 | `src/tms9918/` | the TMS9918A screen and sprites, for the Adam and the MSX (z88dk) |
 | `src/adam/`, `src/msx/` | the rest of the Adam and MSX implementations |
+| `src/atari/` | the Atari implementation (cc65, much of it 6502 assembly) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -302,6 +304,74 @@ How it gets there:
   - **MSX:** fujinet-pc (RS232 build with user ROMs) with `mule[ASCII8].rom` mounted, then the Workspace openMSX with `-ext FujiNet`. Choose boot at CONFIG.
   - Both have played whole rounds against the server this way.
 
+## The Atari version
+
+The Atari is the machine M.U.L.E. was written for, so this version draws and sounds the way the original does, with the original's own data. `tools/mkgfx_atari.py` and `tools/mksnd_atari.py` copy it from the disk (`ATR=`, as for the other versions) into `gen/atari/`, which is never committed.
+
+**Building.**
+
+    make atari                                 # r2r/atari/mule.atr (boots with picoboot)
+    make atari ENDPOINT=http://myhost:8080
+
+- **What it needs:** cc65 2.19, `dir2atr` (AtariSIO) and `atr` (jhallen/atari-tools, built in `~/Workspace/atari-tools`; the Makefile puts it on the path), Python 3, and fujinet-lib's Atari library in `~/Workspace/fujinet-lib/build`. The first build downloads `picoboot.bin` into `_cache/atari`.
+- **The disk** is `MULE.COM` and the overlays `PHASE.1`-`PHASE.5`. picoboot runs the first file, so the overlays are named to sort after it.
+
+**Memory** (a 48K 400/800; `src/atari/mule-atari.cfg`, `src/atari/atari.h`):
+
+| Range | Use |
+|---|---|
+| $0400-$09FF | variables that need not be loaded (picoboot's area; cleared at start) |
+| $0A00 | the program: code, data, then its variables |
+| $8DE0-$A67F | the overlay window: one phase at a time, read from the disk by sector |
+| $A680-$A7FF | the C stack |
+| $A800 | the drawing characters (mode 4 cells made on the fly) |
+| $AC00, $AE00 | the original's font and map characters (64 each) |
+| $B000 | the original's town characters; its unused ones hold the small sprites |
+| $B400 | the screen: 24 rows of 40 bytes |
+| $B800 | PMG: the display list and the row tables below the missiles and players |
+
+- **The load chunk** (`src/atari/start.s`) runs first. It turns BASIC off on an XL/XE, checks for RAM up to $BFFF, blanks the screen, and lowers MEMTOP to put the C stack under the graphics.
+- **Overlays:** there is no DOS. `bank.c` finds `PHASE.n` in the DOS 2 directory and follows the sector links with DSKINV.
+- **The overlay window** is fixed below the stack, so the program can grow up to it. The link fails if it doesn't fit.
+
+**The screen** (`gfx.c`, `gfxa.s`, `draw.s`, `cells.s`, `mapgfx.s`, `sprite.s`) is a character screen, as the original's are.
+- **Rows:** the display list is 24 rows of 8 scanlines. Each row has its own ANTIC mode, and a DLI loads the next row's CHBASE, colours, player positions, player colours and sizes from row tables, but only what changes. The immediate VBI loads row 0's registers and their shadows. Registers a row doesn't use take the next row's values, and colour slots avoid changing between rows, because a change lands a few cycles into the row's first scanline.
+- **Text** uses the original font in mode 2. Big text is mode 6, in up to four colours a row.
+- **Drawing:** fills, dotted lines and pictures make a row mode 4 and draw into characters taken from a pool of 127. A row with both big and small text becomes a drawing row too: big characters are exactly two cells, and small ones are squeezed to every other pixel.
+- **The map** is mode 6 with the original's map characters: plot borders, icons, production dots and the time bar. Player 2 draws the mountains, one per display row, repositioned row by row as the original's DLI does. Player 3 draws the river, and the store in its rows at double width in black.
+- **The town** is the original's own screen and characters, with its colours. The corral shows its M.U.L.E.s as the original draws them.
+- **Sprites** are players, single line. A player can show several sprites whose rows don't meet: the DLI moves it between them. On the map players 0 and 1 are free; in town, 0-2, with missile 3 the time bar.
+- **Shapes** come from the original: the species, the map figures, the M.U.L.E., mountains, store, ships, pest, cloud and bolt. The wampus, meteor and the ship's hull are still the Intellivision's.
+
+**Sound** (`pokey.s`, `sound.c`). The original's sounds, reverse-engineered and played by a driver in the immediate VBI:
+- **The title theme** plays in the lobby, and **the round's tune** on the status screens (its length grows every 4 rounds, as the original's does). The driver is the original's four-voice engine: note streams with a held attack and a decay per voice. It matches the original frame for frame.
+- **The voice-4 effects** use the original's tables: the player blip, the message beep (four times when an auction ends), and the production chirp.
+- **Other effects:**
+  - each species' footstep;
+  - the time bar's tick, faster as time runs out;
+  - the colony ship's drone;
+  - the colony events: pest, pirates, acid rain, planetquake, meteorite, radiation, fire;
+  - the good and bad news jingles;
+  - outfitting a M.U.L.E.
+
+  These are scripts, written from how the original plays them. They are started through `SND_X()` in the shared code (`sound.h`), which is empty on the other platforms.
+- **During SIO,** which uses voices 3 and 4 and AUDCTL, only voices 1 and 2 are written.
+- **Where the data lives:** the tunes are in the status overlay, the colony events in production's and the jingles in develop's. They stop when their overlay goes.
+
+**Keys:** the stick or the arrow keys (with CONTROL) walk, and the trigger or SPACE is the button. RETURN ends a turn, ESC leaves, 0 sits out, and CONTROL-S turns the sound off and on.
+
+**Testing** (`tools/atarisim/`). `asim` is a scripted libatari800: atari800's source configured with `--target=libatari800` and built (`~/Workspace/atari800-lib`, a copy of the atari800 tree, so the emulator build stays as it is):
+
+    make -C tools/atarisim A800=~/Workspace/atari800-lib
+    python3 tools/atarisim/atarisim.py r2r/atari/mule.atr build/mule-atari.map scenario.txt out/
+
+- **Scenarios** use `tools/a2sim`'s language, plus `wav` and `pokey`, which record the sound and the POKEY writes. `asim` itself also logs GTIA and ANTIC writes, dumps registers with each shot, and can boot from FujiNet.
+- **Against a server:** run fujinet-pc (Atari build) with `[BOIP] port=` set to asim's NetSIO port, CONFIG off, and `mule.atr` mounted. Then:
+
+      asim -netsio 9995 - script.txt out/
+
+  In that script, `coldstart` once FujiNet is there. With NetSIO on, asim keeps to 60 frames a second and turns the SIO patch off.
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
@@ -322,3 +392,9 @@ How it gets there:
   - it has no appkey calls (MS-DOS's are used);
   - the URL is sent with its NUL, because the firmware read past its end.
 - **MSX: 50 Hz machines** count 50 frames a second. The server's clock keeps the game's timing, but local animations run 5/6 as fast.
+- **Atari: phase changes** read the phase's overlay (up to 50 sectors) from the FujiNet at 19200 bps: about 3 s.
+- **Atari: text on the map or town** is only in its text rows. The corral's price is under the town, not in the corral.
+- **Atari: colours per row.** A drawing or big-text row has four colours at most, and a row's colours change a few cycles late, so a pixel on the first scanline of a row can show the row above's colour.
+- **Atari: sprites** share four players. One that finds no player free in its rows isn't shown.
+- **Atari: the M.U.L.E.** faces left as a mirror image, not the original's own left frames.
+

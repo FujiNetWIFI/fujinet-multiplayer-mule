@@ -147,6 +147,7 @@ void summary_enter(void)
 {
     anim = AN_NONE;
     fx_stop_all();
+    SND_XA(SNX_TUNE, rnd);
     su_land = 0;
     if (rnd == 0 && pe_now() < 300) {
         su_land = 1;
@@ -157,6 +158,7 @@ void summary_enter(void)
         msg_show(M_LANDING, 0, 0);
         fx_flag = 0;
         fx_start(0, fx_land);
+        SND_X(SNX_SHIP);
         return;
     }
     su_begin();
@@ -203,6 +205,7 @@ void gameover_enter(void)
 {
     uint8_t i, k;
     anim = AN_NONE;
+    SND_XA(SNX_TUNE, 12);
     fx_stop_all();
     gfx_clear();
     scr_now = SCR_FOUNDER;
@@ -267,6 +270,7 @@ void lobby_enter(void)
     big_center(1, str_word(W_MULE), C_ORANGE);
     big_center(3, str_word(W_TOURNAMENT), C_BLUE);
     text_center(21, str_msg(M_LOBBYHELP), C_WHITE);
+    SND_X(SNX_TITLE);
     lb_sent = 0;
     lb_lastcd = 1;
     if (my_seat < 4)
