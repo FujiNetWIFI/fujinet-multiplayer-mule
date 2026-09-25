@@ -29,4 +29,9 @@ void frame_lost(uint8_t jiffies);
 
 uint8_t plat_rand(void);
 
+#ifdef PLAT_NET_PROBE
+/* Is there a FujiNet? (for a platform whose network_init() can't tell) */
+uint8_t plat_net_probe(void);
+#endif
+
 #endif

@@ -28,9 +28,10 @@ The server has these tables:
 
 | Tables | Players |
 |--------|---------|
-| `m1`–`m4` | up to 4 humans |
-| `ai1`, `ai2`, `ai3` | 3, 2 and 1 humans; the computer plays the other seats |
+| `irata` ("Planet IRATA") | up to 4 humans; the computer plays any empty seat |
 | `dev1`–`dev3` | hidden test tables |
+
+A request without `?table=` goes to `irata`.
 
 A game starts 31 seconds after the first human joins, or 6 seconds after
 every human is ready.
@@ -69,7 +70,8 @@ then checks the decoded binary against the JSON state.
 ## Deploy
 
 `deploy.sh` deploys to Google Cloud Run with `max-instances=1`, because game
-state lives in memory. Lobby registration needs `GO_PROD=1` plus:
+state lives in memory. For now the server registers with the QA lobby,
+`https://qalobby.fujinet.online/`. Lobby registration needs `GO_PROD=1` plus:
 
 - `MULE_APPKEY`: a lobby appkey registered on the FujiNet wiki
 - `MULE_SERVER_URL`: the server's public URL

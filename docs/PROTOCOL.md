@@ -76,7 +76,7 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
 
 ```jsonc
 {
-  "v": 2, "tb": "m1", "ph": "develop", "p": 3, "r": 1,  // version, table, phase name/id, round
+  "v": 2, "tb": "irata", "ph": "develop", "p": 3, "r": 1,  // version, table, phase name/id, round
   "t": 1234, "pe": 56, "cd": -1,                         // clock, phase elapsed, lobby countdown (jiffies)
   "me": 0, "ec": 0, "err": "", "res": 0,                 // your seat (-1 spectator), error code/text, action result
   "pl": [ { "n": "alice", "sp": 5, "c": 0, "ai": false, "rd": false, "dc": false, "on": true,
@@ -138,8 +138,9 @@ server sends only a `MuleHeader`, with `msgType=0xFF` and `err` set.
 ## Lobby registration
 
 When `GO_PROD=1` and `MULE_APPKEY` are both set, the server posts each
-registered table to `https://lobby.fujinet.online/server`. The posted
-`serverurl` is `MULE_SERVER_URL?table=<id>`. The FujiNet lobby client passes
+registered table to `https://qalobby.fujinet.online/server` (the QA lobby,
+for now). There is one registered table, `irata` ("Planet IRATA"), so the
+posted `serverurl` is `MULE_SERVER_URL?table=irata`. The FujiNet lobby client passes
 that URL to the game in an appkey, and the game adds `&player=<name>`.
 
 The appkey must be registered on the FujiNet firmware wiki page "SIO Command

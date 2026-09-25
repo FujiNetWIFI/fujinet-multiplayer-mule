@@ -41,7 +41,7 @@ func main() {
 		if url == "" {
 			url = "https://mule.fujinet.online/"
 		}
-		lobby = server.NewLobbyClient(server.LobbyEndpointProd, appkey, url, "us", []server.GameClient{
+		lobby = server.NewLobbyClient(server.LobbyEndpointQA, appkey, url, "us", []server.GameClient{
 			{Platform: "atari", Url: "tnfs://tnfs.fujinet.online/atari/mule.xex"},
 		})
 		log.Println("updating lobby at", lobby.Endpoint)

@@ -3,6 +3,8 @@
 #   make apple2                        r2r/apple2/mule.po (ProDOS, 128K //e, IIc, IIgs)
 #   make coco                          r2r/coco/mule.dsk (DECB, 64K CoCo 1/2)
 #   make msdos                         r2r/msdos/mule.img (MULE.EXE: 128K PC with CGA, or PCjr)
+#   make adam                          r2r/adam/mule.ddp and mule.dsk (Coleco Adam)
+#   make msxrom                        r2r/msxrom/mule.rom (MSX, a FujiNet user ROM: ASCII8)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -12,7 +14,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos
+PLATFORMS = apple2 coco msdos adam msxrom
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -24,9 +26,10 @@ PLATFORM_COMBOS = \
   apple2enh+=apple2 \
   c64+=commodore \
   atarixe+=atari \
-  msxrom+=msx \
+  msxrom+=tms9918,msx \
   msxdos+=msx \
-  adam_cpm+=adam
+  adam_cpm+=adam \
+  adam+=tms9918
 
 # ---- Apple II -------------------------------------------------------------
 # HGR page 1 sits at $2000-$3FFF: the linker config keeps code and data out
@@ -130,20 +133,81 @@ msdos/disk-post::
 	printf '@ECHO OFF\r\nMULE.EXE\r\n' > build/autoexec.bat
 	mcopy -o -i $(DISK) build/autoexec.bat "::AUTOEXEC.BAT"
 
+# ---- Coleco Adam (and the MSX): z88dk --------------------------------------
+# zcc with zsdcc, from defoogi unless installed (tools/z80/z88dk). The
+# TMS9918A code is src/tms9918 (a PLATFORM_COMBOS entry). fujinet-lib is
+# fujinet-lib-experimental built with zsdcc (tools/z80/mkfnlib.sh).
+Z80_TOOLS = $(CURDIR)/tools/z80
+ifneq ($(filter adam msxrom,$(PLATFORM)),)
+  FUJINET_LIB := __UNDEFINED__
+  CC_Z88DK = $(Z80_TOOLS)/z88dk zcc
+  AS_Z88DK = $(Z80_TOOLS)/z88dk z80asm
+  LD_Z88DK = $(Z80_TOOLS)/z88dk zcc
+endif
+# (zcc hands the defines on through a shell: a string is quoted twice)
+CFLAGS_EXTRA_ADAM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DQUIT_HINT='"\"ESCAPE: QUIT\""'
+EXTRA_INCLUDE_ADAM += src/tms9918 build/fnlib-adam/include
+# The memory map: src/adam/mule.asm. The NMI is the frame clock
+# (src/adam/nmi.asm); the variables are not part of the image.
+LDFLAGS_EXTRA_ADAM += -compiler=sdcc -m -pragma-define:CRT_ENABLE_NMI=2 \
+                      -pragma-define:CRT_INITIALIZE_BSS=1
+ifeq ($(PLATFORM),adam)
+  LIBS += -Lbuild/fnlib-adam -lfujinet-adam
+endif
+EXECUTABLE_EXTRA_DEPS_ADAM += build/fnlib-adam/fujinet-adam.lib src/adam/mule.asm
+
+# The phases are overlays (src/adam/bank.c), linked at the same address.
+ADOBJ = build/$(PRODUCT)/adam
+$(ADOBJ)/src/boot.o $(ADOBJ)/src/teststart.o: CFLAGS += --codeseg=OV1 --constseg=OV1
+$(ADOBJ)/src/status.o:                        CFLAGS += --codeseg=OV2 --constseg=OV2
+$(ADOBJ)/src/grant.o $(ADOBJ)/src/events.o:   CFLAGS += --codeseg=OV3 --constseg=OV3
+$(ADOBJ)/src/auction.o:                       CFLAGS += --codeseg=OV4 --constseg=OV4
+$(ADOBJ)/src/develop.o:                       CFLAGS += --codeseg=OV5 --constseg=OV5
+
+# The overlays go on the tape (and a disk) after the program.
+adam/r2r-post::
+	python3 tools/adam/mkimage.py r2r/adam
+
+# ---- MSX: a ROM the FujiNet cartridge runs --------------------------------
+# An ASCII8 megaROM (src/msx/mule.asm): the program fixed at 4000h-9FFFh,
+# the phases, the art and the strings taking turns at A000h.
+CFLAGS_EXTRA_MSXROM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DKEY_END_NAME='"\"RETURN\""'
+EXTRA_INCLUDE_MSXROM += src/tms9918 build/fnlib-msx/include
+LDFLAGS_EXTRA_MSXROM += -compiler=sdcc -m -pragma-define:CRT_MSX_CUSTOM_HEADER=1 -Ca-I$(CURDIR)/src/msx/crt
+ifeq ($(PLATFORM),msxrom)
+  LIBS += -Lbuild/fnlib-msx -lfujinet-msx
+endif
+EXECUTABLE_EXTRA_DEPS_MSXROM += build/fnlib-msx/fujinet-msx.lib src/msx/crt/msx_rom_header.asm
+MXOBJ = build/$(PRODUCT)/msxrom
+$(MXOBJ)/src/boot.o $(MXOBJ)/src/teststart.o: CFLAGS += --codeseg=OV1 --constseg=OV1
+$(MXOBJ)/src/status.o:                        CFLAGS += --codeseg=OV2 --constseg=OV2
+$(MXOBJ)/src/grant.o $(MXOBJ)/src/events.o:   CFLAGS += --codeseg=OV3 --constseg=OV3
+$(MXOBJ)/src/auction.o:                       CFLAGS += --codeseg=OV4 --constseg=OV4
+$(MXOBJ)/src/develop.o:                       CFLAGS += --codeseg=OV5 --constseg=OV5
+$(MXOBJ)/src/strings.o:                       CFLAGS += --constseg=STR
+$(MXOBJ)/gen/tms9918/gfx.o:                   CFLAGS += --constseg=ART
+
+msxrom/r2r-post::
+	python3 tools/msx/mkrom.py r2r/msxrom
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
+r2r/adam/$(PRODUCT): gen-adam
+r2r/msxrom/$(PRODUCT): gen-msxrom
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
 gen-msdos: gen/config.h gen/msdos/gfx.c build/fnlib-msdos/fujinet-msdos.lib
+gen-adam: gen/config.h gen/tms9918/gfx.c build/fnlib-adam/fujinet-adam.lib
+gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -172,9 +236,21 @@ gen/msdos/gfx.c: tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_dos.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/msdos $@
 
+gen/tms9918/gfx.c: tools/mkgfx_tms.py tools/mkgfx_dos.py tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/tms9918
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_tms.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/tms9918 $@
+
+build/fnlib-adam/fujinet-adam.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/adam/* $(FNLIB_EXP)/include/*.h)
+	tools/z80/mkfnlib.sh $(FNLIB_EXP) build/fnlib-adam adam
+
+build/fnlib-msx/fujinet-msx.lib: tools/z80/mkfnlib.sh tools/z80/msx-portio.c $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/msx/* $(FNLIB_EXP)/include/*.h)
+	tools/z80/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msx msx
+
 build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/msdos/*.c $(FNLIB_EXP)/include/*.h)
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
 
 clean::
-	rm -rf gen/apple2 gen/coco gen/msdos gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/preview gen/config.h
 endif

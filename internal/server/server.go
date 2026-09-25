@@ -23,15 +23,14 @@ type Server struct {
 	Lobby  *LobbyClient
 }
 
+// DefaultTable is the table a request without ?table= goes to.
+const DefaultTable = "irata"
+
 // New creates a server with the default tables.
 func New(lobby *LobbyClient) *Server {
 	s := &Server{Now: time.Now, Lobby: lobby}
-	for i := 1; i <= 4; i++ {
-		s.AddTable(newTable("m"+strconv.Itoa(i), "colony "+strconv.Itoa(i), 4, true))
-	}
-	s.AddTable(newTable("ai1", "3 humans + 1 cpu", 3, true))
-	s.AddTable(newTable("ai2", "2 humans + 2 cpu", 2, true))
-	s.AddTable(newTable("ai3", "solo vs 3 cpu", 1, true))
+	// One public room for now: up to 4 humans, the computer fills the rest.
+	s.AddTable(newTable(DefaultTable, "Planet IRATA", 4, true))
 	for i := 1; i <= 3; i++ {
 		s.AddTable(newTable("dev"+strconv.Itoa(i), "dev "+strconv.Itoa(i), 4, false))
 	}
@@ -100,7 +99,7 @@ func (s *Server) notifyLobby(t *Table) {
 	}
 	name, id, maxH := t.Name, t.ID, t.MaxHumans
 	t.mu.Unlock()
-	go s.Lobby.Send(maxH, humans, true, "mule "+name, "?table="+id, result)
+	go s.Lobby.Send(maxH, humans, true, name, "?table="+id, result)
 }
 
 // Routes installs all HTTP routes on r.
@@ -273,7 +272,7 @@ func actCollude(t *Table, seat int, c *gin.Context) (int, error) {
 // act wraps an action: lock the table, join/ping, advance, apply, respond.
 func (s *Server) act(f action) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		t := s.Table(c.DefaultQuery("table", "m1"))
+		t := s.Table(c.DefaultQuery("table", DefaultTable))
 		if t == nil {
 			s.writeError(c, proto.ErrBadRequest, "unknown table")
 			return
@@ -311,7 +310,7 @@ func (s *Server) act(f action) gin.HandlerFunc {
 }
 
 func (s *Server) apiView(c *gin.Context) {
-	t := s.Table(c.DefaultQuery("table", "m1"))
+	t := s.Table(c.DefaultQuery("table", DefaultTable))
 	if t == nil {
 		s.writeError(c, proto.ErrBadRequest, "unknown table")
 		return
@@ -323,7 +322,7 @@ func (s *Server) apiView(c *gin.Context) {
 }
 
 func (s *Server) apiLeave(c *gin.Context) {
-	t := s.Table(c.DefaultQuery("table", "m1"))
+	t := s.Table(c.DefaultQuery("table", DefaultTable))
 	if t == nil {
 		c.String(http.StatusOK, "bye")
 		return

@@ -1,0 +1,26 @@
+# systemd unit for the M.U.L.E. server on port 9900.
+#
+# Install:
+#   go build -o /opt/mule/muleserver ./cmd/muleserver
+#   cp -r web /opt/mule/
+#   cp muleserver.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now muleserver
+[Unit]
+Description=FujiNet M.U.L.E. server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/mule
+ExecStart=/opt/mule/muleserver -web /opt/mule/web
+Environment=PORT=9900
+# Lobby registration (QA lobby): uncomment and set the appkey and public URL.
+#Environment=GO_PROD=1
+#Environment=MULE_APPKEY=0
+#Environment=MULE_SERVER_URL=https://mule.example.com/
+DynamicUser=yes
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

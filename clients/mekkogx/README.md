@@ -5,10 +5,14 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are three platforms:
+There are five platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
-- the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS.
+- the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
+- the **Coleco Adam**, booted from a FujiNet disk or tape, with its SN76489;
+- the **MSX** (MSX1 and up), as a ROM the FujiNet cartridge runs, with its PSG.
+
+The Adam and the MSX share their graphics code (`src/tms9918`): both have a TMS9918A.
 
 The code is split so other MekkoGX targets can follow:
 
@@ -19,6 +23,8 @@ The code is split so other MekkoGX targets can follow:
 | `src/apple2/` | the Apple II implementation |
 | `src/coco/` | the CoCo 1/2 implementation (CMOC) |
 | `src/msdos/` | the PC / PCjr implementation (Open Watcom) |
+| `src/tms9918/` | the TMS9918A screen and sprites, for the Adam and the MSX (z88dk) |
+| `src/adam/`, `src/msx/` | the rest of the Adam and MSX implementations |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -230,6 +236,72 @@ How it gets there:
 | BACKSPACE | rub out, when typing a name |
 | F1 | sound off / on |
 
+## The Coleco Adam and MSX versions
+
+**Building.**
+
+    make adam                                  # r2r/adam/mule.ddp (tape) and mule.dsk (disk)
+    make msxrom                                # r2r/msxrom/mule[ASCII8].rom (and mule.rom, the same)
+    make adam msxrom ENDPOINT=http://myhost:8080
+
+- **What it needs:** z88dk (zcc with zsdcc). If `zcc` isn't installed, `tools/z80/z88dk` runs it in the defoogi container, which sees only this repository.
+- **fujinet-lib:** fujinet-lib-experimental (`FNLIB_EXP`, as for MS-DOS). `tools/z80/mkfnlib.sh` builds it with zsdcc into `build/fnlib-adam/` and `build/fnlib-msx/`. The released libraries are sccz80 builds, and the copies get a few local fixes, which the script lists (mostly in the MSX bus: see *Known limits*).
+- **Graphics:** `tools/mkgfx_tms.py` converts them from the same Atari disk into `gen/tms9918/gfx.c`, one file for both machines, with previews in `gen/preview/tms9918/`.
+- **Rebuilding:** `make clean` after changing `AUTOPLAY`.
+
+**The screen** (`src/tms9918/gfx.c`). Both machines use Graphics II, a 256 x 192 bitmap in which each 8-pixel row of a cell has two colours.
+- **x is scaled 3/2 from the Atari's colour clocks, from 4 pixels in.** A plot's 16 clocks become exactly three cells, so plots are made whole, cell by cell. Text is 40 columns of 6-pixel glyphs (the CoCo's squeeze of the Atari font), and big text is 12 pixels a character. Lines are the Atari's own.
+- **Drawing** reads a cell's 8 pattern and 8 colour bytes, paints them and writes them back. A colour a row doesn't have replaces the one with fewer pixels left, and those pixels change colour: that is the colour clash.
+- **The town** is converted cell by cell by `tools/mkgfx_tms.py`: each row keeps its two commonest colours, and the rest go to the nearer one (96 pixels in all).
+- **The colours** are the Atari's nearest, from TMS9918's 15. The players are light blue, magenta, green and orange (light red). The map is grey, with black mountains and a light green river.
+- **Sprites** are the VDP's own: 16 x 16, one colour each, with no save-under. A slot is up to four of them, with its own pattern names, and a pattern is sent only when its frame changes. The shapes stay 1 bit a colour clock and are widened as they are sent (`wide12`). With a fifth sprite on a line the order rotates a frame at a time, so they flicker rather than vanish.
+
+**The Adam.**
+- **Memory** (`src/adam/mule.asm`):
+
+  | Range | Use |
+  |---|---|
+  | 0000h | the program, about 31K, then its variables |
+  | A000h-B7FFh | the overlay window |
+  | down from D390h | the stack, below EOS |
+
+  z88dk's bootstrap loads the program a 1K block at a time. Each phase is an overlay that `bank.c` reads from the boot medium, in whole blocks, at a phase change. `tools/adam/mkimage.py` puts the overlays after the program, fills in the program's table of where they are, and checks the map.
+- **The clock** is the VDP's frame interrupt, which is the Z80's NMI (`nmi.asm`). The NMI can't be masked, so while the game is at the VDP it only notes that the interrupt came (`vdp_busy`), and `VDP_UNLOCK` reads the status then. The clock keeps counting while AdamNet calls wait.
+- **EOS** is called directly (`eoscall.asm`): block reads, the keyboard and the controllers. z88dk's `eos.lib` is an sccz80 build, whose arguments come in the other order from zsdcc's.
+- **Keys:** the arrows walk, SPACE or a fire button is the button, RETURN ends a turn, ESCAPE leaves, 0 sits out, BACKSPACE rubs out, and SmartKey VI turns the sound off and on. On the controller's keypad, * ends a turn and 0 sits out. The keyboard sends characters, not keys held, so an arrow counts as held for a third of a second after each one.
+- **ESCAPE at the table list** sets the FujiNet to boot CONFIG and restarts the Adam.
+
+**The MSX.**
+- **Memory: an ASCII8 megaROM** (`src/msx/mule.asm`, built by `tools/msx/mkrom.py`):
+
+  | Range | Use |
+  |---|---|
+  | 4000h-9FFFh | banks 0-2, fixed: the program |
+  | A000h-BFFBh | the window: overlays, the art and the strings take turns, each a single bank write |
+  | BFFCh-BFFFh | the FujiNet's registers, in every bank |
+  | C000h | RAM: the variables, and the stack below HIMEM |
+
+  Drawing and `bank_get` switch the window themselves and put the phase's bank back. The header (`src/msx/crt/msx_rom_header.asm`) maps banks 1-3 before anything outside 4000h-5FFFh runs.
+- **The FujiNet runs it.** Mount `mule[ASCII8].rom` in a device slot and boot: the firmware sends the ROM into the cartridge and starts it, choosing the mapper by that end of the name. This needs firmware with user ROMs (the `feat/msx-mapper-types` work; the master build of fujinet-pc-msx here mounts it as a disk instead).
+- **The clock** is the BIOS's interrupt, through the H.TIMI hook. The BIOS reads the VDP's status, so VRAM bursts run with interrupts off.
+- **Keys:** the arrows or joystick 1 walk, SPACE or the trigger is the button, RETURN ends a turn, ESC leaves, 0 sits out, BS rubs out, and F1 turns the sound off and on.
+- **ESC at the table list** switches the cartridge back to the FujiNet's own ROM and restarts.
+
+**Testing.**
+- **The Adam, offline:** `tools/adam/adamsim/adamsim.py` is `cocosim.py` for MAME's `adam` driver, with the tape (or the disk). MAME's tape is slow, so allow about 40 s of emulated time to boot and a long wait before the first snapshot:
+
+      python3 tools/adam/adamsim/adamsim.py r2r/adam/mule.ddp r2r/adam/mule.map scenario.txt out/
+
+  It adds `vdump FILE` (saves VRAM) and `vwatch FROM TO` (prints the PC of each VRAM write in the range).
+- **The MSX, offline:** `tools/msx/msxsim/msxsim.py` runs openMSX (C-BIOS by default; `MSXSIM_MACHINE`) with the renderer off. Each `snap` saves VRAM, and `tools/tmsshot.py` draws it:
+
+      python3 tools/msx/msxsim/msxsim.py r2r/msxrom/mule.rom r2r/msxrom/mule.map scenario.txt out/
+
+- **Against a server** (with `AUTOPLAY=1`, plus a name and a table in the FujiNet's `SD/FujiNet/00010100.key` and `0001010a.key`):
+  - **Adam:** ADAMEm (`adamem -fujinet -if 60`) first, then fujinet-pc (ADAM build) with `mule.ddp` mounted and CONFIG off.
+  - **MSX:** fujinet-pc (RS232 build with user ROMs) with `mule[ASCII8].rom` mounted, then the Workspace openMSX with `-ext FujiNet`. Choose boot at CONFIG.
+  - Both have played whole rounds against the server this way.
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
@@ -240,3 +312,13 @@ How it gets there:
 - **CoCo: grey** is black or white, and the fourth player is striped.
 - **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS at 9600 bps that is a few seconds, and every server poll stalls the animations (about 13 frames a second get drawn): use 115200.
 - **MS-DOS, CGA:** the fourth player is striped, and the fence around the town's corral is white.
+- **Adam: phase changes** read the phase's overlay (up to 6 blocks). That is quick from a FujiNet, and slow from a real tape.
+- **Adam: arrow keys** repeat rather than hold (the keyboard sends characters): walking is smoother with a controller.
+- **TMS9918: colour clash.** Text or a sprite-free drawing next to another colour can recolour a few pixels of its cell's row.
+- **MSX: fujinet-lib-experimental's MSX bus** needed fixes for zsdcc, all in `tools/z80/mkfnlib.sh`:
+  - its port routines used IX and IY, which zsdcc keeps;
+  - its variadic `fuji_bus_call` read 8-bit arguments with `va_arg(ap, uint8_t)`;
+  - `network_bus_read` and `network_bus_write` used the renamed `FUJICMD_READ`/`FUJICMD_WRITE`;
+  - it has no appkey calls (MS-DOS's are used);
+  - the URL is sent with its NUL, because the firmware read past its end.
+- **MSX: 50 Hz machines** count 50 frames a second. The server's clock keeps the game's timing, but local animations run 5/6 as fast.

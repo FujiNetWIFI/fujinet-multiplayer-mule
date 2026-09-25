@@ -173,21 +173,21 @@ func TestBinaryAndRaw(t *testing.T) {
 		t.Fatalf("raw: %.200s", raw)
 	}
 	tb := h.get("/tables?bin=1")
-	if tb[0] != 7 || len(tb) != 1+7*33 {
+	if tb[0] != 1 || len(tb) != 1+33 {
 		t.Fatalf("tables bin len %d count %d", len(tb), tb[0])
 	}
 }
 
 func TestHashUnchanged(t *testing.T) {
 	h := newHarness(t)
-	h.get("/state?table=m1&player=a")
+	h.get("/state?table=irata&player=a")
 	w := httptest.NewRecorder()
-	h.r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/state?table=m1&player=a&hash=0", nil))
+	h.r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/state?table=irata&player=a&hash=0", nil))
 	hash := w.Header().Get("X-Mule-Hash")
 	if hash == "" {
 		t.Fatal("no hash header")
 	}
-	body := h.get("/state?table=m1&player=a&hash=" + hash)
+	body := h.get("/state?table=irata&player=a&hash=" + hash)
 	if !bytes.Contains(body, []byte(`"same":1`)) {
 		t.Fatalf("expected same: %s", body)
 	}
@@ -195,26 +195,26 @@ func TestHashUnchanged(t *testing.T) {
 
 func TestDropHandsSeatToAIAndGameCompletes(t *testing.T) {
 	h := newHarness(t)
-	v := startSolo(h, "ai3")
+	v := startSolo(h, "irata")
 	if v.Phase != "grant" {
 		t.Fatalf("phase %s", v.Phase)
 	}
 	h.advance(PlayerPingTimeout + time.Second)
-	v = h.view("/view?table=ai3")
+	v = h.view("/view?table=irata")
 	if !v.Players[0].AI {
 		t.Fatal("dropped player not taken over by AI")
 	}
 	// Rejoin restores control.
-	v = h.view("/state?table=ai3&player=solo")
+	v = h.view("/state?table=irata&player=solo")
 	if v.Me != 0 || v.Players[0].AI {
 		t.Fatal("rejoin failed")
 	}
-	h.get("/leave?table=ai3&player=solo")
+	h.get("/leave?table=irata&player=solo")
 	defer func(d time.Duration) { AbandonTimeout = d }(AbandonTimeout)
 	AbandonTimeout = 24 * time.Hour // let the computers finish the game
 	for i := 0; i < 400; i++ {
 		h.advance(10 * time.Second)
-		if v = h.view("/view?table=ai3"); v.Phase == "gameover" {
+		if v = h.view("/view?table=irata"); v.Phase == "gameover" {
 			if v.Colony == nil || v.Colony.RatingText == "" {
 				t.Fatal("no final rating")
 			}
