@@ -30,8 +30,10 @@ const T = {
 const $ = (id) => document.getElementById(id);
 const gfx = new Gfx($('c'));
 let api = null;
-const keys = new Set();
-const pressed = new Set();
+let keys = new Set();
+let pressed = new Set();
+let leaveAsk = false; // ESC in a game: asking whether to leave
+let debugTimer = 0;
 let jiffy = 0; // local simulation frame counter
 
 // Local development-turn state (the walk is simulated here; actions go to the server).
@@ -47,14 +49,8 @@ function log(s) {
 async function init() {
   const ok = await gfx.load();
   $('noassets').hidden = ok;
-  const tables = await listTables();
+  await fillTables();
   const sel = $('table');
-  for (const t of tables) {
-    const o = document.createElement('option');
-    o.value = t.t;
-    o.textContent = `${t.t}: ${t.n} (${t.p}/${t.m} ${t.ph})`;
-    sel.append(o);
-  }
   const q = new URLSearchParams(location.search);
   if (q.get('table')) sel.value = q.get('table');
   $('name').value = q.get('player') || localStorage.getItem('mule.name') || '';
@@ -74,18 +70,56 @@ async function init() {
   });
   addEventListener('keyup', (e) => keys.delete(e.key));
   addEventListener('blur', () => keys.clear());
-  $('c').addEventListener('click', () => pressed.add(' '));
+  $('c').addEventListener('click', () => pressed.add(leaveAsk ? 'click' : ' '));
   requestAnimationFrame(loop);
+}
+
+async function fillTables(selected) {
+  const sel = $('table');
+  sel.replaceChildren();
+  for (const t of await listTables()) {
+    const o = document.createElement('option');
+    o.value = t.t;
+    o.textContent = `${t.t}: ${t.n} (${t.p}/${t.m} ${t.ph})`;
+    sel.append(o);
+  }
+  if (selected) sel.value = selected;
 }
 
 function start(table, name) {
   if (api) api.stopped = true;
+  leaveAsk = false;
   api = new Api(table, name);
   api.onState(onState);
   $('status').textContent = `${name} @ ${table}`;
   history.replaceState(null, '', `?table=${table}&player=${name}`);
   api.run();
-  setInterval(binDebug, 1000);
+  clearInterval(debugTimer);
+  debugTimer = setInterval(binDebug, 1000);
+}
+
+// leave: off the table (in a game the computer takes over our seat), back
+// to the join form. No request may carry our name afterwards: the server
+// would give the seat back (that is how a dropped player rejoins), so the
+// poll in flight is let finish first.
+async function leave() {
+  const a = api;
+  leaveAsk = false;
+  if (!a) return;
+  a.stopped = true;
+  api = null;
+  clearInterval(debugTimer);
+  while (a.busy) await new Promise((r) => setTimeout(r, 20));
+  try {
+    await fetch(a.url('/leave'), { method: 'POST' });
+  } catch (e) {
+    console.warn(e);
+  }
+  log(`left ${a.table}`);
+  $('status').textContent = '';
+  $('help').textContent = '';
+  history.replaceState(null, '', location.pathname);
+  await fillTables(a.table);
 }
 
 let lastPhase = -1, lastRound = 0, lastEvent = '', lastColony = '';
@@ -97,12 +131,12 @@ function onState(v) {
   }
   if (v.tu && v.tu.et && v.tu.et !== lastEvent) { lastEvent = v.tu.et; log(`${v.pl[v.tu.s].n}: ${v.tu.et}`); }
   if (v.co && v.co.tx && v.co.tx !== lastColony) { lastColony = v.co.tx; log('colony: ' + v.co.tx); }
-  $('help').textContent = helpText(v);
+  $('help').textContent = helpLine(v);
 }
 
 function helpText(v) {
   switch (v.p) {
-    case PHASE.lobby: return 'left/right: species   space: ready\nEmpty seats are filled by computer players.';
+    case PHASE.lobby: return 'left/right: species   space: ready   esc: leave the table\nEmpty seats are filled by computer players.';
     case PHASE.grant: return 'space/click: claim the plot under the cursor';
     case PHASE.landauction: return 'hold up to bid (releasing lets your bid drift down)\nspace: skip the for-sale display';
     case PHASE.develop: return 'arrows: walk (diagonals are fastest; mountains and the river slow you down)\n' +
@@ -115,6 +149,10 @@ function helpText(v) {
   }
 }
 
+function helpLine(v) {
+  return helpText(v) + (v.p === PHASE.lobby ? '' : '\nesc: leave the game (asks first; the computer takes over your seat)');
+}
+
 // ---------------------------------------------------------------- loop (fixed 60 Hz)
 
 let acc = 0, lastT = performance.now();
@@ -122,14 +160,34 @@ function loop(now) {
   acc += Math.min(250, now - lastT);
   lastT = now;
   const v = api && api.state;
+  if (v && pressed.has('Escape')) {
+    if (leaveAsk || v.p === PHASE.lobby) leave();
+    else leaveAsk = true;
+    pressed.clear();
+  } else if (leaveAsk && pressed.size) {
+    leaveAsk = false; // any other key: carry on
+    pressed.clear();
+  }
   let steps = 0;
   while (acc >= 1000 / 60) {
     acc -= 1000 / 60;
     jiffy++;
-    if (v) simulate(v);
+    if (v && !leaveAsk) simulate(v);
     steps++;
   }
-  render(v);
+  if (leaveAsk) {
+    // the game stands still: its screens see no keys while we ask
+    const k = keys, p = pressed;
+    keys = new Set();
+    pressed = new Set();
+    render(v);
+    keys = k;
+    pressed = p;
+    gfx.rect(0, 176, W, 24, 0x00);
+    gfx.textCenter('LEAVE THE GAME? ESC AGAIN: YES', 184, 0x0e);
+  } else {
+    render(v);
+  }
   pressed.clear();
   requestAnimationFrame(loop);
 }

@@ -71,7 +71,7 @@ The chosen table is written back to key 10, so restarting rejoins it.
 | space, or a joystick button / apple key | the button |
 | RETURN | end your development turn |
 | 0 | declare: sit this good out |
-| ESC | leave the table (lobby); at the table list, quit |
+| ESC | leave the table: at once in the lobby; in a game it asks first (ESC again leaves, any other key carries on) and the computer takes over your seat. At the table list, quit |
 | ctrl-S | sound off / on |
 
 A joystick works too if one is centred when the game starts.
@@ -178,7 +178,7 @@ How it gets there:
 | arrows (or the right joystick) | walk, push, choose |
 | SPACE (or the joystick button) | the button |
 | ENTER | end your development turn |
-| BREAK | leave the table (lobby); at the table list, quit (a cold start) |
+| BREAK | leave the table: at once in the lobby; in a game after asking (BREAK again). At the table list, quit (a cold start) |
 | 0 | declare: sit this good out |
 | LEFT | also rubs out when typing a name |
 | CLEAR | swap the artifact colours |
@@ -233,7 +233,7 @@ How it gets there:
 | arrows, keypad (7 9 1 3 diagonals), or joystick A | walk, push, choose |
 | SPACE (or a joystick button) | the button |
 | ENTER | end your development turn |
-| ESC | leave the table (lobby); at the table list, back to the FujiNet lobby |
+| ESC | leave the table: at once in the lobby; in a game after asking (ESC again). At the table list, back to the FujiNet lobby |
 | 0 | declare: sit this good out |
 | BACKSPACE | rub out, when typing a name |
 | F1 | sound off / on |

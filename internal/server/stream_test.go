@@ -301,3 +301,40 @@ func TestStreamActionParams(t *testing.T) {
 		t.Fatal("ACT_STATE is a poll")
 	}
 }
+
+// Leaving mid-game hands the seat to the computer for good: the pushes that
+// follow must not take it back. HELLO under the same name does.
+func TestStreamLeaveInGame(t *testing.T) {
+	h, addr := startStream(t)
+	startSolo(h, "dev1")
+	c := dialStream(t, addr)
+	c.hello("dev1", "solo")
+	c.next(proto.CSCommit)
+	if st := c.state(); st.H.MySeat != 0 {
+		t.Fatalf("seat %d", st.H.MySeat)
+	}
+	c.send(proto.SCAct, 5, proto.ActLeave, 0, 0, 0)
+	for {
+		if seq := c.next(proto.CSCommit)[0]; seq == 5 {
+			break
+		}
+	}
+	if st := c.state(); st.H.MySeat != -1 {
+		t.Fatalf("after leave seat %d", st.H.MySeat)
+	}
+	time.Sleep(5 * StreamPush) // pushes run
+	if v := h.view("/view?table=dev1"); !v.Players[0].AI {
+		t.Fatal("seat taken back after leave")
+	}
+	c.hello("dev1", "solo")
+	deadline := time.Now().Add(3 * time.Second)
+	for c.state().H.MySeat != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("HELLO did not rejoin")
+		}
+		c.next(proto.CSCommit)
+	}
+	if v := h.view("/view?table=dev1"); v.Players[0].AI {
+		t.Fatal("rejoined seat still AI")
+	}
+}

@@ -161,6 +161,7 @@ void boot(void);
 void game_start(void);
 void table_select(void);        /* boot overlay: call choose_table() */
 void choose_table(void);
+void leave_table(void);        /* main.c: leave, then the table list */
 void test_start(uint8_t ph, uint8_t arg, uint8_t pev);
 void test_poll(void);
 void autoplay(void);

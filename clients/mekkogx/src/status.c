@@ -320,12 +320,7 @@ void lobby_tick(void)
     msg_tick();
     /* ESC: leave this table and pick another */
     if (ev_key == KEY_LEAVE) {
-        act = ACT_LEAVE;
-        net_sync();
-        appkey_clear_room();
-        choose_table();
-        appkey_save_room();
-        game_start();
+        leave_table();
         return;
     }
     /* the countdown to the start, in seconds */

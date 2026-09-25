@@ -54,7 +54,7 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
 | `/tables` | any | Lists tables: `[{t,n,p,m,ph,r}]`. With `bin=1`: a count byte, then entries of `char id[8], name[20], players[5]`. With `dev=1`: hidden dev tables. |
 | `/state` | any | Joins the table (lobby only; otherwise you watch as a spectator), pings, and returns the state. |
 | `/view` | any | Spectator view. Does not join. |
-| `/leave` | any | Leaves the table. In a game, the computer takes over your seat. Returns `bye`. |
+| `/leave` | any | Leaves the table. In a game, the computer takes over your seat. Returns `bye`. A leaving client must stop polling under its name: any later request with the same name at that table takes the seat back from the computer (that is how a dropped player rejoins). |
 | `/setup/species/:s` | lobby | Sets your species, by name or number 0–7. |
 | `/ready`, `/ready/1`, `/ready/0` | lobby, summary, landauction | The button. In the lobby it toggles or sets ready. On the status summary, every human must press. During a land auction's for-sale display, the display ends once every human has pressed. |
 | `/claim/:plot` | grant | Claims the plot under the cursor. Accepted if the plot is under the cursor, or the cursor left it within the last 36 jiffies; the cursor then goes back to it for the claim pause. A computer claims on the jiffy the cursor arrives, but a human claim within 36 jiffies of that takes the plot from it. |
@@ -158,7 +158,7 @@ over the type and the payload. A decoded frame is at most 128 bytes.
 | Type | Payload | |
 |------|---------|--|
 | `H` | ver (1), flags (bit 0: big-endian), table[8], player[8] (NUL padded) | join: from now on the connection is a `/state` poll for this player at this table |
-| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH` |
+| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH`. `ACT_LEAVE` leaves the table (as `/leave`) and the connection then watches as a spectator until the next `H`, which rejoins |
 | `T` | (1: the hidden dev tables) | list the tables |
 | `R` | | send the whole state again (the client lost a frame) |
 | `C` | n | credit: bytes taken out of the receive ring since connecting, mod 256 |

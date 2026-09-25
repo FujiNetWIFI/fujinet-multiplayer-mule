@@ -16,6 +16,7 @@ SRC = os.path.join(HERE, "../../mekkogx/src/strings.c")
 
 MACROS = {
     "KEY_END_NAME": '"="',
+    "LEAVE_KEY_NAME": '"C"',
     "LOBBY_HINT": '"<> SPECIES   TRIGGER READY   C LEAVE"',
 }
 

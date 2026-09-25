@@ -8,7 +8,8 @@
 ; Player 1's handle is port 10H: U/D/L/R/trigger in bits 0-4, active high.
 ; The keypad is four column ports, 14H (right) .. 17H (left), bits 0-5
 ; bottom key first (decoded from MAME's astrohome.cpp, as netcat does):
-;   = ends the turn (KEY_END), C leaves (KEY_LEAVE), CE rubs out (KEY_BACK),
+;   = ends the turn (KEY_END), C leaves (KEY_LEAVE; in a game after asking,
+;   status.inc LVASK), CE rubs out (KEY_BACK),
 ;   the digits are themselves (0 sits a good out), MR mutes.
 
 DIRDN   EQU     1

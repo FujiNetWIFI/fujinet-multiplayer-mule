@@ -62,6 +62,7 @@
 #define M_ENDTURN     58
 #define M_LOBBYHELP   59
 #define M_LEAVEHELP   60
+#define M_LEAVEASK    61
 
 /* words */
 #define W_SUMMARY     0

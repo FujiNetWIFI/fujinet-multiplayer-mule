@@ -210,6 +210,9 @@ func TestDropHandsSeatToAIAndGameCompletes(t *testing.T) {
 		t.Fatal("rejoin failed")
 	}
 	h.get("/leave?table=irata&player=solo")
+	if v = h.view("/view?table=irata"); !v.Players[0].AI {
+		t.Fatal("leave did not hand the seat to the AI")
+	}
 	defer func(d time.Duration) { AbandonTimeout = d }(AbandonTimeout)
 	AbandonTimeout = 24 * time.Hour // let the computers finish the game
 	for i := 0; i < 400; i++ {

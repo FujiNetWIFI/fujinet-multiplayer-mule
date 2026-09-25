@@ -165,6 +165,13 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 			t.leave(seat)
 			t.mu.Unlock()
 			s.notifyLobby(t)
+			// Watch from now on: the pushes must not carry the name, or the
+			// first would take the seat back (seatOf). HELLO rejoins.
+			sc.mu.Lock()
+			if sc.player == player {
+				sc.player = ""
+			}
+			sc.mu.Unlock()
 			v = s.apply(t, "", nil, nil)
 		} else {
 			f, ps := streamAction(p[1], int(p[2])|int(p[3])<<8, int(p[4]))

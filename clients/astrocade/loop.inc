@@ -24,6 +24,14 @@ MAINLP: LD      A,1
         CALL    SNDTICK
         CALL    INPOLL
         CALL    INTAKE
+        LD      A,(EVKEY)       ; C in a game: ask, then maybe leave
+        CP      KEYLV
+        JR      NZ,ML0
+        CALL    FARCALL
+        DB      PGSTAT
+        DW      LVASK
+        JP      C,MAINLP
+ML0:
         IF      AUTOPLAY
         CALL    FARCALL
         DB      PGTEST

@@ -339,14 +339,7 @@ END
 lobby_tick: PROCEDURE
     GOSUB msg_tick_run
     ' Keypad CLEAR: leave this table and pick another.
-    IF ev_key = 10 THEN
-        act = ACT_LEAVE : GOSUB net_exchange
-        GOSUB clear_room_appkey
-        GOSUB table_select
-        GOSUB write_room_appkey
-        last_phase = 255 : scr_now = SCR_NONE : st_ok = 0 : poll_wait = 0
-        RETURN
-    END IF
+    IF ev_key = 10 THEN POKE LV_GO, 1 : RETURN   ' the main loop leaves
     ' Countdown to the start, in seconds.
     #w = st16(ST_COUNTDOWN)
     IF #w < 32768 THEN

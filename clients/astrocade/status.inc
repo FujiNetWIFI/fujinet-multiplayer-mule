@@ -44,6 +44,53 @@ STSTATE: LD     A,(PHS)
         CP      PH_SUMM
         JP      Z,SUSTATE
         RET
+; LVASK: the leave key (C) outside the lobby, from MAINLP. NC: not ours
+; (the lobby's tick, test mode, no state yet). C: we asked; the game stood
+; still meanwhile (no PE_ANIM, the keys swallowed), and on a second C we left.
+LVASK:  LD      A,(STOK)
+        OR      A
+        RET     Z
+        LD      A,(PHS)
+        OR      A               ; PH_LOBBY
+        RET     Z
+        LD      A,(TESTMD)
+        OR      A
+        RET     NZ
+        LD      B,M_LEAVEASK
+        CALL    MSGSHOW
+LVA1:   CALL    FRWAIT
+        CALL    SNDTICK
+        CALL    MSGTICK
+        CALL    INPOLL
+        CALL    INTAKE
+        LD      A,(EVBTN)
+        OR      A
+        JR      NZ,LVA2
+        LD      A,(EVKEY)
+        OR      A
+        JR      Z,LVA1
+        CP      KEYLV
+        JR      NZ,LVA2
+        CALL    FXSTOP
+; LVGO: leave the table (the server gives our seat to the computer), then
+; the table list and a new join.
+LVGO:   LD      A,A_LEAVE
+        LD      (ACT),A
+        CALL    NETSYNC
+        CALL    FARCALL
+        DB      PGBOOT
+        DW      REROOM
+        SCF
+        RET
+LVA2:   CALL    MSGCLR          ; no: carry on
+        XOR     A
+        LD      (EVBTN),A
+        LD      (EVKEY),A
+        LD      HL,(FRAMES)     ; and don't catch up the frames we asked in
+        LD      (DONE),HL
+        SCF
+        RET
+
 STTICK: LD      A,(PHS)
         CP      PH_LOBBY
         JP      Z,LBTICK
@@ -352,14 +399,7 @@ MLB1:   ADD     A,C
 LBTICK: CALL    MSGTICK
         LD      A,(EVKEY)       ; C: leave this table and pick another
         CP      KEYLV
-        JR      NZ,LBT1
-        LD      A,A_LEAVE
-        LD      (ACT),A
-        CALL    NETSYNC
-        CALL    FARCALL
-        DB      PGBOOT
-        DW      REROOM
-        RET
+        JP      Z,LVGO
 LBT1:   ; the countdown to the start, in seconds
         LD      HL,(HOTH+W_CDOWN)
         BIT     7,H

@@ -58,7 +58,8 @@ The chosen table is written back to key 10, so resetting the console rejoins it.
 
 | Screen | Control |
 |---|---|
-| Lobby | Disc left/right: species. Button: ready / not ready |
+| Lobby | Disc left/right: species. Button: ready / not ready. Keypad CLEAR: leave the table |
+| Any screen in a game | Keypad CLEAR: leave the game (asks first: CLEAR again leaves, anything else carries on; the computer takes over your seat) |
 | Status summary | Button: continue (every player must press) |
 | Land grant | Button: claim the plot under the cursor |
 | Land auction | Button: skip the plot display. Disc up/down: raise/lower your bid; let go to hold |

@@ -41,7 +41,7 @@ The hand controller moves, and its trigger is the button. On the keypad:
 | Key | Does |
 |---|---|
 | = | ends the turn; finishes the name |
-| C | leaves the table (in the lobby) |
+| C | leaves the table: at once in the lobby; in a game it asks first (C again leaves, the trigger or any other key carries on) and the computer takes over your seat |
 | CE | rubs out (name entry) |
 | 0 | sits a good out (declaring) |
 | MR | mutes |

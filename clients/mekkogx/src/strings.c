@@ -80,6 +80,7 @@ static const char *const msgs[] = {
     KEY_END_NAME " ENDS YOUR TURN",
     LOBBY_HINT,
     "STARTING IN % SECONDS",
+    "LEAVE GAME? " LEAVE_KEY_NAME " AGAIN: YES",
 };
 
 static const char *const goods[] = { "FOOD", "ENERGY", "SMITHORE", "CRYSTITE" };

@@ -153,6 +153,45 @@ void game_start(void)
     text_center(11, "JOINING...", C_WHITE);
 }
 
+/* Leave the table (ESC in the lobby, or confirmed in a game: the server
+ * gives the computer our seat) and pick another. */
+void leave_table(void)
+{
+    anim = AN_NONE;
+    fx_stop_all();
+    spr_hide_all();
+    act = ACT_LEAVE;
+    net_sync();
+    appkey_clear_room();
+    choose_table();
+    appkey_save_room();
+    game_start();
+}
+
+/* ESC in a game: ask first. The game stands still while we ask; the leave
+ * key again leaves, any other key or the button carries on. */
+static void leave_ask(void)
+{
+    msg_row = 22;
+    msg_col = C_WHITE;
+    msg_show(M_LEAVEASK, 0, 0);
+    do {
+        frame_wait();
+        spr_flush();
+        snd_tick();
+        msg_tick();
+        input_poll();
+        input_take();
+    } while (!ev_btn && ev_key == KEY_NONE);
+    if (ev_key == KEY_LEAVE && !test_mode) {
+        leave_table();
+        return;
+    }
+    msg_clear();
+    ev_btn = 0;
+    ev_key = KEY_NONE;
+}
+
 void main(void)
 {
     const char *err = bank_init();
@@ -240,6 +279,11 @@ void main(void)
             }
         }
         dbg_at = 7;
+        if (st_ok && phase != PHASE_LOBBY && ev_key == KEY_LEAVE) {
+            leave_ask();
+            done = frame_count;
+            continue;
+        }
         if (st_ok)
             ticks[phase]();
         /* background drawn this frame took sprites off: back before the

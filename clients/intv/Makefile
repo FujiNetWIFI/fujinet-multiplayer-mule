@@ -26,7 +26,8 @@ endif
 PRODUCT = mule
 SOURCES = mule.bas memory.bas fujinet.bas input.bas net.bas screen.bas isr.bas \
           fx.bas sound.bas map.bas grant.bas develop.bas auction.bas events.bas \
-          status.bas boot.bas text.bas textlong.bas ids.bas grant.bas test.bas constants.bas
+          status.bas boot.bas text.bas textlong.bas ids.bas grant.bas test.bas constants.bas \
+          leave.bas
 GEN     = gen/proto.bas gen/gfx.bas gen/gfxconst.bas gen/config.bas
 
 .PHONY: all clean run check proto assets FORCE

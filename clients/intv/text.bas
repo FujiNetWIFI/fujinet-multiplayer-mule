@@ -87,6 +87,7 @@ t_msgs:
     DATA 19, "TAKE A SAMPLE FIRST"
     DATA 18, "OUTFIT M.U.L.E. $%"
     DATA 17, "THE SHIP IS BACK!"
+    DATA 18, "LEAVE? CLEAR AGAIN"
 
 ' Goods, species, words.
 t_goods:

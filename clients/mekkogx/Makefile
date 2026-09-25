@@ -80,7 +80,7 @@ CFLAGS_EXTRA_COCO += -O1 -funsigned-char -fomit-frame-pointer -Wno-const -DPLAT_
                      --lwasm=$(COCO_TOOLS)/lwasm-sect
 ASFLAGS_EXTRA_COCO += --lwasm=$(COCO_TOOLS)/lwasm-sect
 LDFLAGS_EXTRA_COCO += --lwlink=$(COCO_TOOLS)/lwlink-mule.py --initial-s=8000
-CFLAGS_EXTRA_COCO += -DKEY_END_NAME='"ENTER"' -DQUIT_HINT='"BREAK: QUIT"' \
+CFLAGS_EXTRA_COCO += -DKEY_END_NAME='"ENTER"' -DQUIT_HINT='"BREAK: QUIT"' -DLEAVE_KEY_NAME='"BREAK"' \
                      -DLOBBY_HINT='"<- -> SPECIES  SPACE READY  BREAK LEAVE"'
 EXTRA_INCLUDE_COCO += src/coco/include
 EXECUTABLE_EXTRA_DEPS_COCO += src/coco/mule.link $(COCO_TOOLS)/lwlink-mule.py
@@ -146,7 +146,7 @@ ifneq ($(filter adam msxrom,$(PLATFORM)),)
   LD_Z88DK = $(Z80_TOOLS)/z88dk zcc
 endif
 # (zcc hands the defines on through a shell: a string is quoted twice)
-CFLAGS_EXTRA_ADAM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DQUIT_HINT='"\"ESCAPE: QUIT\""'
+CFLAGS_EXTRA_ADAM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DQUIT_HINT='"\"ESCAPE: QUIT\""' -DLEAVE_KEY_NAME='"\"ESCAPE\""'
 EXTRA_INCLUDE_ADAM += src/tms9918 build/fnlib-adam/include
 # The memory map: src/adam/mule.asm. The NMI is the frame clock
 # (src/adam/nmi.asm); the variables are not part of the image.

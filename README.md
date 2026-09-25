@@ -66,6 +66,7 @@ then checks the decoded binary against the JSON state.
 | Declare | ↑ seller, ↓ buyer, N sit out |
 | Auctions | hold ↑/↓ to move your line; C colludes |
 | Status screens | space continues |
+| Any phase | Esc leaves: at once in the lobby, and in a game after asking (Esc again). The computer takes over your seat. |
 
 ## Deploy
 
