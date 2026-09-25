@@ -101,9 +101,11 @@ _mus_start:
         lda     #0
         sta     mus_on
         jsr     mus_rewind
+        lda     _ns_on          ; the stream owns SKCTL (its clock bits)
+        bne     @on
         lda     #3
         sta     SKCTL
-        lda     #1
+@on:    lda     #1
         sta     mus_on
         rts
 
