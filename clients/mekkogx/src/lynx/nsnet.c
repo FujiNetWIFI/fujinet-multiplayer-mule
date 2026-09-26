@@ -1,0 +1,409 @@
+/*
+ * nsnet.c -- mule.h's network calls in stream mode on the Lynx: one TCP
+ * connection to the server through FujiNet-Lynx's netstream, as on the
+ * Atari (src/atari/nsnet.c, docs/PROTOCOL.md "Stream mode").
+ *
+ * fujinet-lib-experimental's fuji_enable_netstream() turns it on; from
+ * then on ComLynx is a raw pipe to the socket (cc65's serial driver, the
+ * one the library opened: 62500 baud, 8 bits, odd parity). It can't be
+ * turned off again, so nothing else may go over the bus after that
+ * (net.c's appkey calls look at ns_on).
+ *
+ * The driver's receive ring is 256 bytes, filled by its interrupt: the
+ * server sends at most STREAM_WINDOW bytes we haven't credited (SC_CREDIT),
+ * so it can't overflow while the game draws or loads an overlay. ComLynx
+ * is one wire: while we send, the driver doesn't receive (FujiNet waits
+ * for the line to go quiet), so frames going out are kept short.
+ */
+#ifdef __LYNX__
+
+#include <string.h>
+#include <serial.h>
+#include "mule.h"
+#include "plat.h"
+#include "fujinet-fuji.h"
+
+#ifndef NS_PORT
+#define NS_PORT  STREAM_PORT
+#endif
+
+#define PING_EVERY 600          /* frames between keepalives */
+#define DEAD_AFTER 300          /* frames without a frame: the link is gone */
+#define HELLO_WAIT 30           /* frames before HELLO goes again: FujiNet */
+#define HELLO_MAX  10           /* answers before its socket is open */
+#define PUT_TRIES  2000         /* a full send ring: give up on the frame */
+#define FMAX       136          /* a frame, encoded (STREAM_MAX_FRAME + COBS) */
+#define RESYNC_GAP 30           /* frames between RESYNCs: one bad frame (an
+                                 * echo of our own, a collision on the wire)
+                                 * mustn't start a storm of them */
+
+uint8_t ns_on;                  /* the stream is on (for ever) */
+static uint8_t ns_taken;        /* bytes taken, mod 256 (SC_CREDIT) */
+static uint8_t fbuf[FMAX];
+static uint8_t flen, fover;
+
+static uint8_t stage[sizeof(MuleState)];
+static uint8_t joined, heard;
+static uint8_t seq, wait_seq, wait_act, credited, hello_n, hello_t, resync_hold;
+static uint16_t quiet;
+
+typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
+typedef char mule_table_is_33_bytes[sizeof(MuleTable) == 33 ? 1 : -1];
+
+/* ---- bytes ---------------------------------------------------------------- */
+
+static uint8_t put_ok;
+
+static void put(uint8_t c)
+{
+    uint16_t n;
+    if (!put_ok)
+        return;
+    for (n = PUT_TRIES; ser_put(c) != SER_ERR_OK; )
+        if (--n == 0) {
+            put_ok = 0;
+            return;
+        }
+}
+
+/* One frame from the ring: 0 none (yet), 255 a bad one (dropped), else its
+ * decoded length (type, payload; the sum left off) in fbuf. */
+static uint8_t take_frame(void)
+{
+    char c;
+    uint8_t i, o, k, code, n, s1, s2;
+    for (;;) {
+        if (ser_get(&c) != SER_ERR_OK)
+            return 0;
+        ++ns_taken;
+        if (c) {
+            if (flen < FMAX)
+                fbuf[flen++] = c;
+            else
+                fover = 1;
+            continue;
+        }
+        n = flen;
+        flen = 0;
+        if (fover) {
+            fover = 0;
+            return 255;
+        }
+        if (n == 0)
+            continue;               /* an empty frame (or our own 0, echoed) */
+        /* COBS, in place: a code is 1 + the bytes up to the next 0 (none
+         * after the last block, nor after a full one of 254) */
+        i = o = 0;
+        while (i < n) {
+            code = fbuf[i++];
+            for (k = 1; k < code; ++k) {
+                if (i >= n)
+                    return 255;
+                fbuf[o++] = fbuf[i++];
+            }
+            if (code != 0xFF && i < n)
+                fbuf[o++] = 0;
+        }
+        if (o < 3)
+            return 255;
+        o -= 2;
+        s1 = s2 = 0;
+        for (i = 0; i < o; ++i) {
+            s1 = (uint8_t)(((uint16_t)s1 + fbuf[i]) % 255);
+            s2 = (uint8_t)(((uint16_t)s2 + s1) % 255);
+        }
+        if (fbuf[o] != s1 || fbuf[o + 1] != s2)
+            return 255;
+        return o;
+    }
+}
+
+/* ---- sending ------------------------------------------------------------ */
+
+/* A frame: COBS of type, payload, Fletcher-16; then 0. A frame given up
+ * half way is ended with its 0 all the same (the server drops it). */
+static void send(uint8_t type, const uint8_t *p, uint8_t n)
+{
+    static uint8_t raw[24];
+    uint8_t s1, s2, i, code, from;
+    raw[0] = type;
+    memcpy(raw + 1, p, n);
+    ++n;
+    s1 = s2 = 0;
+    for (i = 0; i < n; ++i) {
+        s1 = (uint8_t)(((uint16_t)s1 + raw[i]) % 255);
+        s2 = (uint8_t)(((uint16_t)s2 + s1) % 255);
+    }
+    raw[n++] = s1;
+    raw[n++] = s2;
+    put_ok = 1;
+    from = 0;
+    for (i = 0; i <= n; ++i) {
+        if (i == n || raw[i] == 0) {
+            code = i - from + 1;
+            put(code);
+            for (; from < i; ++from)
+                put(raw[from]);
+            ++from;                 /* past the 0 */
+        }
+    }
+    put_ok = 1;
+    put(0);
+}
+
+static void send_credit(void)
+{
+    credited = ns_taken;
+    send(SC_CREDIT, &credited, 1);
+}
+
+/* (Re)join. An action the old link never answered goes again. */
+static void send_hello(void)
+{
+    static uint8_t h[18];
+    memset(h, 0, sizeof(h));
+    h[0] = STREAM_VERSION;
+    strncpy((char *)h + 2, sc_table, 8);
+    strncpy((char *)h + 10, sc_name, 8);
+    send(SC_HELLO, h, sizeof(h));
+    hello_t = 0;
+    if (!joined) {
+        joined = 1;
+        heard = 0;
+        hello_n = 0;
+        if (wait_seq && act == ACT_NONE && wait_act != ACT_LEAVE)
+            act = wait_act;
+        wait_seq = 0;
+    }
+}
+
+/* ---- the link ----------------------------------------------------------- */
+
+/* "http://host:9900/..." -> host */
+static const char *endpoint_host(void)
+{
+    static char host[61];
+    const char *p = strstr(sc_endpt, "://");
+    uint8_t n = 0;
+    p = p ? p + 3 : sc_endpt;
+    while (*p && *p != ':' && *p != '/' && n < 60)
+        host[n++] = *p++;
+    host[n] = 0;
+    return host;
+}
+
+static uint8_t connect(void)
+{
+    char c;
+    if (ns_on)
+        return 1;
+    if (!fuji_enable_netstream(NS_PORT, endpoint_host(), NETSTREAM_TCP))
+        return 0;
+    while (ser_get(&c) == SER_ERR_OK)
+        ;                           /* what the command left behind */
+    ns_on = 1;
+    ns_taken = credited = flen = fover = 0;
+    quiet = 0;
+    joined = 0;
+    return 1;
+}
+
+/* The stream can't be paused: net.c asks nothing of the bus once it's on. */
+void ns_pause(void)
+{
+}
+
+void ns_resume(void)
+{
+}
+
+/* Leaving the program: say goodbye (FujiNet keeps the stream). */
+void ns_close(void)
+{
+    if (ns_on && joined)
+        send(SC_BYE, 0, 0);
+    joined = 0;
+}
+
+/* ---- receiving ---------------------------------------------------------- */
+
+/* One frame from the ring, handled. 0: none (yet); 1: a state came in (st);
+ * 2: the server refused us (st.h.err). */
+static uint8_t take(void)
+{
+    uint8_t n;
+    uint16_t off;
+    for (;;) {
+        n = take_frame();
+        if (n == 0)
+            return 0;
+        quiet = 0;
+        heard = 1;
+        if (n == 255) {
+            if (!resync_hold) {
+                send(SC_RESYNC, 0, 0);  /* lost: the whole state again */
+                resync_hold = RESYNC_GAP;
+            }
+            continue;
+        }
+        switch (fbuf[0]) {
+        case CS_PATCH:
+            off = fbuf[1] | fbuf[2] << 8;
+            n -= 3;
+            if (off + n <= sizeof(stage))
+                memcpy(stage + off, fbuf + 3, n);
+            break;
+        case CS_COMMIT:
+            if (!joined)
+                break;
+            memcpy(&st, stage, sizeof(MuleState));
+            if (wait_seq && fbuf[1] == wait_seq) {
+                act_sent = wait_act;
+                wait_seq = 0;
+            } else {
+                act_sent = ACT_STATE;
+            }
+            return 1;
+        case CS_ERROR:
+            st.h.err = fbuf[1];
+            return 2;
+        }
+    }
+}
+
+/* ---- mule.h ------------------------------------------------------------- */
+
+void act_send(uint8_t a, uint16_t arg)
+{
+    act = a;
+    act_arg = arg;
+    poll_wait = 0;
+}
+
+/* Busy while joined: the main loop then steps us every frame. */
+uint8_t net_busy(void)
+{
+    return joined;
+}
+
+/* Not joined: join (connecting first). */
+void net_begin(void)
+{
+    net_have = 0;
+    if (!connect())
+        return;
+    if (act == ACT_LEAVE)
+        act = ACT_NONE;
+    send_hello();
+}
+
+uint8_t net_step(void)
+{
+    static uint8_t a[5];
+    uint8_t r;
+    if (!joined)
+        return 0;
+    if (resync_hold)
+        --resync_hold;
+    if (!heard && ++hello_t >= HELLO_WAIT && hello_n < HELLO_MAX) {
+        ++hello_n;
+        send_hello();               /* the socket may not have been open */
+    }
+    if (act != ACT_NONE && !wait_seq) {
+        if (++seq == 0)
+            seq = 1;
+        a[0] = seq;
+        a[1] = act;
+        a[2] = (uint8_t)act_arg;
+        a[3] = act_arg >> 8;
+        a[4] = au_traded;       /* the units we have shown (ACT_PUSH) */
+        send(SC_ACT, a, 5);
+        wait_seq = seq;
+        wait_act = act;
+        act = ACT_NONE;
+    }
+    r = take();
+    if ((uint8_t)(ns_taken - credited) >= 48)
+        send_credit();
+    if (r) {
+        net_have = r;
+        if (r == 2)
+            joined = 0;
+        return 1;
+    }
+    if (++quiet % PING_EVERY == 0) {
+        send_credit();          /* a keepalive, and credit it may have lost */
+        send(SC_PING, 0, 0);
+    }
+    if (quiet > DEAD_AFTER && heard) {
+        joined = 0;
+        net_have = 0;
+        return 1;
+    }
+    return 0;
+}
+
+/* The queued action (or none) answered: wait for its commit. Leaving is
+ * answered before the next table is chosen. */
+uint8_t net_sync(void)
+{
+    uint16_t t;
+    uint8_t leave = act == ACT_LEAVE;
+    if (!joined)
+        net_begin();
+    if (!joined)
+        return net_have;
+    if (act == ACT_NONE)
+        act = ACT_STATE;
+    for (t = 0; t < 600; ++t) {
+        frame_wait();
+        if (net_step() && (net_have != 1 || !wait_seq))
+            break;
+    }
+    if (leave) {
+        joined = 0;             /* the next net_begin says HELLO again */
+        wait_seq = 0;
+    }
+    return net_have;
+}
+
+/* Is there a FujiNet? Asked before the stream is on (after, it is). */
+uint8_t net_detect(void)
+{
+    uint8_t s;
+    if (ns_on)
+        return 1;
+    return fuji_get_wifi_status(&s);
+}
+
+/* The table list: count, then MuleTables. Blocking (boot). */
+uint8_t net_tables(uint8_t *buf, uint8_t max)
+{
+    uint16_t t;
+    uint8_t n, got = 0, count = 255;
+    if (!connect())
+        return 0;
+    for (t = 0; t < 360 && got < count; ++t) {
+        if (count == 255 && t % HELLO_WAIT == 0)
+            send(SC_TABLES, 0, 0);      /* again: the socket may have been shut */
+        frame_wait();
+        while ((n = take_frame()) != 0) {
+            if (n == 255 || fbuf[0] != CS_TABLE)
+                continue;               /* a state for the old table: skip */
+            count = fbuf[2];
+            if (fbuf[1] < max && n >= 3 + sizeof(MuleTable))
+                memcpy(buf + 1 + fbuf[1] * sizeof(MuleTable), fbuf + 3, sizeof(MuleTable));
+            if (++got >= count)
+                break;
+        }
+        if ((uint8_t)(ns_taken - credited) >= 48)
+            send_credit();
+    }
+    send_credit();
+    if (count == 255)
+        return 0;
+    buf[0] = count > max ? max : count;
+    return buf[0];
+}
+
+#endif

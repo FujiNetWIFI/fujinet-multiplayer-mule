@@ -18,6 +18,56 @@ static void wait_frames(uint8_t n)
     }
 }
 
+#ifdef PLAT_NO_KEYBOARD
+/* No keyboard: pick the letters. Up and down turn the one at the cursor
+ * through A-Z and 0-9 (held, it runs on); the button or right takes it and
+ * moves on, KEY_BACK or left rubs out, KEY_END ends. */
+static const char pick_set[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+static void name_entry(void)
+{
+    uint8_t n = 0, k = 0, rep = 0, blink;
+    char c;
+    gfx_clear();
+    text_center(6, "YOUR NAME?", C_WHITE);
+    text_center(16, "UP/DOWN A LETTER, A TAKES IT", C_WHITE);
+    text_center(18, "B RUBS OUT, " KEY_END_NAME " ENDS", C_WHITE);
+    memset(sc_name, 0, sizeof(sc_name));
+    for (;;) {
+        frame_wait();
+        snd_tick();
+        input_poll();
+        input_take();
+        c = ev_key;
+        if (rep)
+            --rep;
+        if ((c == KEY_BACK || (!rep && (inp_dir & DIR_LEFT))) && n) {
+            sc_name[--n] = 0;
+            rep = 12;
+            snd_play(SND_SELECT);
+        } else if (c == KEY_END) {
+            if (!n)
+                sc_name[n++] = pick_set[k];     /* a name of the one letter */
+            break;
+        } else if ((ev_btn || (!rep && (inp_dir & DIR_RIGHT))) && n < 8) {
+            sc_name[n++] = pick_set[k];
+            rep = 12;
+            snd_play(SND_SELECT);
+        } else if (!rep && (inp_dir & (DIR_UP | DIR_DOWN))) {
+            k = (inp_dir & DIR_UP) ? (k ? k - 1 : sizeof(pick_set) - 2)
+                                   : (k < sizeof(pick_set) - 2 ? k + 1 : 0);
+            rep = 8;
+        }
+        blink = (frame_count & 16) ? pick_set[k] : '_';
+        gfx_clear_text(6, 10, 28);
+        gfx_big(16 - (n & 0xFE), 10, sc_name, C_ORANGE);
+        if (n < 8)
+            gfx_char(16 - (n & 0xFE) + n * 2, 10, blink, C_WHITE);
+    }
+    snd_play(SND_SELECT);
+    appkey_save_name();
+}
+#else
 /* Type a name: A-Z and 0-9, up to 8; DELETE or <- rubs out, RETURN ends. */
 static void name_entry(void)
 {
@@ -49,6 +99,7 @@ static void name_entry(void)
     }
     snd_play(SND_SELECT);
 }
+#endif
 
 #define TB_MAX 9
 static uint8_t tbuf[1 + TB_MAX * sizeof(MuleTable)];
@@ -88,7 +139,7 @@ void table_select(void)
             name[5] = 0;
             gfx_text(30, 4 + i * 2, name, C_WHITE);
         }
-        text_center(23, "UP/DOWN, SPACE   " QUIT_HINT, C_WHITE);
+        text_center(23, "UP/DOWN, " BUTTON_NAME "   " QUIT_HINT, C_WHITE);
         sel = 0;
         for (;;) {
             frame_wait();

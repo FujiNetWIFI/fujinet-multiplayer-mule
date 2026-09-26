@@ -6,6 +6,7 @@
 #   make adam                          r2r/adam/mule.ddp and mule.dsk (Coleco Adam)
 #   make msxrom                        r2r/msxrom/mule.rom (MSX, a FujiNet user ROM: ASCII8)
 #   make atari                         r2r/atari/mule.atr (48K Atari 400/800, XL/XE)
+#   make lynx                          r2r/lynx/mule.lnx (Atari Lynx cart, FujiNet-Lynx)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -15,7 +16,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom atari
+PLATFORMS = apple2 coco msdos adam msxrom atari lynx
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -220,19 +221,44 @@ atari/disk-post::
 	$(RM) $(DISK)
 	$(DISK_TOOL) $(DISK_TOOL_FLAGS_ATARI) $(DISK) $(CACHE_PLATFORM)/disk
 
+# ---- Atari Lynx ---------------------------------------------------------------
+# cc65, a cart image (.lnx): the program at $0200, the phases as overlays in
+# the cart's directory loaded into a window at the top of RAM (src/lynx/
+# mule-lynx.cfg, bank.c). FujiNet-Lynx on ComLynx through fujinet-lib-
+# experimental (tools/lynx/mkfnlib.sh); the game then talks netstream: the
+# stream can't be paused, so nothing else goes over the bus once it is on.
+ifeq ($(PLATFORM),lynx)
+  FUJINET_LIB := __UNDEFINED__
+  LIBS += build/fnlib-lynx/fujinet-lynx.lib
+endif
+CFLAGS_EXTRA_LYNX += -Os -Cl -DSND_EXTRA -DPLAT_NETSTREAM -DPLAT_NS_ONEWAY -DPLAT_NO_KEYBOARD \
+                     -DKEY_END_NAME='"OPT1"' -DBUTTON_NAME='"A"' -DLEAVE_KEY_NAME='"OPT2"' -DQUIT_HINT='"OPT2: QUIT"' \
+                     -DLOBBY_HINT='"<- -> SPECIES   A READY   OPT2 LEAVE"'
+EXTRA_INCLUDE_LYNX += build/fnlib-lynx/include
+LDFLAGS_EXTRA_LYNX += -C src/lynx/mule-lynx.cfg -m build/mule-lynx.map
+EXECUTABLE_EXTRA_DEPS_LYNX += src/lynx/mule-lynx.cfg build/fnlib-lynx/fujinet-lynx.lib
+
+LXOBJ = build/$(PRODUCT)/lynx/src
+$(LXOBJ)/boot.o $(LXOBJ)/teststart.o: CFLAGS += --code-name OVERLAY1 --rodata-name OVERLAY1
+$(LXOBJ)/status.o:                    CFLAGS += --code-name OVERLAY2 --rodata-name OVERLAY2
+$(LXOBJ)/grant.o $(LXOBJ)/events.o:   CFLAGS += --code-name OVERLAY3 --rodata-name OVERLAY3
+$(LXOBJ)/auction.o:                   CFLAGS += --code-name OVERLAY4 --rodata-name OVERLAY4
+$(LXOBJ)/develop.o:                   CFLAGS += --code-name OVERLAY5 --rodata-name OVERLAY5
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
 r2r/adam/$(PRODUCT): gen-adam
 r2r/msxrom/$(PRODUCT): gen-msxrom
 r2r/atari/$(PRODUCT): gen-atari
+r2r/lynx/$(PRODUCT): gen-lynx
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
@@ -240,6 +266,7 @@ gen-msdos: gen/config.h gen/msdos/gfx.c build/fnlib-msdos/fujinet-msdos.lib
 gen-adam: gen/config.h gen/tms9918/gfx.c build/fnlib-adam/fujinet-adam.lib
 gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
 gen-atari: gen/config.h gen/atari/gfx.c gen/atari/snd.s
+gen-lynx: gen/config.h gen/lynx/gfx.c gen/lynx/snd.s build/fnlib-lynx/fujinet-lynx.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -284,6 +311,19 @@ gen/atari/snd.s: tools/mksnd_atari.py $(ATR)
 	@mkdir -p gen/atari
 	$(PYTHON) tools/mksnd_atari.py $(if $(ATR),--atr "$(ATR)") $@
 
+gen/lynx/gfx.c: tools/mkgfx_lynx.py tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/lynx
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_lynx.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/lynx $@
+
+gen/lynx/snd.s: tools/mksnd_atari.py $(ATR)
+	@mkdir -p gen/lynx
+	$(PYTHON) tools/mksnd_atari.py $(if $(ATR),--atr "$(ATR)") $@
+
+build/fnlib-lynx/fujinet-lynx.lib: tools/lynx/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/lynx/* $(FNLIB_EXP)/include/*.h)
+	tools/lynx/mkfnlib.sh $(FNLIB_EXP) build/fnlib-lynx
+
 build/fnlib-adam/fujinet-adam.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/adam/* $(FNLIB_EXP)/include/*.h)
 	tools/z80/mkfnlib.sh $(FNLIB_EXP) build/fnlib-adam adam
 
@@ -294,5 +334,5 @@ build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
 
 clean::
-	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/lynx gen/preview gen/config.h
 endif

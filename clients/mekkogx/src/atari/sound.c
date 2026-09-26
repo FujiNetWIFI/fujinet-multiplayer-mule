@@ -8,7 +8,7 @@
  * in production's, the jingles in develop's): they play only while theirs
  * is in (bank.c stops them when it goes).
  */
-#ifdef __ATARI__
+#if defined(__ATARI__) || defined(__LYNX__)   /* the Lynx: src/lynx/sound.c */
 
 #include <string.h>
 #include "mule.h"

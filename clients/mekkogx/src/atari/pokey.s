@@ -17,10 +17,28 @@
 ; network stream is on (nstream.s), only voices 1 and 2 are written: the
 ; serial port is clocked with 3 and 4 (and AUDCTL).
 ;
+; The Lynx assembles this too (src/lynx/pokey.s): there the shadow goes to
+; mikey.s, which plays it on Mikey's four channels, and nothing holds
+; voices back (ComLynx has its own clock).
+;
         .export _snd_vbi, _snd_mute, _mus_desc, _mus_start, _mus_stop
         .export _seq_start, _seq_stop, _v4_play, _tm_set, _step_play
         .export _seq_ptr
-        .import _v4_tab, _ns_on
+        .import _v4_tab
+.ifdef __LYNX__
+        .export _pk_out
+        .import _mikey_out, _snd_rand
+        .define LOWBSS "BSS"
+.macro  RND
+        jsr     _snd_rand
+.endmacro
+.else
+        .import _ns_on
+        .define LOWBSS "BSS2"
+.macro  RND
+        lda     RANDOM
+.endmacro
+.endif
 
 AUDF1   = $D200
 AUDCTL  = $D208
@@ -53,9 +71,12 @@ D_SIZE  = 43
 sp1:    .res 2          ; the VBI's own pointers
 sp2:    .res 2
 
-        .segment "BSS2"         ; low memory, cleared by sprite.s's clrlow
+        .segment LOWBSS         ; low memory, cleared by sprite.s's clrlow
 _snd_mute: .res 1
 sh:     .res 9          ; AUDF1 AUDC1 ... AUDF4 AUDC4 AUDCTL
+.ifdef __LYNX__
+_pk_out: .res 9         ; what POKEY would be given (mikey.s)
+.endif
 _mus_desc: .res D_SIZE
 mus_on: .res 1
 vp:     .res 8          ; voice pointers
@@ -101,10 +122,12 @@ _mus_start:
         lda     #0
         sta     mus_on
         jsr     mus_rewind
+.ifndef __LYNX__
         lda     _ns_on          ; the stream owns SKCTL (its clock bits)
         bne     @on
         lda     #3
         sta     SKCTL
+.endif
 @on:    lda     #1
         sta     mus_on
         rts
@@ -227,10 +250,12 @@ _snd_vbi:
         bmi     @4
         jsr     v4
 @4:     ldx     #8              ; out: all, or while SIO is busy
+.ifndef __LYNX__
         lda     CRITIC          ; voices 1 and 2 only
         ora     _ns_on
         beq     @w
         ldx     #3
+.endif
 @w:     lda     sh,x
         ldy     _snd_mute
         beq     @p
@@ -242,10 +267,17 @@ _snd_vbi:
         pla
         bcc     @p
         lda     #0
+.ifdef __LYNX__
+@p:     sta     _pk_out,x
+        dex
+        bpl     @w
+        jmp     _mikey_out
+.else
 @p:     sta     AUDF1,x
         dex
         bpl     @w
         rts
+.endif
 
 ; ---- music ---------------------------------------------------------------
 music:  ldx     #0
@@ -471,7 +503,7 @@ seq:    lda     sq_wait
         beq     @rnd
         ; $C0: one time in four
         jsr     mark
-        lda     RANDOM
+        RND
         and     #3
         bne     @c0
         iny
@@ -502,7 +534,7 @@ seq:    lda     sq_wait
         jmp     @op
 @rnd:   jsr     mark
         iny
-        lda     RANDOM
+        RND
         and     (sp1),y
         iny
         ora     (sp1),y
@@ -511,7 +543,7 @@ seq:    lda     sq_wait
         jsr     sqadv
         jmp     @op
 @wrnd:  iny
-        lda     RANDOM
+        RND
         and     (sp1),y
         sta     sq_wait
         lda     #2
@@ -647,7 +679,7 @@ step:   lda     st_n
         sta     sh+5
 @r:     rts
 
-        .segment "BSS2"
+        .segment LOWBSS
 st_on:  .res 1
         .code
 

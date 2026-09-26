@@ -276,11 +276,22 @@ void ns_resume(void);
 #define ns_resume()
 #endif
 
+#ifdef PLAT_NS_ONEWAY
+/* The Lynx: once the stream is on, the bus is the server's for good, so
+ * appkeys are read and written only before it (the name at boot); the
+ * table isn't kept (it would go stale with no way to clear it). */
+extern uint8_t ns_on;
+#define AK_NO_BUS(r) if (ns_on) return r
+#else
+#define AK_NO_BUS(r)
+#endif
+
 static uint8_t ak_read(uint8_t key)
 {
     uint16_t count = 0;
     uint8_t ok;
     memset(akbuf, 0, sizeof(akbuf));
+    AK_NO_BUS(0);
     ns_pause();
     fuji_set_appkey_details(1, 1, DEFAULT);
     ok = fuji_read_appkey(key, &count, akbuf);
@@ -351,7 +362,11 @@ void appkey_load(void)
     /* the table: only a URL counts (an unset key can read back as zeros) */
     endpoint_default();
     sc_table[0] = 0;
+#ifdef PLAT_NS_ONEWAY
+    n = 0;
+#else
     n = ak_read(AK_SERVER);
+#endif
     if (n > 4 && akbuf[0] == 'h') {
         memcpy(sc_endpt, akbuf, n);
         sc_endpt[n] = 0;
@@ -363,9 +378,22 @@ void appkey_load(void)
         sc_endpt[n - 1] = 0;
 }
 
+#ifdef PLAT_NO_KEYBOARD
+/* The name typed at boot, kept for next time (the lobby's key: a platform
+ * with no lobby to type it in). */
+void appkey_save_name(void)
+{
+    AK_NO_BUS();
+    fuji_set_appkey_details(1, 1, DEFAULT);
+    fuji_write_appkey(AK_NAME, strlen(sc_name), (uint8_t *)sc_name);
+}
+#endif
+
 void appkey_save_room(void)
 {
-    char *p = add((char *)akbuf, sc_endpt);
+    char *p;
+    AK_NO_BUS();
+    p = add((char *)akbuf, sc_endpt);
     p = add(p, "/?table=");
     p = add(p, sc_table);
     ns_pause();
@@ -376,6 +404,10 @@ void appkey_save_room(void)
 
 void appkey_clear_room(void)
 {
+#ifdef PLAT_NS_ONEWAY
+    sc_table[0] = 0;
+#endif
+    AK_NO_BUS();
     ns_pause();
     fuji_set_appkey_details(1, 1, DEFAULT);
     fuji_write_appkey(AK_SERVER, 0, akbuf);

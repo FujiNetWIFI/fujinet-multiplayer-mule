@@ -33,6 +33,9 @@
 #ifndef LEAVE_KEY_NAME
 #define LEAVE_KEY_NAME "ESC"        /* KEY_LEAVE */
 #endif
+#ifndef BUTTON_NAME
+#define BUTTON_NAME "SPACE"         /* the button, at the table list */
+#endif
 #ifndef QUIT_HINT
 #define QUIT_HINT "ESC: QUIT"       /* at the table list (plat_quit) */
 #endif

@@ -5,13 +5,14 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are six platforms:
+There are seven platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
 - the **Coleco Adam**, booted from a FujiNet disk or tape, with its SN76489;
 - the **MSX** (MSX1 and up), as a ROM the FujiNet cartridge runs, with its PSG;
-- the **Atari 400/800** with 48K (and the XL/XE), with the original's own graphics, music and sound effects, from its disk.
+- the **Atari 400/800** with 48K (and the XL/XE), with the original's own graphics, music and sound effects, from its disk;
+- the **Atari Lynx**, as a cart image, with FujiNet-Lynx on ComLynx, and the Atari's music and effects on Mikey.
 
 The Adam and the MSX share their graphics code (`src/tms9918`): both have a TMS9918A.
 
@@ -27,6 +28,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/tms9918/` | the TMS9918A screen and sprites, for the Adam and the MSX (z88dk) |
 | `src/adam/`, `src/msx/` | the rest of the Adam and MSX implementations |
 | `src/atari/` | the Atari implementation (cc65, much of it 6502 assembly) |
+| `src/lynx/` | the Lynx implementation (cc65; its sound is the Atari's `pokey.s`) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -380,6 +382,93 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 
   In that script, `coldstart` once FujiNet is there. With NetSIO on, asim keeps to 60 frames a second and turns the SIO patch off. atari800's NetSIO carries netstream too (the motor line and the POKEY serial port). Start the server with `MULE_STREAM_DEBUG=1` to log every frame. Convert shots with `topng.py out/NAME.scr`: it takes `.scr` files only.
 
+## The Lynx version
+
+A cart image for the Atari Lynx with a FujiNet-Lynx on its ComLynx port. It keeps the Atari version's network and sound, and draws the other versions' pictures with Suzy, on a screen half as tall.
+
+**Building.**
+
+    make lynx                                  # r2r/lynx/mule.lnx (a flash cart or an emulator)
+    make lynx ENDPOINT=http://myhost:8080      # the server: its host, stream port 9902
+
+- **What it needs:** cc65 2.19, Python 3 with Pillow, and fujinet-lib-experimental in `~/Workspace/fujinet-lib-experimental` (or `make FNLIB_EXP=/path`). `tools/lynx/mkfnlib.sh` compiles it into `build/fnlib-lynx`, with the bus packet buffer at 256 bytes instead of 1K.
+- **fujinet-lib-experimental needs** `fuji_enable_netstream()` and the Lynx appkey read and write (`bus/lynx/fuji_enable_netstream.c`, `fuji_bus_appkey_read.c`, `fuji_bus_appkey_write.c`), and `LYNX_PACKET_MAX` in `lynx_bus_call.c`.
+- **Graphics** come from the disk as for the others (`tools/mkgfx_lynx.py`, from `mkgfx_dos.py`'s and `mkgfx_hgr.py`'s extraction), into `gen/lynx/`. The sound is `tools/mksnd_atari.py`'s, into `gen/lynx/snd.s`.
+
+**The network: stream mode, one way.** `src/lynx/nsnet.c` is the Atari's `nsnet.c` over cc65's ComLynx driver (62500 baud, 8 bits, odd parity), which the library opens for its first bus call.
+- **Switching on:** `fuji_enable_netstream(9902, host, NETSTREAM_TCP)`. From then on every ComLynx byte goes to the server's socket, and every byte from it comes back.
+- **No way back.** The Lynx firmware can't leave stream mode, so nothing else may go over the bus once it is on (`PLAT_NS_ONEWAY` in `net.c`).
+  - The player's name (appkey 0) is read, and written after the picker, before the stream starts.
+  - The table (appkey 10) is neither read nor kept, so the table list comes up at every start.
+  - Quitting only says goodbye: the Lynx can then be switched off.
+- **The receive ring** is the driver's 256 bytes, filled by its interrupt. The server's 192-byte window keeps it from overflowing.
+- **HELLO and the table list** are asked for again every half second until an answer comes, because FujiNet acknowledges the command before its socket is open.
+- **A bad frame** asks for the whole state (RESYNC), at most once every 30 frames. ComLynx is one wire, and our own bytes or a collision must not start a storm.
+- **While we send** the driver doesn't receive, and FujiNet waits for the line to go quiet before it sends. Frames going up are short.
+
+**Memory** (`src/lynx/mule-lynx.cfg`):
+
+| Range | Use |
+|---|---|
+| $0200 | the program: code, data, then its variables |
+| $A000-$BFDF | the screen shown (160 x 102, 4 bits a pixel) |
+| $C000-$DFDF | the background (what `gfx_*` draw) |
+| $E000-$F89F | the overlay window: one phase at a time |
+| $F8A0-$FBFF | the C stack |
+
+- **The cart** is the program, then the five phases as entries 1-5 of the cart's directory (`src/lynx/directory.s`). `bank.c` loads a phase into the window with `lynx_load()`.
+- **Below $FC00.** Both buffers are kept under $FC00, because the CPU copies between them and can't reach the RAM under Suzy's and Mikey's registers.
+- **The pictures** are stored as plain 1-bit rows. Each becomes a Suzy literal sprite in a small buffer as it is drawn, because a literal line's length and pad bytes would triple an 8-pixel-wide shape.
+
+**The screen** (`gfx.c`, `suzy.s`).
+- **Across,** a colour clock is a pixel, as on the Atari.
+- **Down,** the 192 lines are mapped into 102 (`ly()`):
+  - rows 0-1 and 22-23 are 5 lines each;
+  - the map and the town (rows 2-21) are at half height: a plot is 16 x 16, and the town is 96 x 72 from line 10;
+  - text rows there alternate 5 and 3 lines, with rows 18 and 19 up a line. No screen writes an odd row and the one after it, except the town's corral price (19) with its money (20), which the shift makes room for.
+- **Text** is a 3 x 5 font in 4-pixel cells (40 across). Big text is the same, twice as wide. On the grey screens (the map and the town) white text is black, as the Atari prints it.
+- **Everything is drawn into the background** by Suzy. What changed is copied to the screen by the CPU, and the sprites are drawn over it again, so a sprite needs nothing saved from under it.
+- **ComLynx and Suzy.** While Suzy draws the CPU sleeps and interrupts wait, and ComLynx has one byte of buffering. So fills go in pieces of 8 lines, and the town is unpacked by the CPU.
+- **Pens:** the game's colours in order, with pen 14 a second black for sprites (pen 0 may be see-through) and pen 15 the river. The town's colours are the nearest pens.
+
+**Sound** is the Atari's: `src/atari/pokey.s` (assembled again by `src/lynx/pokey.s`) and `src/atari/sound.c`, run in the vertical blank.
+- **`mikey.s`** turns the four POKEY voices into Mikey's four channels:
+  - **pitch:** the POKEY clock (64 kHz, 15 kHz, 1.79 MHz, joined pairs) becomes a Mikey clock and count;
+  - **distortion:** pure tones are a square wave, the 4-bit polys a 15-step LFSR, the others a 4095-step one;
+  - **volume:** AUDC's volume times 8.
+- **All four voices play online:** ComLynx has its own clock.
+- **The VBL** (`irq.s`) counts the 60 Hz clock and runs the sound. Its interruptor has priority 1, so cc65's `clock()` counter (priority 2) sees the VBL first: fujinet-lib's timeouts depend on it. It acknowledges the VBL and re-enables interrupts, so ComLynx isn't held off while the music plays.
+- **No TGI:** its VBL handler would fight ours.
+
+**Controls:**
+
+| Button | Does |
+|---|---|
+| pad | walk; up/down in auctions; left/right in the lobby |
+| A | the button |
+| B | rub out (the name) |
+| OPTION 1 | RETURN: end your turn, finish the name |
+| OPTION 2 | ESC: leave the table (asks first in a game); at the table list, quit |
+| OPTION 1 + B | 0: sit this good out |
+| PAUSE | sound off / on |
+
+The name is picked a letter at a time (`PLAT_NO_KEYBOARD` in `boot.c`): up and down turn the letter, A or right takes it, B or left rubs out, and OPTION 1 ends.
+
+**Testing.**
+- **Offline, in MAME** (`tools/lynxsim/lynxsim.py`): `tools/a2sim`'s scenario language, with the cart in MAME's `lynx` (it needs `lynx.zip` in MAME's roms). `LYNXWAV=out.wav` records the sound.
+
+      python3 tools/lynxsim/lynxsim.py r2r/lynx/mule.lnx build/mule-lynx.map scenario.txt out/
+
+  - MAME's ComLynx only echoes back to itself, so only the offline test mode (`test <phase> [arg]`) plays.
+  - Without a test step the game waits for FujiNet (`NO FUJINET FOUND` after 10 seconds). Poking `ns_on` to 1 then gets past it, to the name picker and the table list.
+  - `key` takes a character: `key 08` is backspace (`key 8` would be the digit).
+- **On a Lynx** with a FujiNet-Lynx and a flash cart:
+  1. "CONNECTING...", then the name picker the first time (the name is kept).
+  2. The table list comes over the stream from the server's port 9902. A local server started with `MULE_STREAM_DEBUG=1` logs every frame.
+  3. Join a table and play a round against the computer.
+
+  The build remembers `ENDPOINT` (in `gen/endpoint`): put back `http://fujinet.online:9900/` after testing locally.
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
@@ -388,6 +477,9 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 - **Network pauses.** Animations pause briefly while a network call runs, because the Apple II has nothing to run them during a SmartPort call (the CoCo, during a DriveWire call).
 - **CoCo: phase changes** pause about a second while the phase's overlay is read.
 - **CoCo: grey** is black or white, and the fourth player is striped.
+- **Lynx: the screen is 102 lines.** Text rows on the map and town screens share lines, as described above. A long message's two rows (22 and 23) are tight.
+- **Lynx: sprites flicker a little** as they move: they are redrawn on the screen being shown (there's no room for a second one).
+- **Lynx: untested on hardware** as written: MAME has no ComLynx to the outside, so the network half has only been run on paper and the offline test mode.
 - **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS at 9600 bps that is a few seconds, and every server poll stalls the animations (about 13 frames a second get drawn): use 115200.
 - **MS-DOS, CGA:** the fourth player is striped, and the fence around the town's corral is white.
 - **Adam: phase changes** read the phase's overlay (up to 6 blocks). That is quick from a FujiNet, and slow from a real tape.

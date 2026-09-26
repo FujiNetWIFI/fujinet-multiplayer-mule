@@ -91,6 +91,9 @@ uint8_t net_tables(uint8_t *buf, uint8_t max);  /* /tables: count, entries in bu
 void appkey_load(void);         /* name and table from the lobby's appkeys */
 void appkey_save_room(void);
 void appkey_clear_room(void);
+#ifdef PLAT_NO_KEYBOARD
+void appkey_save_name(void);    /* the name picked at boot, for next time */
+#endif
 
 /* ---- text (text.c) ---------------------------------------------------- */
 #include "ids.h"
