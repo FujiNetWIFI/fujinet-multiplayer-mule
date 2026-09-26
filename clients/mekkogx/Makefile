@@ -147,7 +147,7 @@ ifneq ($(filter adam msxrom,$(PLATFORM)),)
   LD_Z88DK = $(Z80_TOOLS)/z88dk zcc
 endif
 # (zcc hands the defines on through a shell: a string is quoted twice)
-CFLAGS_EXTRA_ADAM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DQUIT_HINT='"\"ESCAPE: QUIT\""' -DLEAVE_KEY_NAME='"\"ESCAPE\""'
+CFLAGS_EXTRA_ADAM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DPLAT_NETSTREAM -DQUIT_HINT='"\"ESCAPE: QUIT\""' -DLEAVE_KEY_NAME='"\"ESCAPE\""'
 EXTRA_INCLUDE_ADAM += src/tms9918 build/fnlib-adam/include
 # The memory map: src/adam/mule.asm. The NMI is the frame clock
 # (src/adam/nmi.asm); the variables are not part of the image.
@@ -295,7 +295,7 @@ gen/msdos/gfx.c: tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_dos.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/msdos $@
 
-gen/tms9918/gfx.c: tools/mkgfx_tms.py tools/mkgfx_dos.py tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
+gen/tms9918/gfx.c: tools/mkgfx_tms.py tools/tms/namco.bin tools/mkgfx_dos.py tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
 	@mkdir -p gen/tms9918
 	@if [ -z "$(ATR)" ]; then \
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi

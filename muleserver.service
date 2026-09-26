@@ -16,10 +16,10 @@ WorkingDirectory=/opt/mule
 ExecStart=/opt/mule/muleserver -web /opt/mule/web
 Environment=PORT=9900
 Environment=MULE_STREAM_ADDR=:9902
-# Lobby registration (QA lobby): uncomment and set the appkey and public URL.
-#Environment=GO_PROD=1
-#Environment=MULE_APPKEY=0
-#Environment=MULE_SERVER_URL=https://mule.example.com/
+# Lobby registration (QA lobby). Defaults: appkey 10 (what the clients read)
+# and http://fujinet.online:9900/; MULE_APPKEY=0 turns it off.
+Environment=GO_PROD=1
+#Environment=MULE_SERVER_URL=http://fujinet.online:9900/
 DynamicUser=yes
 Restart=on-failure
 RestartSec=5

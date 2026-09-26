@@ -13,7 +13,9 @@ The screen is Graphics II, 256 x 192, two colours in each 8-pixel row of a
 cell. x is scaled 3/2 from the Atari's colour clocks, 4 pixels in (see
 src/tms9918/gfx.c): clock c covers pixels 1.5c .. 1.5(c + 1), rounded
 down. So:
-  - the font is 6 pixels wide (the CoCo's squeeze of the Atari's 8);
+  - the font is the Namco arcade font the other Adam FujiNet games use
+    (tools/tms/namco.bin, from fujinet-5cardstud's src/adam/font.bin:
+    characters 32..127, 8 x 8), a whole cell a character;
   - the plot parts are 24 pixels (three cells) by 32 lines;
   - the shapes stay 1 bit a clock: gfx.c widens them with wide12 as it
     makes the sprites' patterns;
@@ -28,7 +30,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mkgfx_hgr as hgr  # noqa: E402  (the Atari extraction, plots, shapes)
 import mkgfx_dos as dos  # noqa: E402  (plot images, the town's colours, rle)
-import mkgfx_pmode4 as pm  # noqa: E402  (the 6-pixel font)
 
 intv = hgr.intv
 
@@ -139,6 +140,13 @@ def c_bytes(vals, per=16, indent="    "):
 
 
 # ---------------------------------------------------------------------------
+def namco_font():
+    """Characters 32..95 of the Namco font (upper case is all the game uses)."""
+    with open(os.path.join(HERE, "tms", "namco.bin"), "rb") as f:
+        d = f.read()
+    return [list(d[i * 8:i * 8 + 8]) for i in range(64)]
+
+
 def preview(path, town_shown, font, parts, shapes):
     try:
         from PIL import Image
@@ -148,12 +156,12 @@ def preview(path, town_shown, font, parts, shapes):
     for y, r in enumerate(town_shown):
         for x, c in enumerate(r):
             im.putpixel((48 + x, 16 + y), TMS[c])
-    # the font, 6 pixels a cell, under the town
+    # the font, a cell a character, under the town
     for i, g in enumerate(font):
         for y, v in enumerate(g):
-            for k in range(6):
+            for k in range(8):
                 if v & (0x80 >> k):
-                    im.putpixel((4 + (i % 40) * 6 + k, 164 + (i // 40) * 9 + y), TMS[T_WHITE])
+                    im.putpixel(((i % 32) * 8 + k, 168 + (i // 32) * 9 + y), TMS[T_WHITE])
     im.resize((256 * 3, 192 * 3), Image.NEAREST).save(path)
     # the plot parts on the map's grey
     im = Image.new("RGB", (len(parts) * 28, 36), TMS[T_PLAINS])
@@ -180,7 +188,7 @@ def main():
            ("converted from the Atari disk" if atari else "STAND-IN art: no ATR given"),
            "#include <stdint.h>", '#include "../../src/tms9918/gfxdata.h"', ""]
 
-    font = pm.font_pm(atari)
+    font = namco_font()
     src.append("const uint8_t tms_font[64 * 8] = {")
     src.append(c_bytes([b for g in font for b in g]))
     src.append("};")

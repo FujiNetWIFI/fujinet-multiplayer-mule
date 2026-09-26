@@ -25,6 +25,14 @@
 #define ROW_LBL   18
 #define ROW_MONEY 20
 #define ROW_UNITS 21
+/* Each player's field under them: ten 40-column cells, or the cells under
+ * the same stretch of the picture (TX). */
+#define AU_FX(i)  TX((i) * 10)
+#if TCOLS == 40
+#define AU_FW(i)  10
+#else
+#define AU_FW(i)  (TX((i) * 10 + 10) - TX((i) * 10))
+#endif
 
 static const uint8_t col_x[4] = { 39, 63, 87, 111 };
 
@@ -33,6 +41,7 @@ static uint8_t au_role[4];
 static uint16_t au_pos[4], au_tgt[4], au_base;
 static uint8_t au_on, au_tick;
 static uint8_t au_push;         /* our stick as sent: 0 released, 1 up, 2 down */
+static uint8_t au_held;         /* frame (low byte) our goods line was let go */
 static uint8_t au_ln1, au_ln2;  /* lines of the sellers' / buyers' price lines (255 none) */
 static uint16_t au_lbl[4];      /* what row 18 shows per player: 0 label, 1 none, else a price */
 static uint16_t au_hb, au_sb;   /* land: price line / "bids start at" shown */
@@ -185,11 +194,11 @@ static void au_lbl_tick(void)
         if (w == au_lbl[i])
             continue;
         au_lbl[i] = w;
-        gfx_clear_text(i * 10, ROW_LBL, 10);
+        gfx_clear_text(AU_FX(i), ROW_LBL, AU_FW(i));
         if (w == 0)
-            gfx_big(i * 10 + 2, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), PLCOL(i));
+            gfx_big(AU_FX(i) + BIGW, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), PLCOL(i));
         else if (w > 1)
-            big_num(i * 10, ROW_LBL, w, 5, PLCOL(i));
+            big_num(AU_FX(i), ROW_LBL, w, 5, PLCOL(i));
     }
 }
 
@@ -203,7 +212,7 @@ static void au_labels(void)
         /* the store's icons: selling above the cyan one, buying under the brown */
         gfx_pic(136, 32, PIC_STOREICON, C_CYAN);
         gfx_pic(4, 112, PIC_STOREICON, C_BROWN);
-        put_num(32, 3, st.auction.storeSell, 4, C_WHITE);
+        put_num(TX(32), 3, st.auction.storeSell, 4, C_WHITE);
         put_num(0, 16, st.auction.storeBuy, 4, C_WHITE);
     }
 }
@@ -213,9 +222,9 @@ static void au_money(void)
 {
     uint8_t i;
     for (i = 0; i < 4; ++i) {
-        big_num(i * 10, ROW_MONEY, PL(i).money, 5, PLCOL(i));
+        big_num(AU_FX(i), ROW_MONEY, PL(i).money, 5, PLCOL(i));
         if (au_kind == 2 && au_stage >= STAGE_LEAD)
-            put_num(i * 10 + 4, ROW_UNITS, PL(i).goods[au_good], 4, C_WHITE);
+            put_num(AU_FX(i) + 4, ROW_UNITS, PL(i).goods[au_good], 4, C_WHITE);
     }
 }
 
@@ -240,6 +249,8 @@ static void au_message(void)
         k = (uint8_t)st.auction.winner < 4 ? M_SOLD : M_NOBIDS;
     if (au_kind == 2 && au_stage == STAGE_ACTIVE && (st.auction.flags & AF_COLLUDING))
         k = M_COLLUDE;
+    if (au_kind == 2 && au_stage == STAGE_ACTIVE && (st.auction.flags & AF_CRITICAL))
+        k = M_CRITICAL;
     /* land: the bottom of the (scrolling) scale, as on the Atari */
     if (au_kind == 1 && au_stage == STAGE_ACTIVE) {
         if (k != au_msg || au_base != au_sb) {
@@ -420,8 +431,8 @@ static void au_need_draw(void)
             buf[0] = '-';
         }
         fmt_num(buf + 1, v);
-        gfx_clear_text(i * 10, ROW_LBL, 10);
-        gfx_big(i * 10 + 2, ROW_LBL, buf, w >= n ? C_WHITE : C_ORANGE);
+        gfx_clear_text(AU_FX(i), ROW_LBL, AU_FW(i));
+        gfx_big(AU_FX(i) + BIGW, ROW_LBL, buf, w >= n ? C_WHITE : C_ORANGE);
     }
 }
 
@@ -502,8 +513,8 @@ static void auction_title(void)
 {
     char buf[24];
     uint8_t n;
-    gfx_clear_text(0, 0, 40);
-    gfx_clear_text(0, 1, 40);
+    gfx_clear_text(0, 0, TCOLS);
+    gfx_clear_text(0, 1, TCOLS);
     if (au_kind == 1) {
         text_expand(buf, str_title(T_LANDAUCTION), rnd, 0);
         big_center(0, buf, C_ORANGE);
@@ -520,7 +531,7 @@ static void au_stage_begin(void)
 {
     uint8_t i;
     for (i = 2; i < 24; ++i)
-        gfx_clear_text(0, i, 40);
+        gfx_clear_text(0, i, TCOLS);
     au_ln1 = au_ln2 = 255;
     au_msg = 255;
     bar_last = 255;
@@ -567,7 +578,7 @@ void goods_enter(void)
  * ------------------------------------------------------------------------- */
 void auction_state(void)
 {
-    uint8_t i;
+    uint8_t i, k;
     au_kind = st.auction.kind;
     au_new = st.auction.stage;
     au_good = (uint8_t)st.auction.good & 3;
@@ -614,7 +625,16 @@ void auction_state(void)
     } else {
         au_base = st.auction.storeBuy;
     }
+    /* our released goods line: the server's is behind what we showed and
+     * carries on to where we let go (ACT_HOLD), so ours stays put rather
+     * than jumping back until the server's comes to rest (or a second) */
+    k = 255;
+    if (au_kind == 2 && au_stage == STAGE_ACTIVE && au_push == 0 &&
+        (uint8_t)((uint8_t)frame_count - au_held) < 60)
+        k = my_seat;
     for (i = 0; i < 4; ++i) {
+        if (i == k && (st.auction.push[i] || st.auction.pos[i] != st.auction.target[i]))
+            continue;
         au_tgt[i] = st.auction.target[i];
         au_pos[i] = st.auction.pos[i];     /* snap; the frame handler walks it on */
     }
@@ -651,7 +671,11 @@ static void au_stick(void)
     if (k == au_push || act != ACT_NONE)
         return;
     au_push = k;
-    act_send(ACT_PUSH, k);
+    if (k == 0 && au_kind == 2 && au_stage == STAGE_ACTIVE) {
+        act_send(ACT_HOLD, au_pos[my_seat]);
+        au_held = (uint8_t)frame_count;
+    } else
+        act_send(ACT_PUSH, k);
     if (au_stage != STAGE_ACTIVE)
         return;
     /* move our own line at once; the server confirms */

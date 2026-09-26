@@ -4,7 +4,8 @@
  * The table is the Apple II's (src/apple2/sound.c) as the PCjr plays it
  * (src/msdos/sound.c), the same chip at the same clock: a delay d there is
  * a tone of 36428 / d Hz, a divisor of 3579545 / 32 / f = 3.07 d, played
- * for so many frames, then maybe a second.
+ * for so many frames, then maybe a second. The frames are counted in the
+ * NMI (nmi.asm), so a note ends on time however long the game is busy.
  */
 #include "sound.h"
 
@@ -31,16 +32,23 @@ static const Effect fx[SND_COUNT] = {
     { 200,  1,   0,  0 },   /* step: a soft click */
 };
 
-static uint8_t cur_f, next_d, next_f, muted;
+/* What the frame clock plays (src/adam/nmi.asm snd_frame): snd_f frames
+ * of the tone sounding, then snd_nf frames of the one in snd_n (its three
+ * bytes for the chip), then quiet. The NMI never touches the chip while
+ * snd_f is 0, so snd_play clears it first and sets it last. */
+volatile uint8_t snd_f, snd_nf;
+uint8_t snd_n[3];
+static uint8_t muted;
 
-static void tone(uint8_t d)
+/* A tone's three bytes for tone 0: the divisor, then the volume. */
+static void tone_bytes(uint8_t *b, uint8_t d)
 {
     uint16_t n = d * 3u + (d * 18u >> 8);          /* 3.07 d */
     if (n > 1023)
         n = 1023;
-    SN_PORT = 0x80 | (n & 15);                      /* tone 0 */
-    SN_PORT = (uint8_t)(n >> 4);
-    SN_PORT = 0x90 | (d == 200 ? 6 : 2);            /* loud (the step soft) */
+    b[0] = 0x80 | (n & 15);
+    b[1] = (uint8_t)(n >> 4);
+    b[2] = 0x90 | (d == 200 ? 6 : 2);               /* loud (the step soft) */
 }
 
 static void quiet(void)
@@ -58,32 +66,30 @@ void snd_init(void)
 void snd_play(uint8_t id)
 {
     const Effect *e = &fx[id];
-    if (muted || (id == SND_STEP && cur_f))
+    uint8_t b[3];
+    if (muted || (id == SND_STEP && snd_f))
         return;                     /* a footstep never cuts another sound */
-    tone(e->d1);
-    cur_f = e->f1;
-    next_d = e->d2;
-    next_f = e->f2;
+    snd_f = 0;
+    tone_bytes(b, e->d1);
+    SN_PORT = b[0];
+    SN_PORT = b[1];
+    SN_PORT = b[2];
+    snd_nf = 0;
+    if (e->f2) {
+        tone_bytes(snd_n, e->d2);
+        snd_nf = e->f2;
+    }
+    snd_f = e->f1;
 }
 
+/* The NMI keeps time (a blocked main loop mustn't hold a note). */
 void snd_tick(void)
 {
-    if (!cur_f)
-        return;
-    if (--cur_f == 0) {
-        if (next_f) {
-            tone(next_d);
-            cur_f = next_f;
-            next_f = 0;
-        } else {
-            quiet();
-        }
-    }
 }
 
 void snd_toggle_mute(void)
 {
+    snd_f = 0;
     muted ^= 1;
-    cur_f = 0;
     quiet();
 }

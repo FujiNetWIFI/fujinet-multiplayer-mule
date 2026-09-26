@@ -12,6 +12,8 @@ uint16_t frame_count;
 volatile uint8_t vdp_busy, vdp_pend;
 static uint16_t seed = 0x1234;
 
+void snd_frame(void);           /* nmi.asm: a frame of the sound effect */
+
 /* The NMI came while the VDP was busy: take it now. */
 void vdp_catch_up(void)
 {
@@ -21,6 +23,7 @@ void vdp_catch_up(void)
     if (s & 0x80) {
         vdp_seen |= s;
         ++frame_count;
+        snd_frame();
     }
 }
 

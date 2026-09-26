@@ -75,6 +75,7 @@ extern uint8_t anim;
 #define ACT_PUB      18
 #define ACT_END      19
 #define ACT_LEAVE    20
+#define ACT_HOLD     21     /* arg: price our released line stopped at */
 
 extern uint8_t act, act_sent, net_have, net_fail, poll_wait, test_mode;
 extern uint16_t act_arg;

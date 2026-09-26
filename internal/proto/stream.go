@@ -69,6 +69,7 @@ const (
 	ActPub
 	ActEnd
 	ActLeave
+	ActHold // arg: the price the line was released at; seen: units shown
 )
 
 // Fletcher16 is the frame checksum: sum1 = sum of bytes, sum2 = sum of

@@ -2,8 +2,10 @@
  * gfx.h -- the screen, in the Atari original's terms.
  *
  * Coordinates are the Atari's: x in colour clocks (0..159 across the
- * playfield), y in scanlines (0..191). Text is a 40 x 24 grid of cells, a
- * cell 4 colour clocks by 8 lines. Each platform scales to its screen.
+ * playfield), y in scanlines (0..191). Text is a TCOLS x 24 grid of cells:
+ * 40 across, a cell 4 colour clocks by 8 lines, except on the TMS9918A (the
+ * Adam, the MSX), whose text is a whole 8 x 8 cell of its own, 32 across.
+ * Each platform scales to its screen.
  *
  *   Map    plot p at x 8 + 16 * (p % 9), y 16 + 32 * (p / 9), 16 x 32
  *   Town   x 32..127, y 16..159
@@ -35,6 +37,19 @@
 #define C_PINK    14
 #define C_P3      15    /* player 3: orange where a platform can (the CoCo: stripes) */
 
+/* The text grid. TCOLS cells across; BIGW cells a big character; TX(c)
+ * is the cell over the same spot of the picture as the 40-column cell c
+ * (text laid over the art: the town's prices, the auction's scale). */
+#if defined(__ADAM__) || defined(__MSX__)
+#define TCOLS 32
+#define BIGW  1
+#define TX(c) ((uint8_t)(((c) * 3 + 2) >> 2))
+#else
+#define TCOLS 40
+#define BIGW  2
+#define TX(c) (c)
+#endif
+
 /* Screen layout helpers. */
 #define PLOT_X(p)   (8 + 16 * ((p) % 9))
 #define PLOT_Y(p)   (16 + 32 * ((p) / 9))
@@ -50,9 +65,9 @@ void gfx_textn(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col);
 void gfx_char(uint8_t tx, uint8_t ty, char c, uint8_t col);
 void gfx_clear_text(uint8_t tx, uint8_t ty, uint8_t w);    /* w cells */
 
-/* Big text: double-width characters (20 across), for coloured text (small
- * text may only look right in white). tx is a cell, rounded down to even;
- * a character covers two cells. */
+/* Big text: double-width characters (TCOLS / BIGW across), for coloured
+ * text (small text may only look right in white). tx is a cell, rounded
+ * down to even where BIGW is 2; a character covers BIGW cells. */
 void gfx_big(uint8_t tx, uint8_t ty, const char *s, uint8_t col);
 void gfx_bign(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col);
 

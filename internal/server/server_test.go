@@ -231,9 +231,46 @@ func TestPushRouteWithSeen(t *testing.T) {
 	h := newHarness(t)
 	startSolo(h, "dev2")
 	// Both forms route to the auction stick (no auction yet: a phase error).
-	for _, p := range []string{"/auction/push/down", "/auction/push/down/3", "/auction/push/up/0"} {
+	for _, p := range []string{"/auction/push/down", "/auction/push/down/3", "/auction/push/up/0", "/auction/push/hold/3/120"} {
 		if v := h.view(p + "?table=dev2&player=solo"); v.Err != proto.ErrPhase {
 			t.Fatalf("%s: err=%d", p, v.Err)
 		}
+	}
+}
+
+// A released goods line carries on to where the client showed it, not back
+// to the server's (behind) position.
+func TestHoldRouteInTrading(t *testing.T) {
+	h := newHarness(t)
+	q := "?table=dev3&player=solo"
+	v := startSolo(h, "dev3")
+	for i := 0; i < 20000 && !(v.Phase == "trading" && v.Auction != nil && v.Auction.Stage == rules.StageActive); i++ {
+		h.advance(100 * time.Millisecond)
+		if v.Phase == "develop" {
+			h.view("/turn/begin" + q)
+			h.view("/turn/end" + q)
+		}
+		v = h.view("/ready/1" + q)
+	}
+	a := v.Auction
+	if v.Phase != "trading" || a == nil || a.Lines[0].Role == rules.RoleNone {
+		t.Fatalf("no trading: phase %s", v.Phase)
+	}
+	dir, lead := "up", 1
+	if a.Lines[0].Role == rules.RoleSeller {
+		dir, lead = "down", -1
+	}
+	h.view("/auction/push/" + dir + q)
+	h.advance(300 * time.Millisecond)
+	v = h.view("/state" + q)
+	l := v.Auction.Lines[0]
+	at := l.Pos + lead*2*v.Auction.Step
+	v = h.view("/auction/push/hold/" + strconv.Itoa(v.Auction.Traded) + "/" + strconv.Itoa(at) + q)
+	if v.Err != 0 || v.Auction.Lines[0].Target != at {
+		t.Fatalf("err %d target %d, want %d (pos %d)", v.Err, v.Auction.Lines[0].Target, at, l.Pos)
+	}
+	h.advance(time.Second)
+	if v = h.view("/state" + q); v.Auction.Lines[0].Pos != at {
+		t.Fatalf("line at %d, want %d", v.Auction.Lines[0].Pos, at)
 	}
 }

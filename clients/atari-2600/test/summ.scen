@@ -1,0 +1,13 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 700
+press fire
+wait 200
+quit

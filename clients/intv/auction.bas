@@ -30,6 +30,7 @@ au_col_x: DATA 47, 71, 95, 119
 
     DIM #au_hb                  ' land price line shown
     CONST AU_SB = $8800         ' land: "bids start at" price shown on row 11
+    CONST AU_HELD = $880E       ' FRAME AND 255 when our goods line was let go
                                 ' (2 bytes of cart RAM: 16-bit RAM is full)
     DIM au_good, au_stage, au_new   ' au_kind, au_role(4), #au_base are in isr.bas
     DIM au_push                 ' our stick: 0 released, 1 up, 2 down (as sent)
@@ -131,11 +132,7 @@ auction_state: PROCEDURE
     ELSE
         #au_base = st16(ST_AUCTION_STORE_BUY)
     END IF
-    FOR i = 0 TO 3
-        #au_tgt(i) = st16(ST_AUCTION_TARGET + i * 2)
-        ' Snap to the server's position; the frame handler walks it on.
-        #au_pos(i) = st16(ST_AUCTION_POS + i * 2)
-    NEXT i
+    GOSUB au_snap
     IF au_stage >= STAGE_LEAD THEN
         au_on = 1 : anim = AN_AUCTION
     END IF
@@ -325,6 +322,7 @@ au_message: PROCEDURE
     IF au_kind = 1 AND au_stage = STAGE_DONE AND st8(ST_AUCTION_WINNER) < 4 THEN k = M_SOLD
     IF au_kind = 1 AND au_stage = STAGE_DONE AND st8(ST_AUCTION_WINNER) > 3 THEN k = M_NOBIDS
     IF au_kind = 2 AND au_stage = STAGE_ACTIVE AND st8(ST_AUCTION_FLAGS) AND AF_COLLUDING THEN k = M_COLLUDE
+    IF au_kind = 2 AND au_stage = STAGE_ACTIVE AND st8(ST_AUCTION_FLAGS) AND AF_CRITICAL THEN k = M_CRITICAL
     ' Land: the bottom of the (scrolling) scale, in green, as on the Atari.
     IF au_kind = 1 AND au_stage = STAGE_ACTIVE THEN
         #w = (PEEK(AU_SB) AND 255) + (PEEK(AU_SB + 1) AND 255) * 256
@@ -491,6 +489,8 @@ au_stick: PROCEDURE
     IF inp_dir AND 1 THEN k = 2
     IF k = au_push OR act <> ACT_NONE THEN RETURN
     au_push = k : act = ACT_PUSH : #act_arg = k : poll_wait = 0
+    ' A goods line let go stays where we saw it stop (the server's is behind).
+    IF k = 0 AND au_kind = 2 AND au_stage = STAGE_ACTIVE THEN act = ACT_HOLD : #act_arg = #au_pos(my_seat) : POKE AU_HELD, FRAME AND 255
     IF au_stage <> STAGE_ACTIVE THEN RETURN
     ' Move our own line straight away; the server confirms.
     IF k = 1 THEN

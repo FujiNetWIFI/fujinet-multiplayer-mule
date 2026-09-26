@@ -377,7 +377,7 @@ func (g *Game) nextLandAuction() {
 		return
 	}
 	start := g.landStartPrice()
-	a := &Auction{Land: true, Good: NoGood, Plot: plot, Seller: seller, Start: start, Step: LandStep,
+	a := &Auction{Land: true, Good: NoGood, Plot: plot, Seller: seller, Crit: -1, Start: start, Step: LandStep,
 		Stage: StageShow, StageLeft: ForSaleDisplay, Ticks: LandAuctionTicks, Winner: -1, Contact: -1}
 	a.Lo = max(0, start-LandStepsBelow*LandStep)
 	a.Hi = start + LandStepsAbove*LandStep
@@ -810,7 +810,7 @@ func (g *Game) startGoods(idx int) {
 	}
 	gd := AuctionOrder[idx]
 	st := PriceStep[gd]
-	a := &Auction{Good: gd, Plot: -1, Seller: -1, Winner: -1, Contact: -1, Step: st,
+	a := &Auction{Good: gd, Plot: -1, Seller: -1, Winner: -1, Contact: -1, Crit: -1, Step: st,
 		Stage: StageShow, StageLeft: GoodsStatus, Ticks: DeclareTicks}
 	a.StoreBuy, a.StoreSell = g.Store.BuyPrice(gd), g.Store.SellPrice(gd)
 	// The screen spans the store's buy and sell lines (35 steps apart), with
@@ -911,16 +911,52 @@ func (g *Game) PushSeen(seat, dir, seen int) error {
 		return nil
 	}
 	l.Push = dir
+	if dir != 0 {
+		l.Dir = dir
+	}
 	if dir != 0 && !a.Land && a.Stage == StageActive {
 		g.breakContact(seat, dir, seen)
 	}
 	return g.applyPush(seat)
 }
 
+// HoldAt is a stick release that names the price the player saw their line
+// stop at. The client walks its line ahead of the server between polls, so
+// the server's line is behind it: a released goods line carries on to where
+// the player let go, up to HoldLead steps past the server's position in the
+// way it was pushed, rather than jumping back. A land bid still drifts
+// down. [IMPL]
+func (g *Game) HoldAt(seat, price, seen int) error {
+	if err := g.PushSeen(seat, 0, seen); err != nil {
+		return err
+	}
+	a := g.Auction
+	l := &a.Lines[seat]
+	if a.Land || a.Stage != StageActive || a.Crit == seat || l.Dir == 0 {
+		return nil
+	}
+	lead := l.Pos + l.Dir*HoldLead*a.Step
+	price = clamp(price, min(l.Pos, lead), max(l.Pos, lead))
+	// Not past where the line can go, so it comes to rest there (the
+	// client keeps its own line until the server's is at rest).
+	if l.Role == RoleBuyer {
+		price = min(price, max(l.Pos, g.buyerCeiling(seat)))
+	} else {
+		price = max(price, min(l.Pos, g.sellerFloor(seat)))
+	}
+	return g.SetTarget(seat, price)
+}
+
 // applyPush sets a line's target from its stick.
 func (g *Game) applyPush(seat int) error {
 	a := g.Auction
 	l := &a.Lines[seat]
+	// A seller stopped at the critical level, or sent back after running
+	// dry, stays at the edge. One at the critical level from the start may
+	// step in once, to be told.
+	if !a.Land && l.Role == RoleSeller && (a.Crit == seat || (a.Stage == StageActive && l.In && !g.canSell(seat))) {
+		return nil
+	}
 	switch {
 	case l.Push > 0:
 		return g.SetTarget(seat, g.lineTop(seat))
@@ -1050,7 +1086,35 @@ func (g *Game) canSell(seat int) bool {
 	if a.Land {
 		return true
 	}
-	return g.Players[seat].Goods[a.Good] > l.Floor
+	return g.Players[seat].Goods[a.Good] > max(l.Floor, g.Critical(seat, a.Good))
+}
+
+// critical stops a seller who has reached the critical level of the good:
+// "seller at critical level!" is shown, the line waits CritPause and then
+// goes back to its edge. Only goods with a critical level (Food, Energy)
+// stop this way. [MAN]
+func (g *Game) critical(seat int) {
+	a := g.Auction
+	l := &a.Lines[seat]
+	a.Crit, a.CritLeft = seat, CritShow
+	a.Contact = -1
+	l.Push, l.Target = 0, l.Pos
+}
+
+// critTick runs "seller at critical level".
+func (g *Game) critTick() {
+	a := g.Auction
+	if a.Crit < 0 {
+		return
+	}
+	a.CritLeft--
+	if a.CritLeft == CritShow-CritPause {
+		l := &a.Lines[a.Crit]
+		l.Pos, l.Target = l.Home, l.Home
+	}
+	if a.CritLeft <= 0 {
+		a.Crit = -1
+	}
 }
 
 // bestLine returns the highest buyer or lowest seller (ties: worst rank).
@@ -1167,6 +1231,9 @@ func (g *Game) tickAuction() {
 			g.brain.AuctionTick(g, s)
 		}
 	}
+	if !a.Land {
+		g.critTick()
+	}
 	// Lines step every LineStep jiffies. [measured: 2 scanlines per 8 jiffies]
 	if g.T%LineStep == 0 {
 		g.moveLines()
@@ -1227,7 +1294,7 @@ func (g *Game) moveLines() {
 	a := g.Auction
 	for s := range a.Lines {
 		l := &a.Lines[s]
-		if l.Role == RoleNone {
+		if l.Role == RoleNone || a.Crit == s {
 			continue
 		}
 		np := clamp(step(l.Pos, l.Target, a.Step), a.Lo, g.lineTop(s))
@@ -1243,8 +1310,16 @@ func (g *Game) moveLines() {
 		l.Pos = np
 		if a.Land {
 			l.In = l.Role == RoleSeller || l.Pos >= a.Start
-		} else if l.Pos != l.Home {
+		} else if l.Pos != l.Home && !l.In {
 			l.In = true
+			if l.Role == RoleSeller && g.Critical(s, a.Good) > 0 && !g.canSell(s) {
+				if a.Crit < 0 {
+					g.critical(s)
+				} else {
+					// Someone else is being told: this one just stays out.
+					l.Pos, l.Target = l.Home, l.Home
+				}
+			}
 		}
 	}
 }
@@ -1342,6 +1417,11 @@ func (g *Game) trade() bool {
 			continue
 		}
 		l := &a.Lines[x]
+		if l.Role == RoleSeller && !g.canSell(x) && a.Crit < 0 && l.Floor < g.Critical(x, gd) &&
+			g.Players[x].Goods[gd] == g.Critical(x, gd) {
+			g.critical(x)
+			continue
+		}
 		if (l.Role == RoleBuyer && !g.canBuy(x, price)) || (l.Role == RoleSeller && !g.canSell(x)) {
 			l.Pos, l.Target = l.Home, l.Home
 			a.Contact = -1

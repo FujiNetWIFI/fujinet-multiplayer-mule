@@ -1,0 +1,15 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 120
+text
+press right
+wait 90
+press fire
+wait 120
+text
+snap
+quit

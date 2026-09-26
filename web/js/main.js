@@ -583,7 +583,9 @@ function lineY(a, price) {
   return 109 - Math.round((price - base) / a.stp) * 2;
 }
 
-const localPush = { dir: 0 };
+// at: the price my line was released at, walked to until the server's
+// answer (which carries on to it) has come back.
+const localPush = { dir: 0, at: -1, atUntil: 0 };
 
 // predictLine moves a line toward its target at one step per LineStep jiffies.
 function predictLine(a, l, seat, v) {
@@ -591,6 +593,7 @@ function predictLine(a, l, seat, v) {
   if (seat === v.me && a.sg === STAGE.active) {
     if (localPush.dir > 0) target = a.hi;
     else if (localPush.dir < 0) target = a.lo;
+    else if (localPush.at >= 0 && jiffy < localPush.atUntil) target = localPush.at;
   }
   const steps = Math.floor(api.since() / a.lj);
   let pos = l.p;
@@ -659,6 +662,7 @@ function auction(v) {
   if (a.sg === STAGE.declare) msg = 'PUSH STICK TO DECLARE AS BUYER OR SELLER';
   else if (a.sg === STAGE.lead) msg = 'GET READY...';
   else if (a.dn) msg = a.land ? (a.w >= 0 ? `${v.pl[a.w].n} BOUGHT IT FOR $${a.pc}` : 'NO SALE') : 'AUCTION IS OVER';
+  else if (a.cr >= 0) msg = 'SELLER AT CRITICAL LEVEL!';
   else if (a.col) msg = 'COLLUSION!';
   gfx.rect(0, H - 14, W, 14, 0x00);
   gfx.text(msg.toUpperCase().slice(0, 40), 0, H - 10, 0x1a);
@@ -670,8 +674,17 @@ function auction(v) {
   }
   const dir = keys.has('ArrowUp') ? 1 : keys.has('ArrowDown') ? -1 : 0;
   if (a.sg === STAGE.active && dir !== localPush.dir) {
-    localPush.dir = dir;
-    act('/auction/push/' + dir);
+    if (dir === 0) {
+      // Released: the line stays where I saw it stop.
+      const at = predictLine(a, a.ln[v.me], v.me, v);
+      localPush.dir = 0;
+      localPush.at = at;
+      localPush.atUntil = jiffy + 60;
+      act(`/auction/push/hold/${a.tr}/${at}`);
+    } else {
+      localPush.dir = dir;
+      act('/auction/push/' + dir);
+    }
   }
   if (pressed.has('c') || pressed.has('C')) act('/collude');
 }

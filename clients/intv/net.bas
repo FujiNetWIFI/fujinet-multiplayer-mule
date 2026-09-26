@@ -36,6 +36,7 @@
     CONST ACT_END = 19
     CONST ACT_LEAVE = 20
     CONST ACT_VIEW = 21
+    CONST ACT_HOLD = 22         ' #act_arg: price our released line stopped at
 
     ' Default server (the FujiNet lobby's appkey overrides it): gen/config.bas
     ' holds lit_endpoint as a length-prefixed ASCII DATA string.
@@ -98,6 +99,11 @@ compose: PROCEDURE
             ' /seen: the units traded we have shown (server gives back later ones).
             POKE (FN_TX + #fn_txlen), 47 : #fn_txlen = #fn_txlen + 1
             #val = au_traded : GOSUB put_num
+        ELSEIF act = ACT_HOLD THEN
+            ' /seen/at: the units traded we have shown, where we let go.
+            #val = au_traded : GOSUB put_num
+            POKE (FN_TX + #fn_txlen), 47 : #fn_txlen = #fn_txlen + 1
+            #val = #act_arg : GOSUB put_num
         ELSEIF act = ACT_DECLARE THEN
             #lit_addr = VARPTR lit_declare(0) : lit_n = #act_arg : GOSUB lit_nth : GOSUB put_lit
         ELSE
@@ -200,6 +206,7 @@ lit_routes:
     DATA 9, "/turn/end"         ' ACT_END
     DATA 6, "/leave"            ' ACT_LEAVE
     DATA 5, "/view"             ' ACT_VIEW
+    DATA 19, "/auction/push/hold/" ' ACT_HOLD
 lit_push:
     DATA 4, "hold"
     DATA 2, "up"

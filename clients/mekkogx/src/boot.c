@@ -18,6 +18,17 @@ static void wait_frames(uint8_t n)
     }
 }
 
+/* The name being typed, big and centred, the cursor after it. */
+#if BIGW == 2
+#define NAME_X(n)  (16 - ((n) & 0xFE))
+#define NAME_CLR_X 16           /* what a rub-out leaves */
+#define NAME_CLR_W 10
+#else
+#define NAME_X(n)  ((TCOLS - (n) - 1) / 2)
+#define NAME_CLR_X NAME_X(8)
+#define NAME_CLR_W 10
+#endif
+
 #ifdef PLAT_NO_KEYBOARD
 /* No keyboard: pick the letters. Up and down turn the one at the cursor
  * through A-Z and 0-9 (held, it runs on); the button or right takes it and
@@ -59,10 +70,10 @@ static void name_entry(void)
             rep = 8;
         }
         blink = (frame_count & 16) ? pick_set[k] : '_';
-        gfx_clear_text(6, 10, 28);
-        gfx_big(16 - (n & 0xFE), 10, sc_name, C_ORANGE);
+        gfx_clear_text(6, 10, TCOLS - 12);
+        gfx_big(NAME_X(n), 10, sc_name, C_ORANGE);
         if (n < 8)
-            gfx_char(16 - (n & 0xFE) + n * 2, 10, blink, C_WHITE);
+            gfx_char(NAME_X(n) + n * BIGW, 10, blink, C_WHITE);
     }
     snd_play(SND_SELECT);
     appkey_save_name();
@@ -93,15 +104,20 @@ static void name_entry(void)
             snd_play(SND_SELECT);
         }
         blink = (frame_count & 16) ? '_' : ' ';
-        gfx_clear_text(16, 10, 10);
-        gfx_big(16 - (n & 0xFE), 10, sc_name, C_ORANGE);
-        gfx_char(16 - (n & 0xFE) + n * 2, 10, blink, C_WHITE);
+        gfx_clear_text(NAME_CLR_X, 10, NAME_CLR_W);
+        gfx_big(NAME_X(n), 10, sc_name, C_ORANGE);
+        gfx_char(NAME_X(n) + n * BIGW, 10, blink, C_WHITE);
     }
     snd_play(SND_SELECT);
 }
 #endif
 
 #define TB_MAX 9
+#if TCOLS == 40
+#define TB_PLAYERS_X 30         /* each table's players, after its name */
+#else
+#define TB_PLAYERS_X (TCOLS - 6)
+#endif
 static uint8_t tbuf[1 + TB_MAX * sizeof(MuleTable)];
 
 /* Choose a table from /tables: up/down, then the button (or RETURN);
@@ -117,7 +133,7 @@ void table_select(void)
         big_center(0, "CHOOSE A TABLE", C_ORANGE);
         text_center(23, "LOADING...", C_WHITE);
         n = net_tables(tbuf, TB_MAX);
-        gfx_clear_text(0, 23, 40);
+        gfx_clear_text(0, 23, TCOLS);
         if (n == 0) {
             text_center(22, "NO TABLES FOUND AT", C_WHITE);
             text_center(23, sc_endpt, C_WHITE);
@@ -137,7 +153,7 @@ void table_select(void)
             gfx_text(4, 4 + i * 2, name, C_WHITE);
             memcpy(name, t[i].players, 5);
             name[5] = 0;
-            gfx_text(30, 4 + i * 2, name, C_WHITE);
+            gfx_text(TB_PLAYERS_X, 4 + i * 2, name, C_WHITE);
         }
         text_center(23, "UP/DOWN, " BUTTON_NAME "   " QUIT_HINT, C_WHITE);
         sel = 0;

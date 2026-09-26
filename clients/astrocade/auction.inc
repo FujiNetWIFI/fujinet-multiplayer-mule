@@ -23,6 +23,7 @@ PVP     DEFL    PHRAM
         PV      AUON,1
         PV      AUTCK,1
         PV      AUPUSH,1        ; our stick as sent: 0 released, 1 up, 2 down
+        PV      AUHELD,1        ; FRAMES (low byte) our goods line was let go
         PV      AULN1,1         ; the sellers' / buyers' lines (255 none)
         PV      AULN2,1
         PV      AULBL,8         ; row 9 per player: 0 label, 1 none, a price
@@ -64,6 +65,7 @@ AO_TICKS EQU    28
 AO_ROLE EQU     30
 AO_POS  EQU     34
 AO_TGT  EQU     42
+AO_PUSH EQU     54
 
 ST_SHOW EQU     0
 ST_DECL EQU     1
@@ -74,6 +76,7 @@ RL_NONE EQU     0
 RL_BUYER EQU    1
 RL_SELLER EQU   2
 AF_COLL EQU     4
+AF_CRIT EQU     32
 
 AUYBASE EQU     118
 AUYSELL EQU     48
@@ -203,6 +206,59 @@ AUP1:   ADD     A,A
         LD      L,A
         RET     NC
         INC     H
+        RET
+; AUKEEP: our released goods line (A_HOLD). The server's is behind what we
+; showed and carries on to where we let go, so ours stays put rather than
+; jump back, until the server's comes to rest (or a second passes).
+; BC, DE = our pos and target before the snap.
+AUKEEP: LD      A,(AUKIND)
+        CP      2
+        RET     NZ
+        LD      A,(AUSTAGE)
+        CP      ST_ACTIVE
+        RET     NZ
+        LD      A,(AUPUSH)
+        OR      A
+        RET     NZ
+        LD      A,(MYSEAT)
+        CP      4
+        RET     NC
+        LD      A,(AUHELD)
+        LD      L,A
+        LD      A,(FRAMES)
+        SUB     L
+        CP      60
+        RET     NC
+        PUSH    DE
+        LD      A,(MYSEAT)
+        ADD     A,AO_PUSH
+        LD      E,A
+        CALL    AGB             ; the server hasn't our release yet
+        OR      A
+        JR      NZ,AKP1
+        LD      A,(MYSEAT)
+        CALL    AUTGTP
+        CALL    LDHL
+        EX      DE,HL           ; DE = the server's target
+        LD      A,(MYSEAT)
+        CALL    AUPOSP
+        CALL    LDHL            ; HL = the server's pos
+        OR      A
+        SBC     HL,DE
+        JR      NZ,AKP1
+        POP     DE              ; at rest: the server's
+        RET
+AKP1:   POP     DE
+        LD      A,(MYSEAT)
+        CALL    AUPOSP
+        LD      (HL),C
+        INC     HL
+        LD      (HL),B
+        LD      A,(MYSEAT)
+        CALL    AUTGTP
+        LD      (HL),E
+        INC     HL
+        LD      (HL),D
         RET
 ; LDHL: HL = (HL).
 LDHL:   LD      A,(HL)
@@ -861,9 +917,14 @@ AMS2:   LD      A,(AUKIND)
         JR      NZ,AMS3
         LD      E,AO_FLAGS
         CALL    AGB
+        LD      B,A
         AND     AF_COLL
-        JR      Z,AMS3
+        JR      Z,AMS2A
         LD      C,M_COLLUDE
+AMS2A:  LD      A,B
+        AND     AF_CRIT
+        JR      Z,AMS3
+        LD      C,M_CRITICAL
 AMS3:   LD      A,(AUKIND)      ; land: the bottom of the scale
         CP      1
         JR      NZ,AMS5
@@ -1749,7 +1810,17 @@ AS8A:   LD      (AUBASE),HL
 AS9:    LD      E,AO_SBUY
         CALL    AGW
         LD      (AUBASE),HL
-AS10:   LD      B,8             ; pos and target: snapped
+AS10:   LD      A,(MYSEAT)      ; ours before the snap (AUKEEP)
+        AND     3
+        LD      C,A
+        CALL    AUPOSP
+        CALL    LDHL
+        PUSH    HL              ; our pos
+        LD      A,C
+        CALL    AUTGTP
+        CALL    LDHL
+        PUSH    HL              ; our target
+        LD      B,8             ; pos and target: snapped
         LD      HL,AUTGT
         LD      E,AO_TGT
 AS11:   CALL    AGB
@@ -1765,6 +1836,9 @@ AS12:   CALL    AGB
         INC     HL
         INC     E
         DJNZ    AS12
+        POP     DE              ; our target
+        POP     BC              ; our pos
+        CALL    AUKEEP
         LD      A,(AUSTAGE)
         CP      ST_LEAD
         JR      C,AS13
@@ -1817,8 +1891,24 @@ AK2:    LD      A,(AUPUSH)
         LD      (AUPUSH),A
         LD      L,C
         LD      H,0
-        LD      A,A_PUSH
-        CALL    ACTSEND
+        LD      A,C             ; released ...
+        OR      A
+        JR      NZ,AK0A
+        LD      A,(AUKIND)      ; ... in a goods auction under way: the line
+        CP      2               ; stays where we saw it stop (A_HOLD, with
+        JR      NZ,AK0A         ; our price; the server's line is behind)
+        LD      A,(AUSTAGE)
+        CP      ST_ACTIVE
+        JR      NZ,AK0A
+        LD      A,(FRAMES)
+        LD      (AUHELD),A
+        LD      A,(MYSEAT)
+        CALL    AUPOSP
+        CALL    LDHL
+        LD      A,A_HOLD
+        JR      AK0
+AK0A:   LD      A,A_PUSH
+AK0:    CALL    ACTSEND
         LD      A,(AUSTAGE)
         CP      ST_ACTIVE
         RET     NZ

@@ -85,6 +85,7 @@ type Line struct {
 	Units  int  // units bought(+)/sold(-) this auction
 	Floor  int  // seller keeps at least this many units
 	Want   int  // buyer stops after this many units (0 = unlimited)
+	Dir    int  // last stick push, +1 up or -1 down (0 none yet)
 }
 
 const (
@@ -134,6 +135,8 @@ type Auction struct {
 	Winner    int
 	Price     int
 	Recent    []TradeRec // units traded in the current contact, oldest first
+	Crit      int        // goods: seat of the seller at critical level, -1 none
+	CritLeft  int        // jiffies left of "seller at critical level"
 }
 
 // TradeRec is one unit traded, kept so a trader backing off can give back

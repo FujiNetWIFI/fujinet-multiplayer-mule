@@ -1,0 +1,24 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+wait 60
+peek 1B00 16
+peek 1C84 8
+peek C6 6
+wait 200
+peek 1B00 16
+peek 1C84 8
+peek C6 6
+wait 200
+peek 1C84 8
+peek C6 6
+quit

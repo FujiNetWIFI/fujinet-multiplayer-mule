@@ -303,3 +303,126 @@ func TestReverseGivesBackUnseenUnit(t *testing.T) {
 		t.Fatalf("undid a unit %d jiffies old", TradeUndoWindow+1)
 	}
 }
+
+// sellingToStore puts seat 0 in contact with the store as a seller of gd,
+// holding extra units above the good's critical level.
+func sellingToStore(t *testing.T, gd Good, extra int) (*Game, *Auction) {
+	g := humanGame(6, Gollumer)
+	toGrant(t, g)
+	runTo(t, g, 60000, func() bool { return g.Phase == PhaseTrading })
+	a := g.Auction
+	a.Good = gd
+	for s := range a.Lines {
+		a.Lines[s].Role = RoleNone
+	}
+	g.Players[0].Goods[gd] = g.Critical(0, gd) + extra
+	l := &a.Lines[0]
+	l.Role, l.Home, l.Pos, l.In = RoleSeller, a.Hi, a.StoreBuy, true
+	must(t, g.Push(0, -1))
+	return g, a
+}
+
+func TestSellerStopsAtCriticalLevel(t *testing.T) {
+	g, a := sellingToStore(t, Food, 3)
+	crit := g.Critical(0, Food)
+	if crit <= 0 {
+		t.Fatalf("food critical level %d", crit)
+	}
+	runTo(t, g, 2000, func() bool { return a.Crit >= 0 })
+	if a.Crit != 0 || g.Players[0].Goods[Food] != crit || a.Traded != 3 {
+		t.Fatalf("crit %d goods %d (critical %d) traded %d", a.Crit, g.Players[0].Goods[Food], crit, a.Traded)
+	}
+	l := &a.Lines[0]
+	pos := l.Pos
+	must(t, g.Push(0, -1)) // pushing does nothing while the message shows
+	g.Advance(g.T + CritPause - 2)
+	if l.Pos != pos || a.Traded != 3 {
+		t.Fatalf("line moved to %d during the pause (traded %d)", l.Pos, a.Traded)
+	}
+	g.Advance(g.T + 2)
+	if l.Pos != l.Home {
+		t.Fatalf("line at %d after the pause, want home %d", l.Pos, l.Home)
+	}
+	g.Advance(g.T + CritShow - CritPause)
+	if a.Crit != -1 {
+		t.Fatal("message still shown")
+	}
+	must(t, g.Push(0, -1)) // stays at the edge
+	g.Advance(g.T + 10*LineStep)
+	if l.Pos != l.Home || a.Traded != 3 {
+		t.Fatalf("line left the edge: %d, traded %d", l.Pos, a.Traded)
+	}
+}
+
+func TestSellerAtCriticalLevelSteppingIn(t *testing.T) {
+	g, a := sellingToStore(t, Food, 0)
+	l := &a.Lines[0]
+	l.Pos, l.In = l.Home, false
+	must(t, g.Push(0, -1))
+	runTo(t, g, 100, func() bool { return a.Crit >= 0 })
+	if a.Traded != 0 {
+		t.Fatalf("traded %d", a.Traded)
+	}
+}
+
+func TestSmithoreRunsDryWithoutCritical(t *testing.T) {
+	g, a := sellingToStore(t, Smithore, 2)
+	runTo(t, g, 2000, func() bool { return g.Players[0].Goods[Smithore] == 0 })
+	g.Advance(g.T + 1)
+	if a.Crit != -1 || a.Lines[0].Pos != a.Lines[0].Home {
+		t.Fatalf("crit %d pos %d", a.Crit, a.Lines[0].Pos)
+	}
+}
+
+func TestHoldAtWhereReleased(t *testing.T) {
+	g := humanGame(6, Gollumer)
+	toGrant(t, g)
+	runTo(t, g, 60000, func() bool { return g.Phase == PhaseTrading })
+	a := g.Auction
+	for s := range a.Lines {
+		a.Lines[s].Role = RoleNone
+	}
+	g.Store.Stock[a.Good] = 0
+	l := &a.Lines[0]
+	l.Role, l.Home, l.Pos = RoleBuyer, a.Lo, a.Lo
+	must(t, g.Push(0, 1))
+	g.Advance(g.T + 5*LineStep)
+	// The player saw the line 2 steps further than the server has it.
+	at := l.Pos + 2*a.Step
+	must(t, g.HoldAt(0, at, -1))
+	if l.Target != at {
+		t.Fatalf("target %d, want %d", l.Target, at)
+	}
+	g.Advance(g.T + 4*LineStep)
+	if l.Pos != at {
+		t.Fatalf("line at %d, want %d", l.Pos, at)
+	}
+	// Too far ahead, or behind the push: clamped.
+	must(t, g.Push(0, 1))
+	must(t, g.HoldAt(0, l.Pos+20*a.Step, -1))
+	if l.Target != l.Pos+HoldLead*a.Step {
+		t.Fatalf("target %d steps ahead", (l.Target-l.Pos)/a.Step)
+	}
+	must(t, g.Push(0, 1))
+	must(t, g.HoldAt(0, l.Pos-3*a.Step, -1))
+	if l.Target != l.Pos {
+		t.Fatalf("target %d steps behind", (l.Pos-l.Target)/a.Step)
+	}
+	// Coming back down works the same way.
+	g.Advance(g.T + 10*LineStep)
+	must(t, g.Push(0, -1))
+	g.Advance(g.T + 3*LineStep)
+	at = l.Pos - 2*a.Step
+	must(t, g.HoldAt(0, at, -1))
+	if l.Target != at {
+		t.Fatalf("down: target %d, want %d", l.Target, at)
+	}
+	// Not past the store's selling price while it has stock.
+	g.Store.Stock[a.Good] = 5
+	l.Pos, l.Target = a.StoreSell-a.Step, a.StoreSell-a.Step
+	must(t, g.Push(0, 1))
+	must(t, g.HoldAt(0, a.StoreSell+3*a.Step, -1))
+	if l.Target != a.StoreSell {
+		t.Fatalf("target %d past the store's price %d", l.Target, a.StoreSell)
+	}
+}

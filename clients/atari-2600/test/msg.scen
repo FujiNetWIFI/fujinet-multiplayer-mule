@@ -1,0 +1,39 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+text
+press fire
+bank 4 3000
+zp C7 00 2000
+wait 30
+text
+press fire
+wait 400
+text
+snap
+bank 5 8000
+wait 30
+text
+press fire
+bank 6 600
+wait 90
+text
+snap
+wait 200
+text
+press select
+bank 4 600
+wait 200
+text
+snap
+wait 1500
+text
+snap
+quit

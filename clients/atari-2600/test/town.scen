@@ -1,0 +1,33 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+zp C7 00 2000
+press fire
+bank 5 8000
+wait 30
+press fire
+bank 6 600
+wait 30
+hold right 40
+wait 10
+peek C7 17
+hold down 8
+peek C7 17
+hold down 8
+peek C7 17
+hold down 8
+peek C7 17
+hold down 8
+peek C7 17
+wait 60
+peek C7 17
+quit

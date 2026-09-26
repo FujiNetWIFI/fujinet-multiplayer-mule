@@ -227,6 +227,8 @@ func streamAction(id byte, arg, seen int) (action, params) {
 			dir = "hold"
 		}
 		return actBidMove, pmap{"dir": dir, "seen": strconv.Itoa(seen)}
+	case proto.ActHold:
+		return actBidMove, pmap{"dir": "hold", "seen": strconv.Itoa(seen), "at": n}
 	case proto.ActDeclare:
 		return actDeclare, pmap{"role": [3]string{"n", "b", "s"}[min(arg, 2)]}
 	case proto.ActCollude:

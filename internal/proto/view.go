@@ -147,6 +147,7 @@ type AuctionV struct {
 	Good      int     `json:"gd"`
 	Plot      int     `json:"pt"`
 	Seller    int     `json:"sl"`
+	Crit      int     `json:"cr"` // goods: seat of the seller at critical level, -1 none
 	Start     int     `json:"sp"`
 	Ask       int     `json:"ak"`
 	Stage     int     `json:"sg"`  // 0 show, 1 declare, 2 lead, 3 active, 4 done
@@ -269,7 +270,7 @@ func BuildView(tb *Table, me int) *View {
 			Step: rules.CTU, Ended: g.GrantEnd >= 0}
 	case rules.PhaseLandAuction, rules.PhaseDeclare, rules.PhaseTrading:
 		if a := g.Auction; a != nil {
-			av := &AuctionV{Land: a.Land, Good: int(a.Good), Plot: a.Plot, Seller: a.Seller, Start: a.Start,
+			av := &AuctionV{Land: a.Land, Good: int(a.Good), Plot: a.Plot, Seller: a.Seller, Crit: a.Crit, Start: a.Start,
 				Ask: a.Ask, Stage: a.Stage, StageLeft: a.StageLeft, Ticks: a.Ticks, TickLeft: a.TickLeft,
 				Idle: a.Idle, LineStep: rules.LineStep, Lo: a.Lo, Hi: a.Hi, Step: a.Step,
 				StoreBuy: a.StoreBuy, StoreSell: a.StoreSell, Done: a.Done,

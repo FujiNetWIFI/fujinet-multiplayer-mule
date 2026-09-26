@@ -280,8 +280,8 @@ static void town_money(void)
     msg_show(M_MONEY, PL(my_seat).money, 0);
     msg_row = 22;
     /* the corral: price and how many are left */
-    put_num(26, 19, st.store.mulePrice, 3, C_WHITE);
-    put_num(27, 13, st.store.mules, 2, C_WHITE);
+    put_num(TX(26), 19, st.store.mulePrice, 3, C_WHITE);
+    put_num(TX(27), 13, st.store.mules, 2, C_WHITE);
 }
 
 static void dv_resume(void)

@@ -4,8 +4,8 @@
  *
  * x is scaled 3/2 from the Atari's colour clocks, 4 pixels in: 160 clocks
  * are pixels 4..243, and a plot (16 clocks from clock 8 + 16k) is exactly
- * the three cells from pixel 16 + 24k. A text cell is 6 pixels (40 across
- * in 240); lines are the Atari's own.
+ * the three cells from pixel 16 + 24k. Text is in whole cells, 32 across
+ * (the Namco font the other Adam games use); lines are the Atari's own.
  *
  * Drawing reads the 8 pattern and 8 colour bytes of each cell it touches,
  * paints them (paint(): a colour the cell hasn't got takes the place of
@@ -115,15 +115,10 @@ static void cell_store(void)
     vwrite(ca + VR_COL, cc, 8);
 }
 
-static uint8_t nbits(uint8_t v)
-{
-    uint8_t n = 0;
-    while (v) {
-        v &= v - 1;
-        ++n;
-    }
-    return n;
-}
+/* The pixels set in a byte, by table (made in gfx_init): counting them
+ * bit by bit made a plot cost three frames. */
+uint8_t popc[256];
+#define nbits(v) popc[(uint8_t)(v)]
 
 /* Line r of the cell: the pixels in m become colour c. */
 static void paint(uint8_t r, uint8_t m, uint8_t c)
@@ -237,6 +232,8 @@ static void spr_init(void);
 void gfx_init(void)
 {
     uint16_t i;
+    for (i = 1; i < 256; ++i)
+        popc[i] = popc[i >> 1] + (uint8_t)(i & 1);
     VDP_LOCK();
     VDP_REG(0, 0x02);           /* Graphics II */
     VDP_REG(1, 0x82 | VDP_R1_IE);   /* 16K, blank, 16 x 16 sprites */
@@ -283,17 +280,21 @@ void gfx_map_frame(void)
 }
 
 /* ---- text --------------------------------------------------------------- */
-static char tbuf[41];
+/* A character is a whole cell (the Namco font, 32 across: TCOLS), written
+ * straight in: its 8 pattern bytes, then 8 colour bytes. The cells of a
+ * row are one run of VRAM, so a string is two bursts. Big text is the same
+ * (BIGW 1). */
+static char tbuf[TCOLS + 1];
 
-/* s, at most n characters, cut at column 40 from tx (step columns each):
- * into tbuf (it may be in the overlay window, which ART_BEGIN changes). */
-static uint8_t take(const char *s, uint8_t n, uint8_t tx, uint8_t step)
+/* s, at most n characters, cut at the right edge from tx: into tbuf (it may
+ * be in the overlay window, which ART_BEGIN changes). */
+static uint8_t take(const char *s, uint8_t n, uint8_t tx)
 {
     uint8_t k = 0;
-    while (k < n && s[k] && tx < 40) {
+    while (k < n && s[k] && tx < TCOLS) {
         tbuf[k] = s[k];
         ++k;
-        tx += step;
+        ++tx;
     }
     return k;
 }
@@ -307,51 +308,50 @@ static const uint8_t *glyph_of(char c)
     return tms_font + ((uint8_t)(c - 32) << 3);
 }
 
-/* tbuf's k characters as small (6-pixel) or big (12-pixel) glyphs from
- * pixel px0, into tb. */
-static void tb_glyphs(uint16_t px0, uint8_t k, uint8_t big)
+/* k cells from (tx, ty): tbuf's characters (or blanks, when !chars) in
+ * colour c on the background. */
+static void text_cells(uint8_t tx, uint8_t ty, uint8_t k, uint8_t c, uint8_t chars)
 {
     const uint8_t *g;
-    uint8_t i, r;
-    memset(tb, 0, sizeof(tb));
+    uint16_t a = ((uint16_t)ty << 8) | ((uint16_t)tx << 3);
+    uint8_t i, r, v;
     ART_BEGIN();
+    VDP_LOCK();
+    VDP_WADDR(a);
     for (i = 0; i < k; ++i) {
-        g = glyph_of(tbuf[i]);
-        for (r = 0; r < 8; ++r) {
-            if (big)
-                tb_put(r, px0, wide12[g[r]] << 4);
-            else
-                tb_put(r, px0, (uint16_t)g[r] << 8);
+        if (chars) {
+            g = glyph_of(tbuf[i]);
+            for (r = 0; r < 8; ++r)
+                VDP_DATA = g[r];
+        } else {
+            for (r = 0; r < 8; ++r)
+                VDP_DATA = 0;
         }
-        px0 += big ? 12 : 6;
     }
+    VDP_UNLOCK();
     ART_END();
-}
-
-static void text_op(uint16_t px0, uint16_t px1, uint8_t y, uint8_t col)
-{
-    op_col = tcol(col);
-    op_bg = bgc;
-    op_pic = 1;
-    op(px0, px1, y, 8);
+    v = (uint8_t)(c << 4) | bgc;
+    VDP_LOCK();
+    VDP_WADDR(a + VR_COL);
+    for (i = 0; i < k; ++i)
+        for (r = 0; r < 8; ++r)
+            VDP_DATA = v;
+    VDP_UNLOCK();
 }
 
 void gfx_textn(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
 {
     uint8_t k;
-    uint16_t px0 = tx * 6 + 4;
-    if (ty > 23 || tx > 39)
+    if (ty > 23 || tx >= TCOLS)
         return;
-    k = take(s, n, tx, 1);
-    if (!k)
-        return;
-    tb_glyphs(px0, k, 0);
-    text_op(px0, px0 + k * 6, ty << 3, col);
+    k = take(s, n, tx);
+    if (k)
+        text_cells(tx, ty, k, tcol(col), 1);
 }
 
 void gfx_text(uint8_t tx, uint8_t ty, const char *s, uint8_t col)
 {
-    gfx_textn(tx, ty, s, 40, col);
+    gfx_textn(tx, ty, s, TCOLS, col);
 }
 
 void gfx_char(uint8_t tx, uint8_t ty, char c, uint8_t col)
@@ -364,31 +364,21 @@ void gfx_char(uint8_t tx, uint8_t ty, char c, uint8_t col)
 
 void gfx_clear_text(uint8_t tx, uint8_t ty, uint8_t w)
 {
-    if (tx >= 40 || ty > 23)
+    if (tx >= TCOLS || ty > 23)
         return;
-    if (tx + w > 40)
-        w = 40 - tx;
-    fill_px(tx * 6 + 4, (tx + w) * 6 + 4, ty << 3, 8, bgc);
+    if (tx + w > TCOLS)
+        w = TCOLS - tx;
+    text_cells(tx, ty, w, bgc, 0);
 }
 
 void gfx_bign(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
 {
-    uint8_t k;
-    uint16_t px0;
-    tx &= 0xFE;
-    if (ty > 23 || tx > 39)
-        return;
-    px0 = tx * 6 + 4;
-    k = take(s, n, tx, 2);
-    if (!k)
-        return;
-    tb_glyphs(px0, k, 1);
-    text_op(px0, px0 + k * 12, ty << 3, col);
+    gfx_textn(tx, ty, s, n, col);
 }
 
 void gfx_big(uint8_t tx, uint8_t ty, const char *s, uint8_t col)
 {
-    gfx_bign(tx, ty, s, 20, col);
+    gfx_textn(tx, ty, s, TCOLS, col);
 }
 
 /* ---- rectangles --------------------------------------------------------- */
@@ -397,16 +387,61 @@ void gfx_fill(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t col)
     fill_px(PX(x), PX(x + w), y, h, tcol(col));
 }
 
+/* Line y, pixels px0 .. px1 - 1: pic's pixels become colour c. Only that
+ * line's pattern and colour byte of each cell is read and written (op()
+ * moves all 16 of every cell). */
+static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, uint8_t c)
+{
+    uint8_t cx, cx0, cx1, lm, rm, m, r = y & 7;
+    uint16_t a;
+    if (px1 > 256)
+        px1 = 256;
+    if (y >= 192 || px0 >= px1)
+        return;
+    cx0 = (uint8_t)(px0 >> 3);
+    cx1 = (uint8_t)((px1 - 1) >> 3);
+    lm = 0xFF >> (px0 & 7);
+    rm = 0xFF << (7 - ((px1 - 1) & 7));
+    a = ((uint16_t)(y >> 3) << 8) | ((uint16_t)cx0 << 3) | r;
+    for (cx = cx0; cx <= cx1; ++cx, a += 8) {
+        m = pic[cx];
+        if (cx == cx0)
+            m &= lm;
+        if (cx == cx1)
+            m &= rm;
+        if (!m)
+            continue;
+        VDP_LOCK();
+        VDP_RADDR(a);
+        cp[r] = VDP_DATA;
+        VDP_RADDR(a + VR_COL);
+        cc[r] = VDP_DATA;
+        VDP_UNLOCK();
+        paint(r, m, c);
+        VDP_LOCK();
+        VDP_WADDR(a);
+        VDP_DATA = cp[r];
+        VDP_WADDR(a + VR_COL);
+        VDP_DATA = cc[r];
+        VDP_UNLOCK();
+    }
+}
+
+/* The dots are made again only for another x or width (the auction's
+ * lines move a step every few frames, always the same dots). */
 void gfx_hdots(uint8_t x, uint8_t y, uint8_t w, uint8_t col)
 {
+    static uint8_t dots[32], dx = 255, dw;
     uint8_t c;
-    memset(tb[0], 0, 32);
-    for (c = 0; c < w; c += 2)
-        tb_put(0, PX(x + c), PX(x + c + 1) - PX(x + c) > 1 ? 0xC000 : 0x8000);
-    op_col = tcol(col);
-    op_bg = 0;
-    op_pic = 1;
-    op(PX(x), PX(x + w), y, 1);
+    if (x != dx || w != dw) {
+        dx = x;
+        dw = w;
+        memset(tb[0], 0, 32);
+        for (c = 0; c < w; c += 2)
+            tb_put(0, PX(x + c), PX(x + c + 1) - PX(x + c) > 1 ? 0xC000 : 0x8000);
+        memcpy(dots, tb[0], 32);
+    }
+    op_line(PX(x), PX(x + w), y, dots, tcol(col));
 }
 
 void gfx_pic(uint8_t x, uint8_t y, uint8_t pic, uint8_t col)
@@ -428,37 +463,49 @@ void gfx_pic(uint8_t x, uint8_t y, uint8_t pic, uint8_t col)
 
 /* ---- the map ------------------------------------------------------------ */
 static const uint8_t zeros[96];
-static uint8_t dots[96];
 uint16_t gfx_nplot;             /* (the harnesses peek it) */
 
 /* A plot: three cells by four, made whole. Each cell line shows the first
  * of the owner's (border, icon, dots), white or black (mountains, the
  * store) and the river that it has, over the plains or over the next one
- * of them, whichever has more pixels there. */
+ * of them, whichever has more pixels there: plotcell.asm works that out
+ * for the 96 bytes (in C it took three frames a plot), from the layers
+ * gathered into pl_trip, into pl_out, which is then sent. */
+uint8_t pl_trip[3 * 96];        /* owner, white or black, river */
+uint8_t pl_out[12][16];         /* a cell's 8 pattern bytes, 8 colour bytes */
+uint8_t pl_c0, pl_c1, pl_c1b, pl_bg, pl_bgbg, pl_rbg;   /* colours */
+void plot_cells(void);
+
+static void or96(uint8_t *d, const uint8_t *s)
+{
+    uint8_t i = 96;
+    do {
+        *d++ |= *s++;
+    } while (--i);
+}
+
 void gfx_plot(uint8_t p, const PlotLook *look)
 {
-    const uint8_t *o1 = zeros, *o2 = zeros, *o3 = zeros, *wh = zeros, *rv = zeros;
-    uint8_t lm[3], lc[3];
-    uint8_t i, j, t, k, cx, cy, cx0, cy0, l, mask, fg, bg, best, n;
-    uint8_t co = tms_of[look->col & 15];
+    const uint8_t *wh = zeros, *rv = zeros;
+    uint8_t *o;
+    uint8_t i, k, t, cx, cy, cx0, cy0, c1, bare;
 
     ART_BEGIN();
+    memset(pl_trip, 0, 96);
     if (look->store) {
         wh = plot_parts[PP_STORE];
     } else {
         if (look->owned) {
-            o1 = plot_parts[PP_BORDER];
+            memcpy(pl_trip, plot_parts[PP_BORDER], 96);
             if (look->icon)
-                o2 = plot_parts[PP_ICON + look->icon - 1];
+                or96(pl_trip, plot_parts[PP_ICON + look->icon - 1]);
             if (look->dots) {
-                memset(dots, 0, sizeof(dots));
                 for (i = 0; i < look->dots && i < 8; ++i) {
                     k = plot_dots[i][0] * 3 + (plot_dots[i][1] >> 3);
                     t = 0xC0 >> (plot_dots[i][1] & 7);
-                    dots[k] |= t;
-                    dots[k + 3] |= t;
+                    pl_trip[k] |= t;
+                    pl_trip[k + 3] |= t;
                 }
-                o3 = dots;
             }
         }
         if (look->mountains)
@@ -466,45 +513,38 @@ void gfx_plot(uint8_t p, const PlotLook *look)
         if (look->river)
             rv = plot_parts[PP_RIVER];
     }
-    ++gfx_nplot;
-    lc[0] = co;
-    lc[1] = (look->mountains && !look->store) ? T_BLACK : T_WHITE;
-    lc[2] = T_RIVER;
-    cx0 = 2 + 3 * (p % 9);
-    cy0 = 2 + 4 * (p / 9);
-    for (cy = 0; cy < 4; ++cy) {
-        for (cx = 0; cx < 3; ++cx) {
-            for (l = 0; l < 8; ++l) {
-                k = (uint8_t)((cy * 8 + l) * 3 + cx);
-                lm[0] = o1[k] | o2[k] | o3[k];
-                lm[1] = wh[k] & ~lm[0];
-                lm[2] = rv[k] & ~(lm[0] | lm[1]);
-                for (t = 0; t < 3 && !lm[t]; ++t)
-                    ;
-                if (t == 3) {
-                    cp[l] = 0;
-                    cc[l] = (uint8_t)(bgc << 4) | bgc;
-                    continue;
-                }
-                mask = lm[t];
-                fg = lc[t];
-                bg = bgc;
-                best = nbits(~(lm[0] | lm[1] | lm[2]));
-                for (j = t + 1; j < 3; ++j) {
-                    n = nbits(lm[j]);
-                    if (n > best) {
-                        best = n;
-                        bg = lc[j];
-                    }
-                }
-                cp[l] = mask;
-                cc[l] = (uint8_t)(fg << 4) | bg;
-            }
-            cell_at(cx0 + cx, cy0 + cy);
-            cell_store();
-        }
+    bare = !look->store && !look->owned && !look->mountains && !look->river;
+    if (!bare) {
+        memcpy(pl_trip + 96, wh, 96);
+        memcpy(pl_trip + 192, rv, 96);
     }
     ART_END();
+    ++gfx_nplot;
+    c1 = (look->mountains && !look->store) ? T_BLACK : T_WHITE;
+    pl_c0 = tms_of[look->col & 15] << 4;
+    pl_c1 = c1 << 4;
+    pl_c1b = c1;
+    pl_bg = bgc;
+    pl_bgbg = (uint8_t)(bgc << 4) | bgc;
+    pl_rbg = (T_RIVER << 4) | bgc;
+    if (bare) {                 /* the plains: nothing to work out */
+        o = pl_out[0];
+        for (i = 0; i < 12; ++i, o += 16) {
+            memset(o, 0, 8);
+            memset(o + 8, pl_bgbg, 8);
+        }
+    } else {
+        plot_cells();
+    }
+    o = pl_out[0];
+    cx0 = 2 + 3 * (p % 9);
+    cy0 = 2 + 4 * (p / 9);
+    for (cy = 0; cy < 4; ++cy)
+        for (cx = 0; cx < 3; ++cx, o += 16) {
+            cell_at(cx0 + cx, cy0 + cy);
+            vwrite(ca, o, 8);
+            vwrite(ca + VR_COL, o + 8, 8);
+        }
 }
 
 /* ---- the town ----------------------------------------------------------- */

@@ -100,18 +100,38 @@ uint8_t text_expand(char *dst, const char *src, uint16_t v1, uint16_t v2)
     return n;
 }
 
+/* Centred on row ty; a line wider than the screen is cut at a space and
+ * goes on centred on the next row. */
 void text_center(uint8_t ty, const char *s, uint8_t col)
 {
-    uint8_t n = strlen(s);
-    gfx_clear_text(0, ty, 40);
-    gfx_text(n < 40 ? (40 - n) / 2 : 0, ty, s, col);
+    uint8_t n = strlen(s), cut;
+    gfx_clear_text(0, ty, TCOLS);
+    if (n > TCOLS) {
+        for (cut = TCOLS; cut && s[cut] != ' '; --cut)
+            ;
+        if (cut) {
+            n = cut;
+            while (n && s[n - 1] == ' ')
+                --n;
+            gfx_textn((TCOLS - n) / 2, ty, s, n, col);
+            while (s[cut] == ' ')
+                ++cut;
+            text_center(ty + 1, s + cut, col);
+            return;
+        }
+    }
+    gfx_text(n < TCOLS ? (TCOLS - n) / 2 : 0, ty, s, col);
 }
 
 void big_center(uint8_t ty, const char *s, uint8_t col)
 {
     uint8_t n = strlen(s);
-    gfx_clear_text(0, ty, 40);
+    gfx_clear_text(0, ty, TCOLS);
+#if BIGW == 2
     gfx_big(n < 20 ? (20 - n) & 0xFE : 0, ty, s, col);
+#else
+    gfx_big(n < TCOLS ? (TCOLS - n) / 2 : 0, ty, s, col);
+#endif
 }
 
 void title_show(uint8_t id, uint16_t v)
@@ -124,8 +144,8 @@ void title_show(uint8_t id, uint16_t v)
 void msg_clear(void)
 {
     msg_scroll = 0;
-    gfx_clear_text(0, msg_row, 40);
-    gfx_clear_text(0, msg_row + 1, 40);
+    gfx_clear_text(0, msg_row, TCOLS);
+    gfx_clear_text(0, msg_row + 1, TCOLS);
 }
 
 /* The message in txt: centred on one row, word-wrapped onto two, or (longer
@@ -135,18 +155,18 @@ void msg_start(uint8_t len)
     uint8_t cut;
     msg_len = len;
     msg_clear();
-    if (len <= 40) {
-        gfx_text((40 - len) / 2, msg_row, txt, msg_col);
-    } else if (len <= 80) {
-        cut = 40;
+    if (len <= TCOLS) {
+        gfx_text((TCOLS - len) / 2, msg_row, txt, msg_col);
+    } else if (len <= 2 * TCOLS) {
+        cut = TCOLS;
         while (cut > 0 && txt[cut] != ' ')
             --cut;
-        if (cut == 0 || len - cut - 1 > 40)
-            cut = 40;
-        gfx_textn((40 - cut) / 2, msg_row, txt, cut, msg_col);
+        if (cut == 0 || len - cut - 1 > TCOLS)
+            cut = TCOLS;
+        gfx_textn((TCOLS - cut) / 2, msg_row, txt, cut, msg_col);
         if (txt[cut] == ' ')
             ++cut;
-        gfx_text((40 - (len - cut)) / 2, msg_row + 1, txt + cut, msg_col);
+        gfx_text((TCOLS - (len - cut)) / 2, msg_row + 1, txt + cut, msg_col);
     } else {
         msg_scroll = 1;
         msg_pos = 0;
@@ -163,17 +183,17 @@ void msg_show(uint8_t id, uint16_t v1, uint16_t v2)
 void msg_tick(void)
 {
     uint8_t i, k;
-    static char win[41];
+    static char win[TCOLS + 1];
     if (!msg_scroll || (uint16_t)(frame_count - msg_last) < 4)
         return;
     msg_last = frame_count;
-    /* columns 0..39 show characters msg_pos-40 .. msg_pos-1 */
-    for (i = 0; i < 40; ++i) {
+    /* columns 0..TCOLS-1 show characters msg_pos-TCOLS .. msg_pos-1 */
+    for (i = 0; i < TCOLS; ++i) {
         k = msg_pos + i;
-        win[i] = (k >= 40 && k < 40 + msg_len) ? txt[k - 40] : ' ';
+        win[i] = (k >= TCOLS && k < TCOLS + msg_len) ? txt[k - TCOLS] : ' ';
     }
-    win[40] = 0;
+    win[TCOLS] = 0;
     gfx_text(0, msg_row + 1, win, msg_col);
-    if (++msg_pos >= msg_len + 44)
+    if (++msg_pos >= msg_len + TCOLS + 4)
         msg_pos = 0;
 }

@@ -1,27 +1,24 @@
 /*
- * nsnet.c -- mule.h's network calls in stream mode on the Lynx: one TCP
- * connection to the server through FujiNet-Lynx's netstream, as on the
- * Atari (src/atari/nsnet.c, docs/PROTOCOL.md "Stream mode").
+ * nsnet.c -- mule.h's network calls in stream mode: one TCP connection to
+ * the server instead of an HTTP GET a poll (net.c), as on the Atari
+ * (src/atari/nsnet.c, docs/PROTOCOL.md "Stream mode"). The Lynx and the
+ * Adam share it; each brings the bytes its own way (nstrans.h):
  *
- * fujinet-lib-experimental's fuji_enable_netstream() turns it on; from
- * then on ComLynx is a raw pipe to the socket (cc65's serial driver, the
- * one the library opened: 62500 baud, 8 bits, odd parity). It can't be
- * turned off again, so nothing else may go over the bus after that
- * (net.c's appkey calls look at ns_on).
+ *   Lynx  FujiNet-Lynx's netstream: ComLynx becomes a raw pipe to the
+ *         socket, for good (src/lynx/nstrans.c).
+ *   Adam  an N:TCP socket, read only when its status says bytes wait: an
+ *         HTTP poll there held the Z80 for the whole request
+ *         (src/adam/nstrans.c).
  *
- * The driver's receive ring is 256 bytes, filled by its interrupt: the
- * server sends at most STREAM_WINDOW bytes we haven't credited (SC_CREDIT),
- * so it can't overflow while the game draws or loads an overlay. ComLynx
- * is one wire: while we send, the driver doesn't receive (FujiNet waits
- * for the line to go quiet), so frames going out are kept short.
+ * The receiver's ring is small: the server sends at most STREAM_WINDOW
+ * bytes we haven't credited (SC_CREDIT), so it can't overflow while the
+ * game draws or loads an overlay.
  */
-#ifdef __LYNX__
+#if defined(PLAT_NETSTREAM) && !defined(__ATARI__)
 
 #include <string.h>
-#include <serial.h>
 #include "mule.h"
-#include "plat.h"
-#include "fujinet-fuji.h"
+#include "nstrans.h"
 
 #ifndef NS_PORT
 #define NS_PORT  STREAM_PORT
@@ -31,13 +28,12 @@
 #define DEAD_AFTER 300          /* frames without a frame: the link is gone */
 #define HELLO_WAIT 30           /* frames before HELLO goes again: FujiNet */
 #define HELLO_MAX  10           /* answers before its socket is open */
-#define PUT_TRIES  2000         /* a full send ring: give up on the frame */
 #define FMAX       136          /* a frame, encoded (STREAM_MAX_FRAME + COBS) */
 #define RESYNC_GAP 30           /* frames between RESYNCs: one bad frame (an
                                  * echo of our own, a collision on the wire)
                                  * mustn't start a storm of them */
 
-uint8_t ns_on;                  /* the stream is on (for ever) */
+uint8_t ns_on;                  /* the link is up */
 static uint8_t ns_taken;        /* bytes taken, mod 256 (SC_CREDIT) */
 static uint8_t fbuf[FMAX];
 static uint8_t flen, fover;
@@ -50,20 +46,24 @@ static uint16_t quiet;
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
 typedef char mule_table_is_33_bytes[sizeof(MuleTable) == 33 ? 1 : -1];
 
+/* (a + b) mod 255 for a < 255: Fletcher-16's sums, without a division
+ * (a 16-bit one a byte, twice, was most of a frame's work in a burst). */
+static uint8_t add255(uint8_t a, uint8_t b)
+{
+    uint16_t t = (uint16_t)a + b;
+    if (t >= 255)
+        t -= 255;
+    return (uint8_t)t;
+}
+
 /* ---- bytes ---------------------------------------------------------------- */
 
-static uint8_t put_ok;
+static uint8_t put_ok, lost;
 
 static void put(uint8_t c)
 {
-    uint16_t n;
-    if (!put_ok)
-        return;
-    for (n = PUT_TRIES; ser_put(c) != SER_ERR_OK; )
-        if (--n == 0) {
-            put_ok = 0;
-            return;
-        }
+    if (put_ok && !nt_put(c))
+        put_ok = 0;
 }
 
 /* One frame from the ring: 0 none (yet), 255 a bad one (dropped), else its
@@ -73,8 +73,12 @@ static uint8_t take_frame(void)
     char c;
     uint8_t i, o, k, code, n, s1, s2;
     for (;;) {
-        if (ser_get(&c) != SER_ERR_OK)
+        k = nt_get(&c);
+        if (k != 1) {
+            if (k == NT_LOST)
+                lost = 1;
             return 0;
+        }
         ++ns_taken;
         if (c) {
             if (flen < FMAX)
@@ -109,8 +113,8 @@ static uint8_t take_frame(void)
         o -= 2;
         s1 = s2 = 0;
         for (i = 0; i < o; ++i) {
-            s1 = (uint8_t)(((uint16_t)s1 + fbuf[i]) % 255);
-            s2 = (uint8_t)(((uint16_t)s2 + s1) % 255);
+            s1 = add255(s1, fbuf[i]);
+            s2 = add255(s2, s1);
         }
         if (fbuf[o] != s1 || fbuf[o + 1] != s2)
             return 255;
@@ -131,8 +135,8 @@ static void send(uint8_t type, const uint8_t *p, uint8_t n)
     ++n;
     s1 = s2 = 0;
     for (i = 0; i < n; ++i) {
-        s1 = (uint8_t)(((uint16_t)s1 + raw[i]) % 255);
-        s2 = (uint8_t)(((uint16_t)s2 + s1) % 255);
+        s1 = add255(s1, raw[i]);
+        s2 = add255(s2, s1);
     }
     raw[n++] = s1;
     raw[n++] = s2;
@@ -149,6 +153,7 @@ static void send(uint8_t type, const uint8_t *p, uint8_t n)
     }
     put_ok = 1;
     put(0);
+    nt_flush();
 }
 
 static void send_credit(void)
@@ -197,18 +202,29 @@ static uint8_t connect(void)
     char c;
     if (ns_on)
         return 1;
-    if (!fuji_enable_netstream(NS_PORT, endpoint_host(), NETSTREAM_TCP))
+    if (!nt_open(endpoint_host(), NS_PORT))
         return 0;
-    while (ser_get(&c) == SER_ERR_OK)
+    while (nt_get(&c) == 1)
         ;                           /* what the command left behind */
     ns_on = 1;
     ns_taken = credited = flen = fover = 0;
     quiet = 0;
     joined = 0;
+    lost = 0;
     return 1;
 }
 
-/* The stream can't be paused: net.c asks nothing of the bus once it's on. */
+/* The link is gone (the server's silence, or the transport says so): a
+ * transport that can open it again does, at the next net_begin. */
+static void link_down(void)
+{
+    joined = 0;
+    net_have = 0;
+    if (nt_close())
+        ns_on = 0;
+}
+
+/* Nothing else on the bus needs the stream stopped. */
 void ns_pause(void)
 {
 }
@@ -217,7 +233,7 @@ void ns_resume(void)
 {
 }
 
-/* Leaving the program: say goodbye (FujiNet keeps the stream). */
+/* Leaving the program: say goodbye. */
 void ns_close(void)
 {
     if (ns_on && joined)
@@ -227,16 +243,20 @@ void ns_close(void)
 
 /* ---- receiving ---------------------------------------------------------- */
 
-/* One frame from the ring, handled. 0: none (yet); 1: a state came in (st);
- * 2: the server refused us (st.h.err). */
+/* The frames waiting, handled. 0: none (yet); 1: a state came in (st);
+ * 2: the server refused us (st.h.err). The server sends every change (up
+ * to twenty a second), more than a slow machine can draw: of the states
+ * waiting only the last is kept, as a poll would have seen it, except
+ * that the one answering our action is handed on at once (its error and
+ * result are for that state alone). */
 static uint8_t take(void)
 {
-    uint8_t n;
+    uint8_t n, got = 0;
     uint16_t off;
     for (;;) {
         n = take_frame();
         if (n == 0)
-            return 0;
+            return got;
         quiet = 0;
         heard = 1;
         if (n == 255) {
@@ -260,10 +280,11 @@ static uint8_t take(void)
             if (wait_seq && fbuf[1] == wait_seq) {
                 act_sent = wait_act;
                 wait_seq = 0;
-            } else {
-                act_sent = ACT_STATE;
+                return 1;
             }
-            return 1;
+            act_sent = ACT_STATE;
+            got = 1;
+            break;
         case CS_ERROR:
             st.h.err = fbuf[1];
             return 2;
@@ -335,9 +356,8 @@ uint8_t net_step(void)
         send_credit();          /* a keepalive, and credit it may have lost */
         send(SC_PING, 0, 0);
     }
-    if (quiet > DEAD_AFTER && heard) {
-        joined = 0;
-        net_have = 0;
+    if ((quiet > DEAD_AFTER && heard) || lost) {
+        link_down();
         return 1;
     }
     return 0;
@@ -367,13 +387,12 @@ uint8_t net_sync(void)
     return net_have;
 }
 
-/* Is there a FujiNet? Asked before the stream is on (after, it is). */
+/* Is there a FujiNet? (Once the stream is on, it answers for it.) */
 uint8_t net_detect(void)
 {
-    uint8_t s;
     if (ns_on)
         return 1;
-    return fuji_get_wifi_status(&s);
+    return nt_detect();
 }
 
 /* The table list: count, then MuleTables. Blocking (boot). */

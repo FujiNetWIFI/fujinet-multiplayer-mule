@@ -90,6 +90,7 @@
 #define AF_DONE 2
 #define AF_COLLUDING 4
 #define AF_IDLE 8
+#define AF_CRITICAL 32
 #define JIFFIES_PER_SECOND 60
 #define TF_STARTED 1
 #define TF_ENDED 2
@@ -173,7 +174,7 @@ typedef struct { /* 58 bytes */
   uint8_t kind; /* 0 none, 1 land, 2 goods */
   int8_t good; /* GOOD_* */
   int8_t plot; /* land plot */
-  int8_t seller; /* land seller seat, -1 colony */
+  int8_t seller; /* land seller seat, -1 colony; goods: seller at critical level (AF_CRITICAL) */
   uint8_t flags; /* AF_* */
   int8_t winner;
   uint8_t colluders; /* bitmask of seats */

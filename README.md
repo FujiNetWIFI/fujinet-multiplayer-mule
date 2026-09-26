@@ -74,8 +74,9 @@ then checks the decoded binary against the JSON state.
 state lives in memory. For now the server registers with the QA lobby,
 `https://qalobby.fujinet.online/`. Lobby registration needs `GO_PROD=1` plus:
 
-- `MULE_APPKEY`: a lobby appkey registered on the FujiNet wiki
-- `MULE_SERVER_URL`: the server's public URL
+- `MULE_APPKEY`: the lobby appkey id, default 10 (the key every client reads
+  the chosen table from); 0 turns registration off
+- `MULE_SERVER_URL`: the server's public URL, default `http://fujinet.online:9900/`
 
 ## Layout
 

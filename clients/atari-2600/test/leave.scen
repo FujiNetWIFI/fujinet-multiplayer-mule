@@ -1,0 +1,16 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 120
+hold reset 80
+bank 8 600
+wait 120
+text
+press fire
+bank 1 1200
+wait 120
+text
+quit

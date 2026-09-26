@@ -1,0 +1,14 @@
+wait 60
+press fire
+bank 8
+wait 30
+peek 9A 12
+peek 1F00 8
+wait 60
+peek 9A 12
+peek 1F00 8
+wait 300
+peek 9A 12
+peek 1F00 8
+peek 1B00 16
+quit

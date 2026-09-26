@@ -5,7 +5,8 @@ the conventions of the other FujiNet game servers in fujinet-game-system:
 
 - Every route accepts both `GET` and `POST`.
 - The client polls `/state`. (Stream mode, below, is a TCP alternative for
-  FujiNet netstream clients: the Atari.)
+  clients whose network calls are slow: the Atari and the Lynx through
+  FujiNet netstream, the Adam through an `N:TCP` socket.)
 - Every call carries `?table=<id>&player=<name>`. The player name is the
   identity and is matched without regard to case. The first call from a new
   name at a table in its lobby takes a free seat.
@@ -59,6 +60,7 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
 | `/ready`, `/ready/1`, `/ready/0` | lobby, summary, landauction | The button. In the lobby it toggles or sets ready. On the status summary, every human must press. During a land auction's for-sale display, the display ends once every human has pressed. |
 | `/claim/:plot` | grant | Claims the plot under the cursor. Accepted if the plot is under the cursor, or the cursor left it within the last 36 jiffies; the cursor then goes back to it for the claim pause. A computer claims on the jiffy the cursor arrives, but a human claim within 36 jiffies of that takes the plot from it. |
 | `/auction/push/:dir[/:seen]` (alias `/auction/move/:dir`) | landauction, trading | The joystick. `1`/`up` means pushed up, `-1`/`down` means pushed down, `0`/`hold` means released. Send one call when the stick changes. A released land bid drifts back down. Pushing keeps the auction clock at its slow rate. A push sent before the lines are released (the plot-for-sale display, or the lead into trading) is held and applied the moment they are. `seen` is the units-traded count (`traded`) the client last showed. When a trader pushes away from the line they are trading with, trading stops at once, and units traded after `seen` in the last 60 jiffies are given back. |
+| `/auction/push/hold/:seen/:at` | trading | A release that names `at`, the price the client showed its own line at when the stick was let go. The client walks its line ahead of the server between polls, so a released goods line carries on to `at` rather than jumping back. It may go at most 6 steps past the server's position, and only in the direction it was last pushed. In a land auction it is a plain release. Send it instead of `/auction/push/0`. |
 | `/auction/at/:price` | landauction, trading | Moves your line towards a price. |
 | `/declare/:role` | declare | `b` for buyer, `s` for seller, `n` to sit out. |
 | `/collude` | trading | Press within 25 jiffies of another player to trade privately for 10 ticks. |
@@ -85,7 +87,7 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
   "map": { "tr": [..45], "mt": [..], "ow": [..], "mu": [..], "cr": [..], "pr": [..], "ls": [..], "fs": [..] },
   "st":  { "s": [8,8,8,0], "pr": [30,25,50,100], "b": [15,10,50,100], "x": [50,45,85,240], "mu": 14, "mp": 100 },
   "gr":  { "cur": 12, "nx": 7, "cl": [-1,3,-1,-1], "ctu": 12, "end": false }, // land grant only
-  "au":  { "land": false, "gd": 2, "pt": -1, "sl": -1, "sp": 0, "ak": 0,   // auctions and declare
+  "au":  { "land": false, "gd": 2, "pt": -1, "sl": -1, "cr": -1, "sp": 0, "ak": 0,   // auctions and declare; cr: seller at critical level
            "sg": 3, "sgl": 0, "tk": 70, "tl": 25, "idl": false, "lj": 8,          // stage, time bar
            "lo": 40, "hi": 86, "sb": 50, "ss": 85, "stp": 1,
            "dn": false, "w": -1, "pc": 0, "tr": 0, "lt": 0, "col": 0,
@@ -126,7 +128,7 @@ over it shows the whole map.
 | 132 | 225 | MuleMap: `terrain[45]` (bits 0–1 terrain, bits 2–3 mountains), `owner[45]`, `mule[45]`, `crystite[45]`, `prod[45]` (bits 0–3 units, bit 6 for sale, bit 7 lost) |
 | 357 | 31 | MuleStore: stock, price, buy, sell, mules, mulePrice |
 | 388 | 8 | MuleGrant: cursor, `claimed[4]`, step, next (jiffies until the next step) |
-| 396 | 58 | MuleAuction: kind, good, plot, seller, flags (`AF_*`, including `AF_IDLE`), winner, colluders, stage, step, traded, prices, stageLeft, ticks, tickLeft, `role[4]`, `pos[4]`, `target[4]`, `units[4]`, `push[4]` |
+| 396 | 58 | MuleAuction: kind, good, plot, seller, flags (`AF_*`, including `AF_IDLE`; `AF_CRITICAL` means "seller at critical level" is shown, and in a goods auction `seller` is that seat), winner, colluders, stage, step, traded, prices, stageLeft, ticks, tickLeft, `role[4]`, `pos[4]`, `target[4]`, `units[4]`, `push[4]` |
 | 454 | 86 | MuleTurn: seat, flags (`TF_*`), carrying, event, length, elapsed, left, endIn, ptu (jiffies), nWampus, `wampus[12]` |
 | 540 | 10 | MuleColony: event, plot, rating, winner, failed, total |
 
@@ -143,6 +145,9 @@ it goes through SIO, and each HTTP poll costs about eight SIO frames and
 0.45 s of blocking. The client uses FujiNet's netstream, which turns the SIO
 line into a raw serial link to a TCP socket. It holds one connection to
 `-stream` (default `:9902`, `MULE_STREAM_ADDR`; empty turns it off). The
+Adam is another: its FujiNet makes an HTTP request inside the AdamNet call,
+so the Z80 waited out each poll; it opens `N:TCP://host:9902/` instead
+(`clients/mekkogx/src/adam/nstrans.c`). The
 server pushes the binary state as it changes, and the client sends actions
 as they happen. Constants and codes are in `clients/mule_proto.h`
 (`SC_*`, `CS_*`, `STREAM_*`), and the implementation is
@@ -158,7 +163,7 @@ over the type and the payload. A decoded frame is at most 128 bytes.
 | Type | Payload | |
 |------|---------|--|
 | `H` | ver (1), flags (bit 0: big-endian), table[8], player[8] (NUL padded) | join: from now on the connection is a `/state` poll for this player at this table |
-| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH`. `ACT_LEAVE` leaves the table (as `/leave`) and the connection then watches as a spectator until the next `H`, which rejoins |
+| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH` and `ACT_HOLD`. `ACT_HOLD` (21) is `/auction/push/hold/:seen/:at`, with `at` in arg. `ACT_LEAVE` leaves the table (as `/leave`) and the connection then watches as a spectator until the next `H`, which rejoins |
 | `T` | (1: the hidden dev tables) | list the tables |
 | `R` | | send the whole state again (the client lost a frame) |
 | `C` | n | credit: bytes taken out of the receive ring since connecting, mod 256 |

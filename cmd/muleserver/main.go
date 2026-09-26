@@ -35,16 +35,32 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Lobby registration only in production, and only once an appkey is assigned.
+	// Lobby registration only in production. The lobby client stores the
+	// chosen table's URL under this appkey id, and the clients read key 10
+	// (clients/mekkogx/src/net.c AK_SERVER), so 10 is the default;
+	// MULE_APPKEY=0 turns registration off.
 	var lobby *server.LobbyClient
-	appkey, _ := strconv.Atoi(os.Getenv("MULE_APPKEY"))
+	appkey := 10
+	if s, ok := os.LookupEnv("MULE_APPKEY"); ok {
+		appkey, _ = strconv.Atoi(s)
+	}
 	if prod && appkey > 0 {
 		url := os.Getenv("MULE_SERVER_URL")
 		if url == "" {
-			url = "https://mule.fujinet.online/"
+			url = "http://fujinet.online:9900/" // the clients' built-in ENDPOINT
 		}
 		lobby = server.NewLobbyClient(server.LobbyEndpointQA, appkey, url, "us", []server.GameClient{
-			{Platform: "atari", Url: "tnfs://tnfs.fujinet.online/atari/mule.xex"},
+			// Images published by `make deploy-clients` (mule/<target>/).
+			{Platform: "atari", Url: "tnfs://irata.online/mule/atari/mule.atr"},
+			{Platform: "apple2", Url: "tnfs://irata.online/mule/apple2/mule.po"},
+			{Platform: "coco", Url: "tnfs://irata.online/mule/coco/mule.dsk"},
+			{Platform: "msdos", Url: "tnfs://irata.online/mule/msdos/mule.img"},
+			{Platform: "lynx", Url: "tnfs://irata.online/mule/lynx/mule.lnx"},
+			{Platform: "adam", Url: "tnfs://irata.online/mule/adam/mule.ddp"},
+			{Platform: "msx", Url: "tnfs://irata.online/mule/msxrom/mule.rom"},
+			{Platform: "intv", Url: "tnfs://irata.online/mule/intv/mule.rom"},
+			{Platform: "astrocade", Url: "tnfs://irata.online/mule/astrocade/mule.bin"},
+			{Platform: "a2600", Url: "tnfs://irata.online/mule/atari-2600/mule2600.bin"},
 		})
 		log.Println("updating lobby at", lobby.Endpoint)
 	}

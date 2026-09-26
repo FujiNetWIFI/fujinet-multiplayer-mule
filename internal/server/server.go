@@ -120,6 +120,7 @@ func (s *Server) Routes(r *gin.Engine) {
 	route("/auction/move/:dir", s.act(actBidMove))
 	route("/auction/push/:dir", s.act(actBidMove))
 	route("/auction/push/:dir/:seen", s.act(actBidMove))
+	route("/auction/push/:dir/:seen/:at", s.act(actBidMove))
 	route("/declare/:role", s.act(actDeclare))
 	route("/collude", s.act(actCollude))
 	route("/turn/begin", s.act(actBegin))
@@ -267,6 +268,10 @@ func actBidMove(t *Table, seat int, c params) (int, error) {
 	case "down", "d", "-1":
 		return 0, g.PushSeen(seat, -1, seen)
 	default:
+		// :at is the price the client showed its line released at.
+		if at := atoi(c.Param("at"), -1); at >= 0 {
+			return 0, g.HoldAt(seat, at, seen)
+		}
 		return 0, g.PushSeen(seat, 0, seen)
 	}
 }

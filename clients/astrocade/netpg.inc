@@ -258,6 +258,8 @@ BURL2:  ADD     A,A
         CP      '/'
         JR      NZ,BURLQ
         LD      A,(URLREQ)
+        CP      A_HOLD
+        JR      Z,BURLH
         CP      A_PUSH
         JR      NZ,BURL3
         LD      HL,UPUSHW       ; hold / up / down, then the units shown
@@ -269,6 +271,15 @@ BURL2:  ADD     A,A
         LD      H,0
         CALL    BURLN
         JR      BURLQ
+BURLH:  LD      HL,UHOLD        ; hold/, the units shown, /, our price
+        CALL    FNTXSTR
+        LD      A,(AUTRADE)
+        LD      L,A
+        LD      H,0
+        CALL    BURLN
+        LD      A,'/'
+        CALL    FNTXBYT
+        JR      BURL4
 BURL3:  CP      A_DECL
         JR      NZ,BURL4
         LD      HL,UDECLW       ; n / b / s
@@ -310,6 +321,7 @@ BURLN:  CALL    NUMSTR
 
 ROUTES: DW      UR0,UR1,UR2,UR3,UR4,UR5,UR6,UR7,UR8,UR9,UR10
         DW      UR11,UR12,UR13,UR14,UR15,UR16,UR17,UR18,UR19,UR20
+        DW      UR0,UR6         ; (A_TABLES has its own), A_HOLD
 UR0:    DB      "/state",0
 UR1:    DB      "/state",0
 UR2:    DB      "/ready/1",0
@@ -332,6 +344,7 @@ UR18:   DB      "/turn/pub",0
 UR19:   DB      "/turn/end",0
 UR20:   DB      "/leave",0
 UPUSHW: DB      "hold",0,"up",0,"down",0
+UHOLD:  DB      "hold/",0
 UDECLW: DB      "n",0,"b",0,"s",0
 UTABLS: DB      "/tables?bin=1",0
 UQTAB:  DB      "?table=",0

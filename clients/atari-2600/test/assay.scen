@@ -1,0 +1,40 @@
+# my turn: out of town, a sample, back, the assay office, then the pub
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+bank 5 8000
+wait 30
+press fire
+bank 6 600
+wait 60
+walkto 36 39
+hold left 20
+bank 5 300
+wait 30
+walkto 40 40 1500
+press fire
+wait 30
+text
+walkto 60 52 900
+walkto 78 52 900
+bank 6 300
+wait 30
+walkto 48 39
+hold down 80
+wait 150
+text
+walkto 88 39
+hold down 80
+wait 200
+text
+snap
+quit

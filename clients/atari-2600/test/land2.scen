@@ -1,0 +1,33 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+bank 7 3000
+wait 200
+peek 9A 12
+peek B1 1
+peek 1C8C 30
+text
+wait 300
+peek 9A 12
+peek B1 1
+peek 1C8C 30
+text
+wait 300
+peek 9A 12
+peek B1 1
+peek 1C8C 30
+text
+wait 600
+peek 9A 12
+peek A8 4
+text
+quit

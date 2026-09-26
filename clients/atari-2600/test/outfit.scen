@@ -1,0 +1,41 @@
+# my turn: buy a M.U.L.E., outfit it for food, install it on my plot (0)
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+zp C7 00 2000
+press fire
+bank 5 8000
+wait 30
+press fire
+bank 6 600
+wait 60
+walkto 108 39
+hold down 60
+wait 120
+text
+peek D1 1
+walkto 120 39
+hold up 60
+wait 120
+text
+walkto 132 39
+hold right 20
+bank 5 300
+wait 30
+walkto 20 20 2400
+press fire
+wait 150
+text
+snap
+press select
+wait 200
+quit

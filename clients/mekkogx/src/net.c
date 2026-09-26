@@ -51,7 +51,7 @@ static const char *const routes[] = {
     "", "/state", "/ready/1", "/ready/0", "/setup/species/", "/claim/", "/auction/push/",
     "/declare/", "/collude", "/turn/begin", "/turn/buymule", "/turn/outfit/", "/turn/install/",
     "/turn/return", "/turn/assay/", "/turn/sell/", "/turn/unsell/", "/turn/wampus", "/turn/pub",
-    "/turn/end", "/leave",
+    "/turn/end", "/leave", "/auction/push/hold/",
 };
 static const char *const push_word[] = { "hold", "up", "down" };
 static const char *const declare_word[] = { "n", "b", "s" };
@@ -72,6 +72,10 @@ static void compose(uint8_t a)
             p = add(p, push_word[act_arg < 3 ? act_arg : 0]);
             *p++ = '/';
             p = add_num(p, au_traded);      /* the units we have shown */
+        } else if (a == ACT_HOLD) {
+            p = add_num(p, au_traded);      /* the units we have shown */
+            *p++ = '/';
+            p = add_num(p, act_arg);
         } else if (a == ACT_DECLARE) {
             p = add(p, declare_word[act_arg < 3 ? act_arg : 0]);
         } else {
@@ -389,10 +393,13 @@ void appkey_save_name(void)
 }
 #endif
 
+/* The buffer is zeroed first: some buses (the CoCo's) send all 64 bytes of
+ * it whatever the count, so the tail must be NULs, not an old URL. */
 void appkey_save_room(void)
 {
     char *p;
     AK_NO_BUS();
+    memset(akbuf, 0, sizeof(akbuf));
     p = add((char *)akbuf, sc_endpt);
     p = add(p, "/?table=");
     p = add(p, sc_table);
@@ -408,6 +415,7 @@ void appkey_clear_room(void)
     sc_table[0] = 0;
 #endif
     AK_NO_BUS();
+    memset(akbuf, 0, sizeof(akbuf));    /* zeros read back as no table */
     ns_pause();
     fuji_set_appkey_details(1, 1, DEFAULT);
     fuji_write_appkey(AK_SERVER, 0, akbuf);

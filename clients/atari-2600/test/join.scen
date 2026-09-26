@@ -1,0 +1,12 @@
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+wait 200
+peek 8D 1
+peek 96 1
+peek A8 10
+peek 1B00 16
+peek 1F0E 1
+quit

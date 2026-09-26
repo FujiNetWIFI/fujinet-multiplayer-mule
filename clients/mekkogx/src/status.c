@@ -11,6 +11,40 @@
 
 extern const uint8_t fx_land[];
 
+/* The summary's columns: each number right-aligned under its heading,
+ * clear of the players standing at the left. */
+#if TCOLS == 40
+#define SU_MONEY_X   6          /* big, 6 digits: ends at cell 17 */
+#define SU_MONEY_H   13
+#define SU_LAND_X    18         /* 5 digits: ends at 27 */
+#define SU_LAND_H    24
+#define SU_GOODS_X   28         /* 6 digits: ends at 39 */
+#define SU_GOODS_H   35
+#define SU_TOTAL_X   26         /* 7 digits */
+#define SU_TOTAL_L   8
+#define SU_COLONY_X  6
+#define GO_FIRST_X   4          /* "FIRST <winner> FOUNDER" */
+#define GO_FOUNDER_X 24
+#define LB_NAME_X    8          /* the lobby */
+#define LB_SPEC_X    28
+#define LB_HELP_ROW  21
+#else
+#define SU_MONEY_X   10         /* 6 digits: ends at cell 15 */
+#define SU_MONEY_H   11
+#define SU_LAND_X    19         /* 5 digits: ends at 23 */
+#define SU_LAND_H    20
+#define SU_GOODS_X   26         /* 6 digits: ends at 31 */
+#define SU_GOODS_H   27
+#define SU_TOTAL_X   25         /* 7 digits */
+#define SU_TOTAL_L   10
+#define SU_COLONY_X  6
+#define GO_FIRST_X   7
+#define GO_FOUNDER_X 17
+#define LB_NAME_X    8
+#define LB_SPEC_X    (TCOLS - 12)
+#define LB_HELP_ROW  20         /* (it may take two rows) */
+#endif
+
 static uint8_t su_order[4];     /* seats by rank */
 static uint8_t su_drawn, su_pressed, su_land;
 
@@ -68,16 +102,16 @@ static void su_values(void)
     uint16_t v;
     for (i = 0; i < 4; ++i) {
         k = su_order[i];
-        big_num(6, SU_ROW(i), PL(k).money, 6, PLCOL(k));
-        big_num(18, SU_ROW(i), su_land_of(k), 5, PLCOL(k));
+        big_num(SU_MONEY_X, SU_ROW(i), PL(k).money, 6, PLCOL(k));
+        big_num(SU_LAND_X, SU_ROW(i), su_land_of(k), 5, PLCOL(k));
         v = 0;
         for (g = 0; g < 4; ++g)
             v += PL(k).goods[g] * st.store.price[g];
-        big_num(28, SU_ROW(i), v, 6, PLCOL(k));
-        gfx_text(8, SU_ROW(i) + 2, str_word(W_TOTAL), C_WHITE);
-        big_num(26, SU_ROW(i) + 2, PL(k).score, 7, PLCOL(k));
+        big_num(SU_GOODS_X, SU_ROW(i), v, 6, PLCOL(k));
+        gfx_text(SU_TOTAL_L, SU_ROW(i) + 2, str_word(W_TOTAL), C_WHITE);
+        big_num(SU_TOTAL_X, SU_ROW(i) + 2, PL(k).score, 7, PLCOL(k));
     }
-    big_num32(26, 21, st.colony.total, 7, C_ORANGE);
+    big_num32(SU_TOTAL_X, 21, st.colony.total, 7, C_ORANGE);
 }
 
 static void su_table(void)
@@ -94,12 +128,11 @@ static void su_table(void)
     strcpy(buf, str_word(W_SUMMARY));
     fmt_num(buf + strlen(buf), rnd);
     big_center(0, buf, C_ORANGE);
-    /* headings right-aligned over their columns (money ends at cell 17,
-     * land at 27, goods and the totals at 39) */
-    gfx_text(13, 2, str_word(W_MONEY), C_WHITE);
-    gfx_text(24, 2, str_word(W_LAND), C_WHITE);
-    gfx_text(35, 2, str_word(W_GOODS), C_WHITE);
-    gfx_big(6, 21, str_word(W_COLONY), C_ORANGE);
+    /* headings right-aligned over their columns */
+    gfx_text(SU_MONEY_H, 2, str_word(W_MONEY), C_WHITE);
+    gfx_text(SU_LAND_H, 2, str_word(W_LAND), C_WHITE);
+    gfx_text(SU_GOODS_H, 2, str_word(W_GOODS), C_WHITE);
+    gfx_big(SU_COLONY_X, 21, str_word(W_COLONY), C_ORANGE);
     su_values();
     if (phase == PHASE_SUMMARY) {
         msg_row = 22;
@@ -212,8 +245,8 @@ void gameover_enter(void)
     go_stage = 0;
     su_rank();
     /* "FIRST <winner> FOUNDER" */
-    gfx_big(4, 3, "FIRST", C_GREEN);
-    gfx_big(24, 3, "FOUNDER", C_GREEN);
+    gfx_big(GO_FIRST_X, 3, "FIRST", C_GREEN);
+    gfx_big(GO_FOUNDER_X, 3, "FOUNDER", C_GREEN);
     /* the others stand down the left */
     for (i = 1; i < 4; ++i) {
         k = su_order[i];
@@ -233,7 +266,7 @@ void gameover_tick(void)
             go_stage = 1;
             spr_hide_all();
             for (i = 0; i < 24; ++i)
-                gfx_clear_text(0, i, 40);
+                gfx_clear_text(0, i, TCOLS);
             su_table();
             /* "OVERALL, " + the colony's rating */
             if (st.colony.rating < 7) {
@@ -269,7 +302,7 @@ void lobby_enter(void)
         lb_last[k] = 255;
     big_center(1, str_word(W_MULE), C_ORANGE);
     big_center(3, str_word(W_TOURNAMENT), C_BLUE);
-    text_center(21, str_msg(M_LOBBYHELP), C_WHITE);
+    text_center(LB_HELP_ROW, str_msg(M_LOBBYHELP), C_WHITE);
     SND_X(SNX_TITLE);
     lb_sent = 0;
     lb_lastcd = 1;
@@ -288,22 +321,22 @@ void lobby_state(void)
         if (lb_last[k] == (uint8_t)(j + c * 8) && PL(k).name[0])
             continue;
         lb_last[k] = j + c * 8;
-        gfx_clear_text(0, r, 40);
-        gfx_clear_text(0, r + 1, 40);
+        gfx_clear_text(0, r, TCOLS);
+        gfx_clear_text(0, r + 1, TCOLS);
         if (PL(k).name[0]) {
-            gfx_bign(8, r, PL(k).name, 8, PLCOL(k));
-            gfx_text(28, r, str_species(j), C_WHITE);
+            gfx_bign(LB_NAME_X, r, PL(k).name, 8, PLCOL(k));
+            gfx_text(LB_SPEC_X, r, str_species(j), C_WHITE);
             s = 0;
             if (c & PF_AI)
                 s = str_word(W_COMPUTER);
             else if (c & PF_READY)
                 s = str_msg(M_READY);
             if (s)
-                gfx_text(28, r + 1, s, C_WHITE);
+                gfx_text(LB_SPEC_X, r + 1, s, C_WHITE);
             /* the species, standing */
             spr_set(k, SH_SPECIES, j * 11 + 5, 12, r * 8 - 6, PLCOL(k), 0);
         } else {
-            gfx_text(8, r, str_word(W_OPEN), C_WHITE);
+            gfx_text(LB_NAME_X, r, str_word(W_OPEN), C_WHITE);
             spr_hide(k);
         }
     }

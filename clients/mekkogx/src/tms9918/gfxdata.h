@@ -17,7 +17,7 @@ typedef struct {
     uint8_t h;              /* lines */
 } ShapeDef;
 
-extern const uint8_t tms_font[64 * 8];      /* 6 pixels, bit 7 left */
+extern const uint8_t tms_font[64 * 8];      /* 8 x 8 (Namco), bit 7 left */
 extern const uint8_t plot_parts[12][96];    /* 32 lines x 24 pixels (3 bytes) */
 extern const uint8_t plot_dots[8][2];       /* line, pixel (2 pixels wide) */
 extern const ShapeDef tms_shapes[];

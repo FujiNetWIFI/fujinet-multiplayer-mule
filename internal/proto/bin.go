@@ -78,7 +78,7 @@ type BinAuction struct {
 	Kind      uint8     `c:"0 none, 1 land, 2 goods"`
 	Good      int8      `c:"GOOD_*"`
 	Plot      int8      `c:"land plot"`
-	Seller    int8      `c:"land seller seat, -1 colony"`
+	Seller    int8      `c:"land seller seat, -1 colony; goods: seller at critical level (AF_CRITICAL)"`
 	Flags     uint8     `c:"AF_*"`
 	Winner    int8      `c:""`
 	Colluders uint8     `c:"bitmask of seats"`
@@ -160,6 +160,7 @@ const (
 	AFColluding = 4
 	AFIdle      = 8
 	AFIn        = 16 // reserved
+	AFCritical  = 32 // goods: "seller at critical level" is shown; Seller is the seat
 
 	TFStarted = 1
 	TFEnded   = 2
@@ -225,7 +226,10 @@ func ToBin(v *View) *BinState {
 			ba.Kind = 1
 		}
 		ba.Good, ba.Plot, ba.Seller, ba.Winner = int8(a.Good), int8(a.Plot), int8(a.Seller), int8(a.Winner)
-		ba.Flags = b2u(a.Stage == 3, AFActive) | b2u(a.Done, AFDone) | b2u(a.Colluders != 0, AFColluding) | b2u(a.Idle, AFIdle)
+		ba.Flags = b2u(a.Stage == 3, AFActive) | b2u(a.Done, AFDone) | b2u(a.Colluders != 0, AFColluding) | b2u(a.Idle, AFIdle) | b2u(a.Crit >= 0, AFCritical)
+		if !a.Land {
+			ba.Seller = int8(a.Crit)
+		}
 		ba.Colluders, ba.Stage, ba.Step, ba.Traded = uint8(a.Colluders), uint8(a.Stage), u8(a.Step), u8(a.Traded)
 		ba.Start, ba.Ask, ba.Lo, ba.Hi = u16(a.Start), u16(a.Ask), u16(a.Lo), u16(a.Hi)
 		ba.StoreBuy, ba.StoreSell, ba.Price, ba.LastTrade = u16(a.StoreBuy), u16(a.StoreSell), u16(a.Price), u16(a.LastTrade)
@@ -310,7 +314,7 @@ func CHeader() string {
 	defs("CE_", []string{"none", "pest", "pirates", "acidrain", "quake", "sunspot", "meteorite", "radiation", "fire", "shipreturns"})
 	defs("ERR_", []string{"none", "phase", "notturn", "timeup", "plot", "nomule", "havemule", "nostock", "money", "outfit", "done", "terrain", "seat", "badrequest", "tablefull"})
 	sb.WriteString("#define PF_AI 1\n#define PF_READY 2\n#define PF_DECLARED 4\n#define PF_ONLINE 8\n")
-	sb.WriteString("#define AF_ACTIVE 1\n#define AF_DONE 2\n#define AF_COLLUDING 4\n#define AF_IDLE 8\n")
+	sb.WriteString("#define AF_ACTIVE 1\n#define AF_DONE 2\n#define AF_COLLUDING 4\n#define AF_IDLE 8\n#define AF_CRITICAL 32\n")
 	sb.WriteString("#define JIFFIES_PER_SECOND 60\n")
 	sb.WriteString("#define TF_STARTED 1\n#define TF_ENDED 2\n#define TF_HASMULE 4\n#define TF_CAUGHT 8\n\n")
 	fmt.Fprintf(&sb, "#define NUM_PLOTS %d\n#define STORE_PLOT %d\n#define MAX_WAMPUS %d\n\n", rules.NumPlots, rules.StorePlot, MaxWampus)

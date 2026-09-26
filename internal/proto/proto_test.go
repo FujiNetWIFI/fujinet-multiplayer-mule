@@ -142,3 +142,21 @@ func TestGrantCursorGoneAfterSweep(t *testing.T) {
 	}
 	t.Fatalf("sweep did not end (phase %v)", g.Phase)
 }
+
+// "Seller at critical level": AF_CRITICAL, and the seat in seller (goods only).
+func TestCriticalFlag(t *testing.T) {
+	v := sampleView()
+	v.Auction = &AuctionV{Good: int(rules.Food), Plot: -1, Seller: -1, Winner: -1, Crit: 2}
+	if b := ToBin(v).Auction; b.Flags&AFCritical == 0 || b.Seller != 2 {
+		t.Fatalf("flags %#x seller %d", b.Flags, b.Seller)
+	}
+	v.Auction.Crit = -1
+	if b := ToBin(v).Auction; b.Flags&AFCritical != 0 || b.Seller != -1 {
+		t.Fatalf("no crit: flags %#x seller %d", b.Flags, b.Seller)
+	}
+	// A land auction's seller is the plot's.
+	v.Auction = &AuctionV{Land: true, Good: -1, Plot: 10, Seller: 1, Winner: -1, Crit: -1}
+	if b := ToBin(v).Auction; b.Flags&AFCritical != 0 || b.Seller != 1 {
+		t.Fatalf("land: flags %#x seller %d", b.Flags, b.Seller)
+	}
+}

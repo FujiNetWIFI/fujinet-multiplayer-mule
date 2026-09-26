@@ -1,6 +1,7 @@
 ' ===========================================================================
 ' auneed.bas -- the per-good status screen's marks for what each player
-' needs next round (auction.bas; kept apart only to spread the ROM).
+' needs next round, and snapping the lines to a new state (auction.bas;
+' kept apart only to spread the ROM).
 ' ===========================================================================
 
 ' au_need_draw: once the store's stock is shown, what each player needs for
@@ -28,5 +29,23 @@ au_need_draw: PROCEDURE
             IF #val >= 10 THEN t_pos = t_pos - 1
             #BACKTAB(t_pos) = c * 8 + #t_col
         END IF
+    NEXT i
+END
+
+' au_snap: the lines from a new state. The frame handler walks them on.
+au_snap: PROCEDURE
+    ' Our released goods line: the server's is behind what we showed and
+    ' carries on to where we let go (ACT_HOLD), so ours stays put rather
+    ' than jumping back until the server's comes to rest (or a second).
+    k = 255
+    IF au_kind = 2 AND au_stage = STAGE_ACTIVE AND au_push = 0 AND ((FRAME - PEEK(AU_HELD)) AND 255) < 60 THEN k = my_seat
+    FOR i = 0 TO 3
+        IF i = k THEN
+            IF st8(ST_AUCTION_PUSH + i) <> 0 OR st16(ST_AUCTION_POS + i * 2) <> st16(ST_AUCTION_TARGET + i * 2) THEN GOTO au_snap_next
+        END IF
+        #au_tgt(i) = st16(ST_AUCTION_TARGET + i * 2)
+        ' Snap to the server's position; the frame handler walks it on.
+        #au_pos(i) = st16(ST_AUCTION_POS + i * 2)
+au_snap_next:
     NEXT i
 END

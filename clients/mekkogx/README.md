@@ -121,6 +121,7 @@ A joystick works too if one is centred when the game starts.
 - **Graphics:** `tools/mkgfx_pmode4.py` converts them from the same Atari disk (`ATR=`, or `mule.atr`), into `gen/coco/`. The Atari extraction is `mkgfx_hgr.py`'s. As on the Apple, there is stand-in art without the disk.
 - **Optimisation:** the build uses `-O1`. CMOC 0.1.100's `-O2` has a bug: after `x = a[i]`, a following `b[i]` is indexed by `x`.
 - **Rebuilding:** a module's section (below) is set by the Makefile. Changing it doesn't rebuild the module: `make clean` first.
+- **Appkeys:** fujinet-lib's CoCo `fuji_write_appkey` always sends 64 bytes, whatever the count. `net.c` zeroes the buffer before each write, so clearing the table (on leaving) stores zeros, not the old URL.
 
 **Running.** Mount `mule.dsk` on the FujiNet and boot. HDB-DOS runs `AUTOEXEC.BAS`, which does `PCLEAR1:LOADM"MULE":EXEC`. The `PCLEAR1` moves the BASIC program out of the way of `MULE.BIN`.
 
@@ -254,8 +255,10 @@ How it gets there:
 - **Rebuilding:** `make clean` after changing `AUTOPLAY`.
 
 **The screen** (`src/tms9918/gfx.c`). Both machines use Graphics II, a 256 x 192 bitmap in which each 8-pixel row of a cell has two colours.
-- **x is scaled 3/2 from the Atari's colour clocks, from 4 pixels in.** A plot's 16 clocks become exactly three cells, so plots are made whole, cell by cell. Text is 40 columns of 6-pixel glyphs (the CoCo's squeeze of the Atari font), and big text is 12 pixels a character. Lines are the Atari's own.
+- **x is scaled 3/2 from the Atari's colour clocks, from 4 pixels in.** A plot's 16 clocks become exactly three cells, so plots are made whole, cell by cell. Lines are the Atari's own.
+- **Text** is the Namco arcade font the other Adam FujiNet games use (`tools/tms/namco.bin`, from fujinet-5cardstud), a whole cell a character: 32 columns. Big text is the same glyphs (the colour sets it apart). A character is written straight into its cell, pattern and colour, with no reading back. The shared screens lay themselves out by `TCOLS`, `BIGW` and `TX()` (`src/platform-specific/gfx.h`): `TX(c)` is the cell over the same spot as the 40-column cell `c`, for text on the art (the town's prices, the auction's). A centred line too wide for 32 columns goes on to the next row.
 - **Drawing** reads a cell's 8 pattern and 8 colour bytes, paints them and writes them back. A colour a row doesn't have replaces the one with fewer pixels left, and those pixels change colour: that is the colour clash.
+- **Plots** are worked out whole in `plotcell.asm` (the owner's layer, white or black, the river), under a frame each on the Adam: the whole map in about two thirds of a second. In C it took three frames a plot, and leaving the town froze a turn for over two seconds. The auction's dotted lines touch only their own line of each cell, and their dots are made once.
 - **The town** is converted cell by cell by `tools/mkgfx_tms.py`: each row keeps its two commonest colours, and the rest go to the nearer one (96 pixels in all).
 - **The colours** are the Atari's nearest, from TMS9918's 15. The players are light blue, magenta, green and orange (light red). The map is grey, with black mountains and a light green river.
 - **Sprites** are the VDP's own: 16 x 16, one colour each, with no save-under. A slot is up to four of them, with its own pattern names, and a pattern is sent only when its frame changes. The shapes stay 1 bit a colour clock and are widened as they are sent (`wide12`). With a fifth sprite on a line the order rotates a frame at a time, so they flicker rather than vanish.
@@ -271,6 +274,12 @@ How it gets there:
 
   z88dk's bootstrap loads the program a 1K block at a time. Each phase is an overlay that `bank.c` reads from the boot medium, in whole blocks, at a phase change. `tools/adam/mkimage.py` puts the overlays after the program, fills in the program's table of where they are, and checks the map.
 - **The clock** is the VDP's frame interrupt, which is the Z80's NMI (`nmi.asm`). The NMI can't be masked, so while the game is at the VDP it only notes that the interrupt came (`vdp_busy`), and `VDP_UNLOCK` reads the status then. The clock keeps counting while AdamNet calls wait.
+- **Sound** (`sound.c`) is timed by the NMI too (`snd_frame`), so an effect ends on time however long the game is held up (an overlay loading, an AdamNet call).
+- **The network: stream mode over N:TCP** (`src/nsnet.c`, `src/adam/nstrans.c`; `docs/PROTOCOL.md`). An HTTP poll held the Z80 for the whole request, because FujiNet makes the GET inside its AdamNet handler, and the game froze with the clock running. The Adam instead keeps one socket open to `N:TCP://<endpoint host>:9902/`.
+  - The socket's status is asked at most once a frame, and it is read only when bytes wait. A read with nothing waiting gets no answer, which costs fujinet-lib 20 timeouts.
+  - A read brings everything waiting. The server's 192-byte window keeps that under the 256-byte buffer.
+  - EOS puts the length received back in the DCB, but ADAMEm doesn't. A read that seems to fill the buffer takes the status's count instead.
+  - Each frame going up is one write. A dropped connection (5 s of silence, or the status says it closed) is opened again at the next poll.
 - **EOS** is called directly (`eoscall.asm`): block reads, the keyboard and the controllers. z88dk's `eos.lib` is an sccz80 build, whose arguments come in the other order from zsdcc's.
 - **Keys:** the arrows walk, SPACE or a fire button is the button, RETURN ends a turn, ESCAPE leaves, 0 sits out, BACKSPACE rubs out, and SmartKey VI turns the sound off and on. On the controller's keypad, * ends a turn and 0 sits out. The keyboard sends characters, not keys held, so an arrow counts as held for a third of a second after each one.
 - **ESCAPE at the table list** sets the FujiNet to boot CONFIG and restarts the Adam.
@@ -395,7 +404,7 @@ A cart image for the Atari Lynx with a FujiNet-Lynx on its ComLynx port. It keep
 - **fujinet-lib-experimental needs** `fuji_enable_netstream()` and the Lynx appkey read and write (`bus/lynx/fuji_enable_netstream.c`, `fuji_bus_appkey_read.c`, `fuji_bus_appkey_write.c`), and `LYNX_PACKET_MAX` in `lynx_bus_call.c`.
 - **Graphics** come from the disk as for the others (`tools/mkgfx_lynx.py`, from `mkgfx_dos.py`'s and `mkgfx_hgr.py`'s extraction), into `gen/lynx/`. The sound is `tools/mksnd_atari.py`'s, into `gen/lynx/snd.s`.
 
-**The network: stream mode, one way.** `src/lynx/nsnet.c` is the Atari's `nsnet.c` over cc65's ComLynx driver (62500 baud, 8 bits, odd parity), which the library opens for its first bus call.
+**The network: stream mode, one way.** `src/nsnet.c` (shared with the Adam) runs the Atari's protocol over `src/lynx/nstrans.c`: cc65's ComLynx driver (62500 baud, 8 bits, odd parity), which the library opens for its first bus call.
 - **Switching on:** `fuji_enable_netstream(9902, host, NETSTREAM_TCP)`. From then on every ComLynx byte goes to the server's socket, and every byte from it comes back.
 - **No way back.** The Lynx firmware can't leave stream mode, so nothing else may go over the bus once it is on (`PLAT_NS_ONEWAY` in `net.c`).
   - The player's name (appkey 0) is read, and written after the picker, before the stream starts.

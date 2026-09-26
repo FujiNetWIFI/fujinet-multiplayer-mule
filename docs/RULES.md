@@ -171,6 +171,8 @@ The chance of each event is its uses left divided by the total uses left for all
 - A buyer's line can't go above the lowest seller's line. When the store has stock, buyers also can't go above the store's selling price.
 - A seller's line can't go below the highest buyer's line or below the store's buying price.
 - While a buyer and a seller meet, units change hands after 12, 12, 10, 8, 6, 4, 2, 2… BTU. Each trade is at the meeting price, and ties go to the lower-ranked player.
+- A released line stays where it was let go.
+- **Critical level:** a seller of Food or Energy can't sell below next round's need. When a sale reaches it, or the seller steps in already at it, "SELLER AT CRITICAL LEVEL!" is shown. The line waits 60 jiffies and then goes back to its edge, where it stays. The message is shown for 120 jiffies. Smithore and Crystite have no critical level: a seller who runs out goes back at once.
 - After the auction, P becomes the average price actually traded. After the Crystite auction, the store's Crystite is set to 0.
 
 **Collusion.**
