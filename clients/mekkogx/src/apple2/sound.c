@@ -24,16 +24,16 @@ typedef struct {
 } Effect;
 
 static const Effect fx[SND_COUNT] = {
-    {  42,  3,   0,  0 },   /* select */
-    { 132,  3,   0,  0 },   /* sample */
-    { 255,  8,   0,  0 },   /* error (as low as it goes) */
-    {  33,  4,   0,  0 },   /* buy */
-    {  35,  8,  25, 14 },   /* alert: the only two notes, and the loudest */
-    {  70,  6,   0,  0 },   /* auction over */
-    {  30,  2,   0,  0 },   /* trade */
-    { 165,  8,   0,  0 },   /* event */
-    {  47, 10,   0,  0 },   /* founder */
-    { 200,  1,   0,  0 },   /* step: a soft click */
+    {  42,  2,   0,  0 },   /* select */
+    { 132,  2,   0,  0 },   /* sample */
+    { 255,  4,   0,  0 },   /* error (as low as it goes) */
+    {  33,  2,   0,  0 },   /* buy */
+    {  35,  5,  25,  8 },   /* alert: the only two notes, and the loudest */
+    {  70,  3,   0,  0 },   /* auction over */
+    {  30,  1,   0,  0 },   /* trade */
+    { 165,  4,   0,  0 },   /* event */
+    {  47,  5,   0,  0 },   /* founder */
+    {   0,  0,   0,  0 },   /* step: none, the CPU would pay every stride */
 };
 
 static uint8_t cur_d, cur_f, next_d, next_f, muted;
@@ -46,8 +46,8 @@ void snd_init(void)
 void snd_play(uint8_t id)
 {
     const Effect *e = &fx[id];
-    if (muted || (id == SND_STEP && cur_f))
-        return;                     /* a footstep never cuts another sound */
+    if (muted || !e->f1)
+        return;                     /* no footsteps here */
     cur_d = e->d1;
     cur_f = e->f1;
     next_d = e->d2;
