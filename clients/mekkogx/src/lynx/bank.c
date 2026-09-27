@@ -10,8 +10,6 @@
 #include <lynx.h>
 #include "bank.h"
 
-void snd_overlay(void);                 /* sound.c */
-
 static uint8_t ovl_cur;
 
 const char *bank_init(void)
@@ -24,7 +22,6 @@ void bank_overlay(uint8_t n)
 {
     if (n == ovl_cur || n == OV_NONE || n > 5)
         return;
-    snd_overlay();                      /* its tunes and scripts go with it */
     lynx_load(n);
     ovl_cur = n;
 }

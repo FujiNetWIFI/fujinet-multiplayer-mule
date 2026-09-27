@@ -211,7 +211,6 @@ void main(void)
     gfx_clear();
     big_center(8, str_word(W_MULE), C_ORANGE);
     big_center(10, str_word(W_TOURNAMENT), C_BLUE);
-    snd_play(SND_BOOT);
     test_hook[0] = 0x3C;            /* the harness may poke now (not while */
     test_hook[1] = 0xC3;            /* loading: that would hit the image) */
     for (i = 0; i < 45; ++i) {

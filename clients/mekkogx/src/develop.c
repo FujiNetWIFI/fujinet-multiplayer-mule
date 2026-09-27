@@ -425,8 +425,6 @@ static void dv_building_result(void)
         }
         if (act_sent == ACT_BUYMULE || act_sent == ACT_OUTFIT)
             snd_play(SND_BUY);
-        if (act_sent == ACT_OUTFIT)
-            SND_X(SNX_OUTFIT);
     }
     town_money();
 }
@@ -560,7 +558,6 @@ static void dv_event_msg(void)
     } else {
         v *= j;
     }
-    SND_XA(SNX_NEWS, k);
     strcpy(txt, "*** ");
     msg_col = C_WHITE;
     msg_start(4 + text_expand(txt + 4, str_pevent(k - 1), v, v2));
@@ -763,7 +760,7 @@ void develop_state(void)
             dv_state = DV_PROMPT;
             msg_col = C_WHITE;
             msg_show(M_START, 0, 0);
-            snd_play(SND_MYTURN);
+            snd_play(SND_ALERT);
         }
     } else if (dv_seat < 4) {
         /* someone's turn: say so once per turn, then once when it ends. A

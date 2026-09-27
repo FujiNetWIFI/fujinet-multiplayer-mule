@@ -243,7 +243,7 @@ LBE1:   LD      (HL),255
         CALL    SDRAWM
         XOR     A
         LD      (LBSENT),A
-        LD      HL,1
+        LD      HL,0FFFEH       ; neither a count nor waiting
         LD      (LBLCD),HL
         LD      A,12
         LD      (MSGROW),A
@@ -419,6 +419,8 @@ LBT2:   LD      B,60
         SBC     HL,DE
         ADD     HL,DE
         JR      Z,LBT4
+        INC     D               ; was it none or waiting (0FFxxH)?
+        CALL    Z,SNDALRT       ; the countdown has begun
         LD      (LBLCD),HL
         LD      B,M_LEAVEHELP
         LD      DE,0
@@ -714,6 +716,7 @@ SUT1:   LD      (SUI),A
         LD      A,(PHS)
         CP      PH_SUMM
         RET     NZ
+        CALL    SNDALRT
         LD      A,11
         LD      (MSGROW),A
         LD      A,CW

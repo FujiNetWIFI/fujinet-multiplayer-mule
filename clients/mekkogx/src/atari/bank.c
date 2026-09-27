@@ -19,7 +19,6 @@
 
 extern uint8_t _OVLADDR__[], _OVLSIZE__[];
 
-void snd_overlay(void);                 /* sound.c */
 void ns_pause(void);                    /* nsnet.c: the stream off for SIO */
 void ns_resume(void);
 
@@ -67,7 +66,6 @@ void bank_overlay(uint8_t n)
     uint8_t *dst = _OVLADDR__, k;
     if (n == ovl_cur || n == OV_NONE || n > 5)
         return;
-    snd_overlay();                      /* its tunes and scripts go with it */
     ovl_cur = OV_NONE;
     ns_pause();
     for (s = ovl_first[n]; s; ) {

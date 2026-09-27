@@ -10,8 +10,8 @@ file must not be committed.
 
 No scaling is needed: 320 pixels across is exactly two a colour clock, so
 the tables are the Atari's own. Everything but the town is 1 bit a colour
-clock (the font 1 bit a pixel, as on the Atari), coloured when drawn
-(src/msdos/gfx.c); the town is packed RGBI, a byte a clock, which CGA
+clock (the font 1 bit a pixel: the Namco font, as on the TMS9918 ports),
+coloured when drawn (src/msdos/gfx.c); the town is packed RGBI, a byte a clock, which CGA
 turns into its palette 1 (1 cyan, 2 magenta, 3 white) as it draws.
 """
 import argparse
@@ -41,15 +41,12 @@ def lookup(table, c, default):
 
 
 # ---------------------------------------------------------------------------
-def font_dos(atari):
-    """64 glyphs (ASCII 32..95) x 8 rows, 8 pixels, bit 7 left (the Atari's)."""
-    if atari:
-        return [list(g) for g in atari.font()]
-    out = []
-    for c in range(64):
-        rows = hgr.STANDIN_FONT.get(chr(32 + c), [0] * 7)
-        out.append([0] + [(r << 2) & 0x7C for r in rows])
-    return out
+def font_dos():
+    """64 glyphs (ASCII 32..95) x 8 rows, 8 pixels, bit 7 left: the Namco
+    arcade font the TMS9918 ports use (tools/tms/namco.bin)."""
+    with open(os.path.join(HERE, "tms", "namco.bin"), "rb") as f:
+        d = f.read()
+    return [list(d[i * 8:i * 8 + 8]) for i in range(64)]
 
 
 def plot_images(atari):
@@ -204,7 +201,7 @@ def main():
            ("converted from the Atari disk" if atari else "STAND-IN art: no ATR given"),
            "#include <stdint.h>", '#include "../../src/msdos/gfxdata.h"', ""]
 
-    font = font_dos(atari)
+    font = font_dos()
     src.append("const uint8_t dos_font[64 * 8] = {")
     src.append(c_bytes([b for g in font for b in g]))
     src.append("};")

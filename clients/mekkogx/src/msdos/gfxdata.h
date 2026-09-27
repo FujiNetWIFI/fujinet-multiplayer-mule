@@ -14,7 +14,7 @@ typedef struct {
     uint8_t h;              /* lines */
 } ShapeDef;
 
-extern const uint8_t dos_font[64 * 8];      /* 8 pixels, bit 7 left */
+extern const uint8_t dos_font[64 * 8];      /* Namco, 8 pixels, bit 7 left */
 extern const uint8_t plot_parts[12][64];    /* 32 lines x 16 colour clocks */
 extern const uint8_t plot_dots[8][2];       /* line, colour clock */
 extern const ShapeDef dos_shapes[];

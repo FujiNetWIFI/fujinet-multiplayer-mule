@@ -118,6 +118,7 @@ GRENTER: XOR    A
 GRE2:   LD      B,T_LANDGRANT
         LD      HL,0
         CALL    SHTITLE
+        CALL    SNDALRT
         LD      B,M_SELECT
         JP      MSG0
 
@@ -338,6 +339,7 @@ GRT1:   XOR     A               ; the ship has gone: the grant proper begins
         LD      B,T_LANDGRANT
         LD      HL,0
         CALL    SHTITLE
+        CALL    SNDALRT
         LD      B,M_SELECT
         CALL    MSG0
         LD      A,1

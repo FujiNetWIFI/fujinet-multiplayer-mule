@@ -162,8 +162,7 @@ au_stage_begin: PROCEDURE
         GOSUB au_status_setup
         RETURN
     END IF
-    IF au_stage = STAGE_DECLARE THEN GOSUB snd_declare
-    IF au_stage = STAGE_DONE THEN GOSUB snd_auction_over
+    GOSUB snd_au_stage
     ' Players: sellers at the top, buyers at the bottom (au_draw).
     GOSUB au_labels
 END

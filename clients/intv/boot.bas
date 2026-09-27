@@ -21,7 +21,6 @@ boot_start:
     #lit_addr = VARPTR t_words(0) : lit_n = 14 : GOSUB lit_nth : #t_src = #lit_addr
     t_pos = 100 : #t_col = C_BLUE : GOSUB put_lstr_c
     PRINT AT 160 COLOR C_WHITE, "CONNECTING..."
-    GOSUB snd_boot
 
     WHILE 1
         GOSUB fn_wait_mailbox

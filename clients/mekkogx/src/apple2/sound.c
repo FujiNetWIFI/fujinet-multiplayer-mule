@@ -2,10 +2,10 @@
  * sound.c -- the effects on the Apple II speaker.
  *
  * The speaker only clicks while the CPU times it, so an effect is played a
- * slice at a time: snd_tick() spends at most SLICE of each frame on it. The
- * tones are the Intellivision client's (clients/intv/sound.bas: PSG period
- * v -> 111861 / v Hz), turned into snd_tone delays (1020000 / (28 * d) Hz,
- * so d = v * 0.33).
+ * slice at a time: snd_tick() spends at most SLICE of each frame on it. A
+ * delay d is a tone of 1020000 / (28 * d) = 36428 / d Hz; every client
+ * plays this table. No volume here: the alert stands out as the only
+ * effect with two notes.
  */
 #ifdef __APPLE2__
 
@@ -24,18 +24,15 @@ typedef struct {
 } Effect;
 
 static const Effect fx[SND_COUNT] = {
-    {  42,  4,   0,  0 },   /* select: v 127 */
-    { 132,  6,   0,  0 },   /* sample: v 400 */
-    { 255, 12,   0,  0 },   /* error: v 900 (as low as it goes) */
-    {  33,  5,  25,  8 },   /* buy: 100 then 75 */
-    {  56, 10,  42, 14 },   /* my turn: 170, 127 */
-    {  70,  8,  53,  8 },   /* declare: 213, 160 */
-    {  53, 10,  70, 16 },   /* auction over: 160, 213 */
-    {  30,  3,   0,  0 },   /* trade: 90 */
-    {  83,  2,   0,  0 },   /* tick: 250 */
-    { 165, 20, 231, 20 },   /* event: 500, 700 */
-    {  70, 20,  35, 40 },   /* founder: 213, 106 */
-    { 106, 10,  70, 20 },   /* boot: 320, 213 */
+    {  42,  3,   0,  0 },   /* select */
+    { 132,  3,   0,  0 },   /* sample */
+    { 255,  8,   0,  0 },   /* error (as low as it goes) */
+    {  33,  4,   0,  0 },   /* buy */
+    {  35,  8,  25, 14 },   /* alert: the only two notes, and the loudest */
+    {  70,  6,   0,  0 },   /* auction over */
+    {  30,  2,   0,  0 },   /* trade */
+    { 165,  8,   0,  0 },   /* event */
+    {  47, 10,   0,  0 },   /* founder */
     { 200,  1,   0,  0 },   /* step: a soft click */
 };
 

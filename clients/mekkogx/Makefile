@@ -196,7 +196,7 @@ msxrom/r2r-post::
 # cc65, no DOS: picoboot loads MULE.COM, whose first chunk (src/atari/
 # start.s) switches BASIC off; the phases are overlays PHASE.1 .. PHASE.5 read
 # by sector (src/atari/bank.c). Memory: src/atari/mule-atari.cfg.
-CFLAGS_EXTRA_ATARI += -Os -Cl -DSND_EXTRA -DPLAT_NETSTREAM
+CFLAGS_EXTRA_ATARI += -Os -Cl -DPLAT_NETSTREAM
 LDFLAGS_EXTRA_ATARI += -C src/atari/mule-atari.cfg -m build/mule-atari.map
 EXECUTABLE_EXTRA_DEPS_ATARI += src/atari/mule-atari.cfg
 ifeq ($(PLATFORM),atari)
@@ -231,7 +231,7 @@ ifeq ($(PLATFORM),lynx)
   FUJINET_LIB := __UNDEFINED__
   LIBS += build/fnlib-lynx/fujinet-lynx.lib
 endif
-CFLAGS_EXTRA_LYNX += -Os -Cl -DSND_EXTRA -DPLAT_NETSTREAM -DPLAT_NS_ONEWAY -DPLAT_NO_KEYBOARD \
+CFLAGS_EXTRA_LYNX += -Os -Cl -DPLAT_NETSTREAM -DPLAT_NS_ONEWAY -DPLAT_NO_KEYBOARD \
                      -DKEY_END_NAME='"OPT1"' -DBUTTON_NAME='"A"' -DLEAVE_KEY_NAME='"OPT2"' -DQUIT_HINT='"OPT2: QUIT"' \
                      -DLOBBY_HINT='"<- -> SPECIES   A READY   OPT2 LEAVE"'
 EXTRA_INCLUDE_LYNX += build/fnlib-lynx/include
@@ -265,8 +265,8 @@ gen-coco: gen/config.h gen/coco/gfx.c
 gen-msdos: gen/config.h gen/msdos/gfx.c build/fnlib-msdos/fujinet-msdos.lib
 gen-adam: gen/config.h gen/tms9918/gfx.c build/fnlib-adam/fujinet-adam.lib
 gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
-gen-atari: gen/config.h gen/atari/gfx.c gen/atari/snd.s
-gen-lynx: gen/config.h gen/lynx/gfx.c gen/lynx/snd.s build/fnlib-lynx/fujinet-lynx.lib
+gen-atari: gen/config.h gen/atari/gfx.c
+gen-lynx: gen/config.h gen/lynx/gfx.c build/fnlib-lynx/fujinet-lynx.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -289,7 +289,7 @@ gen/coco/gfx.c: tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_pmode4.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/coco $@
 
-gen/msdos/gfx.c: tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
+gen/msdos/gfx.c: tools/mkgfx_dos.py tools/tms/namco.bin tools/mkgfx_hgr.py $(ATR)
 	@mkdir -p gen/msdos
 	@if [ -z "$(ATR)" ]; then \
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
@@ -307,19 +307,11 @@ gen/atari/gfx.c: tools/mkgfx_atari.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_atari.py $(if $(ATR),--atr "$(ATR)") $@
 
-gen/atari/snd.s: tools/mksnd_atari.py $(ATR)
-	@mkdir -p gen/atari
-	$(PYTHON) tools/mksnd_atari.py $(if $(ATR),--atr "$(ATR)") $@
-
 gen/lynx/gfx.c: tools/mkgfx_lynx.py tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
 	@mkdir -p gen/lynx
 	@if [ -z "$(ATR)" ]; then \
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_lynx.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/lynx $@
-
-gen/lynx/snd.s: tools/mksnd_atari.py $(ATR)
-	@mkdir -p gen/lynx
-	$(PYTHON) tools/mksnd_atari.py $(if $(ATR),--atr "$(ATR)") $@
 
 build/fnlib-lynx/fujinet-lynx.lib: tools/lynx/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/lynx/* $(FNLIB_EXP)/include/*.h)
 	tools/lynx/mkfnlib.sh $(FNLIB_EXP) build/fnlib-lynx

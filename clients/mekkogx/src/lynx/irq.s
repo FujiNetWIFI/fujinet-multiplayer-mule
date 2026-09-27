@@ -1,6 +1,6 @@
 ;
 ; irq.s -- the Lynx's 60 Hz clock: the vertical blank (timer 2) counts
-; frame_count and runs the sound (pokey.s).
+; frame_count and runs the sound (snd.s).
 ;
 ; ComLynx must not wait while the sound runs (one byte of buffering in the
 ; UART at 62500 baud): the VBL is acknowledged and interrupts go back on

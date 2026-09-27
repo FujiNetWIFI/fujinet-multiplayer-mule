@@ -1655,9 +1655,9 @@ ASB1:   PUSH    AF
         LD      (ANIM),A
         JP      AUSTSETUP
 ASB2:   LD      A,(AUSTAGE)
-        CP      ST_DECL
-        LD      A,SNDECL
-        CALL    Z,SNDPLAY
+        DEC     A               ; declaring (1), the lines about to go (2):
+        CP      ST_LEAD         ; your hand to the stick
+        CALL    C,SNDALRT
         LD      A,(AUSTAGE)
         CP      ST_DONE
         LD      A,SNAUCO

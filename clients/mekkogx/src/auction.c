@@ -546,8 +546,9 @@ static void au_stage_begin(void)
         au_status_setup();
         return;
     }
-    if (au_stage == STAGE_DECLARE)
-        snd_play(SND_DECLARE);
+    /* declaring, and the lines about to go: your hand to the stick */
+    if ((au_stage == STAGE_DECLARE || au_stage == STAGE_LEAD) && my_seat < 4)
+        snd_play(SND_ALERT);
     if (au_stage == STAGE_DONE)
         snd_play(SND_AUCTION_OVER);
     au_labels();

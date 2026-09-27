@@ -176,6 +176,7 @@ XFV2    EQU     GTMP            ; XFILL
         VAR     SNDF,1          ; frames left of the tone playing
         VAR     SNDND,1         ; the second tone
         VAR     SNDNF,1
+        VAR     SNDV,1          ; its volume (VOLAB)
         VAR     MUTED,1
 
 ; ---- text and messages --------------------------------------------------------

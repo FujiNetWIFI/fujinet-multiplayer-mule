@@ -1,7 +1,7 @@
 ;
 ; mikey.s -- POKEY's four voices on Mikey's four audio channels.
 ;
-; pokey.s leaves what it would write to POKEY in _pk_out (AUDF1 AUDC1 ...
+; snd.s leaves what it would write to POKEY in _pk_out (AUDF1 AUDC1 ...
 ; AUDF4 AUDC4 AUDCTL); each channel gets the same pitch, noise and volume:
 ;
 ;   pitch   POKEY's output flips every AUDF+1 ticks of its clock: 64 kHz
@@ -14,7 +14,7 @@
 ;   volume  AUDC bits 3-0, times 8; bit 4 (volume only) holds the level.
 ;
 ; Registers are written only when they change: rewriting a timer restarts
-; its wave. Runs in the VBL (irq.s), after pokey.s.
+; its wave. Runs in the VBL (irq.s), after snd.s.
 ;
         .pc02
         .export _mikey_out, _snd_rand, _mikey_init
@@ -63,7 +63,7 @@ _mikey_init:
         sta     rnd+1
         rts
 
-; uint8_t snd_rand(void): a byte of noise (for pokey.s's RANDOM). Keeps X, Y.
+; uint8_t snd_rand(void): a byte of noise (the Lynx has no RANDOM). Keeps X, Y.
 _snd_rand:
         lda     rnd
         asl     a

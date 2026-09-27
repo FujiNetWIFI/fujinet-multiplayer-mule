@@ -36,6 +36,7 @@ grant_enter: PROCEDURE
     ELSE
         title_id = T_LANDGRANT : GOSUB title_show
         msg_id = M_SELECT : GOSUB msg_show
+        GOSUB snd_alert
     END IF
 END
 
@@ -86,6 +87,7 @@ grant_tick: PROCEDURE
             g_slot = G_WAMPUS : g_n = 2 : #g_src = VARPTR gfx_cursor(0) : GOSUB gram_load
             title_id = T_LANDGRANT : GOSUB title_show
             msg_row = ROW_MSG : #msg_col = C_TAN : msg_id = M_SELECT : GOSUB msg_show
+            GOSUB snd_alert
             g_show = 1
         END IF
         RETURN

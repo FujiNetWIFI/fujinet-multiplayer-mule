@@ -17,18 +17,15 @@ typedef struct {
 } Effect;
 
 static const Effect fx[SND_COUNT] = {
-    {  42,  4,   0,  0 },   /* select: v 127 */
-    { 132,  6,   0,  0 },   /* sample: v 400 */
-    { 255, 12,   0,  0 },   /* error: v 900 (as low as it goes) */
-    {  33,  5,  25,  8 },   /* buy: 100 then 75 */
-    {  56, 10,  42, 14 },   /* my turn: 170, 127 */
-    {  70,  8,  53,  8 },   /* declare: 213, 160 */
-    {  53, 10,  70, 16 },   /* auction over: 160, 213 */
-    {  30,  3,   0,  0 },   /* trade: 90 */
-    {  83,  2,   0,  0 },   /* tick: 250 */
-    { 165, 20, 231, 20 },   /* event: 500, 700 */
-    {  70, 20,  35, 40 },   /* founder: 213, 106 */
-    { 106, 10,  70, 20 },   /* boot: 320, 213 */
+    {  42,  3,   0,  0 },   /* select */
+    { 132,  3,   0,  0 },   /* sample */
+    { 255,  8,   0,  0 },   /* error (as low as it goes) */
+    {  33,  4,   0,  0 },   /* buy */
+    {  35,  8,  25, 14 },   /* alert: the only two notes, and the loudest */
+    {  70,  6,   0,  0 },   /* auction over */
+    {  30,  2,   0,  0 },   /* trade */
+    { 165,  8,   0,  0 },   /* event */
+    {  47, 10,   0,  0 },   /* founder */
     { 200,  1,   0,  0 },   /* step: a soft click */
 };
 
@@ -38,7 +35,7 @@ static const Effect fx[SND_COUNT] = {
  * snd_f is 0, so snd_play clears it first and sets it last. */
 volatile uint8_t snd_f, snd_nf;
 uint8_t snd_n[3];
-static uint8_t muted;
+static uint8_t muted, vol;
 
 /* A tone's three bytes for tone 0: the divisor, then the volume. */
 static void tone_bytes(uint8_t *b, uint8_t d)
@@ -48,7 +45,7 @@ static void tone_bytes(uint8_t *b, uint8_t d)
         n = 1023;
     b[0] = 0x80 | (n & 15);
     b[1] = (uint8_t)(n >> 4);
-    b[2] = 0x90 | (d == 200 ? 6 : 2);               /* loud (the step soft) */
+    b[2] = 0x90 | vol;                              /* attenuation */
 }
 
 static void quiet(void)
@@ -70,6 +67,7 @@ void snd_play(uint8_t id)
     if (muted || (id == SND_STEP && snd_f))
         return;                     /* a footstep never cuts another sound */
     snd_f = 0;
+    vol = id == SND_ALERT ? 0 : id == SND_STEP ? 8 : 4;    /* the alert loudest */
     tone_bytes(b, e->d1);
     SN_PORT = b[0];
     SN_PORT = b[1];

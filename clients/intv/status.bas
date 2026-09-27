@@ -164,6 +164,7 @@ su_table: PROCEDURE
     GOSUB su_values
     IF phase = PHASE_SUMMARY THEN
         msg_row = ROW_MSG : #msg_col = C_WHITE : msg_id = M_PRESSALL : GOSUB msg_show
+        GOSUB snd_alert
     END IF
 END
 
@@ -291,7 +292,7 @@ lobby_enter: PROCEDURE
     t_pos = 0 : #t_col = C_YELLOW : GOSUB put_lstr_c
     #lit_addr = VARPTR t_words(0) : lit_n = 14 : GOSUB lit_nth : #t_src = #lit_addr
     t_pos = 20 : #t_col = C_BLUE : GOSUB put_lstr_c
-    lb_sent = 0
+    lb_sent = 0 : #lb_lastcd = 65534
     IF my_seat < 4 THEN lb_species = pl8(my_seat, S_PLAYER_SPECIES) AND 7
 END
 
@@ -347,6 +348,7 @@ lobby_tick: PROCEDURE
         IF #val > 32768 THEN #val = 0
         #val = #val / 60
         IF #val <> #lb_lastcd THEN
+            GOSUB snd_lobby_cd
             #lb_lastcd = #val
             t_pos = ROW_MSG : GOSUB clear_row
             t_pos = ROW_MSG + 9 : t_len = 2 : #t_col = C_YELLOW : GOSUB put_numr

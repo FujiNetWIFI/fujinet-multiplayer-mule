@@ -94,7 +94,6 @@ void bar_draw(uint8_t px)
         px = bar_h;
     if (px == bar_last)
         return;
-    SND_XA(SNX_TIMER, px < 30 ? px : 0);   /* the original ticks when under 30 */
     if (bar_last == 255 || px > bar_last) {
         gfx_fill(bar_x, bar_top, 4, bar_h - px, C_BLACK);
         if (px)

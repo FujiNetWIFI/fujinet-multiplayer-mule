@@ -49,6 +49,8 @@ void grant_enter(void)
     } else {
         title_show(T_LANDGRANT, 0);
         msg_show(M_SELECT, 0, 0);
+        if (my_seat < 4)
+            snd_play(SND_ALERT);
     }
 }
 
@@ -151,6 +153,8 @@ void grant_tick(void)
             fx_stop_all();
             title_show(T_LANDGRANT, 0);
             msg_show(M_SELECT, 0, 0);
+            if (my_seat < 4)
+                snd_play(SND_ALERT);
             g_show = 1;
         }
         return;

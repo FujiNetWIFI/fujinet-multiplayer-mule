@@ -39,6 +39,36 @@ let jiffy = 0; // local simulation frame counter
 // Local development-turn state (the walk is simulated here; actions go to the server).
 const walk = { view: 'town', x: 0, y: 0, frame: 0, next: 0, sample: -1, landMode: false, inside: '', turnKey: '', freeze: 0 };
 
+// ---------------------------------------------------------------- the alert
+// The one sound: two rising notes (the retro clients' SND_ALERT) whenever
+// the game wants your hand on the stick. It rings once per occasion (key).
+// Browsers start audio only after a key or click, so the first one opens it.
+
+let audio = null, alerted = '';
+
+function unlockAudio() {
+  try {
+    if (!audio) audio = new AudioContext();
+    if (audio.state === 'suspended') audio.resume();
+  } catch { audio = null; }
+}
+
+function alertOnce(v, key) {
+  if (v.me < 0 || key === alerted) return;
+  alerted = key;
+  if (!audio || audio.state !== 'running') return;
+  const t0 = audio.currentTime;
+  [[1041, 0, 8], [1457, 8, 14]].forEach(([hz, at, n]) => {   // frames at 60 Hz
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'square';
+    o.frequency.value = hz;
+    g.gain.value = 0.12;
+    o.connect(g).connect(audio.destination);
+    o.start(t0 + at / 60);
+    o.stop(t0 + (at + n) / 60);
+  });
+}
+
 function log(s) {
   const el = $('log');
   el.textContent = s + '\n' + el.textContent.slice(0, 4000);
@@ -63,6 +93,7 @@ async function init() {
   });
   if (q.get('table') && $('name').value) start(sel.value, $('name').value);
   addEventListener('keydown', (e) => {
+    unlockAudio();
     if (e.target.tagName === 'INPUT') return;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
     if (!keys.has(e.key)) pressed.add(e.key);
@@ -70,7 +101,8 @@ async function init() {
   });
   addEventListener('keyup', (e) => keys.delete(e.key));
   addEventListener('blur', () => keys.clear());
-  $('c').addEventListener('click', () => pressed.add(leaveAsk ? 'click' : ' '));
+  $('c').addEventListener('click', () => { unlockAudio(); pressed.add(leaveAsk ? 'click' : ' '); });
+  $('join').addEventListener('submit', unlockAudio);
   requestAnimationFrame(loop);
 }
 
@@ -234,8 +266,13 @@ function lobby(v) {
     gfx.text(p.ai ? 'MECHTRON' : SPECIES[p.sp], x, y + 38, 0x08);
     if (!p.ai) gfx.text(p.rd ? 'READY' : 'WAITING', x, y + 48, p.rd ? 0xc6 : 0x34);
   });
-  if (v.cd > 0) gfx.textCenter('STARTING IN ' + Math.ceil((v.cd - api.since()) / 60), 140, 0x0e);
-  else gfx.textCenter('WAITING FOR PLANETEERS', 140, 0x08);
+  if (v.cd > 0) {
+    gfx.textCenter('STARTING IN ' + Math.ceil((v.cd - api.since()) / 60), 140, 0x0e);
+    alertOnce(v, 'lobby');
+  } else {
+    gfx.textCenter('WAITING FOR PLANETEERS', 140, 0x08);
+    if (alerted === 'lobby') alerted = '';
+  }
   gfx.textCenter('LEFT/RIGHT: SPECIES  SPACE: READY', 180, 0x08);
   if (v.me < 0) return;
   const me = v.pl[v.me];
@@ -348,6 +385,7 @@ function grant(v) {
     gfx.frame(x, y, PS, PS, 0x0e, 2);
   }
   statusLine(v, msg);
+  if (mine < 0 && cur >= 0 && cur < 45) alertOnce(v, 'grant' + v.r);
   if (v.me >= 0 && mine < 0 && cur >= 0 && cur < 45 && pressed.has(' ')) act('/claim/' + cur);
 }
 
@@ -419,7 +457,10 @@ function develop(v) {
     header('DEVELOPMENT #' + v.r);
     let msg = `${who.n.toUpperCase()}'S TURN`;
     if (t.ai) msg = 'THE COMPUTER IS TAKING HIS TURN';
-    if (mine && !t.st) msg = 'PRESS YOUR STICK BUTTON TO START';
+    if (mine && !t.st) {
+      msg = 'PRESS YOUR STICK BUTTON TO START';
+      alertOnce(v, 'turn' + turnKey(v));
+    }
     if (t.en && !t.ai) msg = 'TIME HAS RUN OUT';
     if (t.en && (t.lg || []).includes('pub')) msg = 'GAMBLING AT THE PUB';
     statusLine(v, msg);
@@ -661,6 +702,7 @@ function auction(v) {
   let msg = '';
   if (a.sg === STAGE.declare) msg = 'PUSH STICK TO DECLARE AS BUYER OR SELLER';
   else if (a.sg === STAGE.lead) msg = 'GET READY...';
+  if (a.sg === STAGE.declare || a.sg === STAGE.lead) alertOnce(v, `auction${v.r}:${v.p}:${a.gd}:${a.pt}:${a.sg}`);
   else if (a.dn) msg = a.land ? (a.w >= 0 ? `${v.pl[a.w].n} BOUGHT IT FOR $${a.pc}` : 'NO SALE') : 'AUCTION IS OVER';
   else if (a.cr >= 0) msg = 'SELLER AT CRITICAL LEVEL!';
   else if (a.col) msg = 'COLLUSION!';
@@ -730,6 +772,7 @@ function summary(v, title) {
   if (e >= T.SUMMARY_ANIM) {
     const me = v.me >= 0 ? v.pl[v.me] : null;
     gfx.text(me && me.rd ? 'WAITING FOR THE OTHER PLAYERS' : 'PRESS ALL PLAYER BUTTONS TO GO ON', 16, 190, 0x08);
+    alertOnce(v, 'summary' + v.r);
     if (pressed.has(' ')) act('/ready/1');
   }
 }

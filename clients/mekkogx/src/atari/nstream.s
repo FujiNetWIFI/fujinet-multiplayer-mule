@@ -16,8 +16,8 @@
 ;   without any warranty.
 ;
 ; While the stream is on, the motor line is asserted and POKEY's channels 3
-; and 4 clock the serial port (so the sound keeps to voices 1 and 2,
-; pokey.s). ns_end drops the motor: FujiNet goes back to plain SIO (the
+; and 4 clock the serial port (so the sound keeps to voice 1,
+; snd.s). ns_end drops the motor: FujiNet goes back to plain SIO (the
 ; disk, appkeys) and holds the socket's data until ns_begin.
 ;
 ; Receiving is the serial input IRQ into a 256-byte ring; ns_frame takes

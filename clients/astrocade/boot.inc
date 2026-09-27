@@ -34,8 +34,6 @@ BOOT:   CALL    CLRSCR
         LD      HL,SDMODE
         LD      (HL),3
         CALL    SDRAWM
-        LD      A,SNBOOT
-        CALL    SNDPLAY
         LD      A,3CH           ; the harness may poke now
         LD      (TESTHK),A
         LD      A,0C3H
