@@ -35,6 +35,7 @@ void test_poll(void)
     st.turn.left = (st.h.phase == PHASE_DEVELOP && v > w) ? v - w : 0;
     if (st.h.phase != PHASE_DEVELOP || st.turn.left)
         st.h.elapsed += w;
+    st.h.t += w;                /* the server's clock: the auction lines step on it */
     st.turn.elapsed += w;
     if (st.h.phase == PHASE_GRANT) {
         /* the cursor steps every 12 */

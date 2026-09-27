@@ -2,9 +2,8 @@
  * plat.c -- the MSX (MSX1 and up, a FujiNet cartridge): start-up, the
  * frame clock and quitting.
  *
- * The clock is the BIOS's interrupt, through the H.TIMI hook (msxint.asm).
- * A 50 Hz machine counts 50 a second: the server's clock (main.c
- * clock_sync) keeps the game's timing right.
+ * The clock is the BIOS's interrupt, through the H.TIMI hook (msxint.asm),
+ * counting 60ths of a second on a 50 Hz machine too.
  */
 #include "mule.h"
 #include "vdp.h"

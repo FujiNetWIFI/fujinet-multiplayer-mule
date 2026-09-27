@@ -67,12 +67,19 @@ void poll_rate(void)
  * platform may miss frames; the server's jiffies (st.h.t) don't. The gap
  * between the two only grows when we lost frames (a slow reply makes it
  * shrink), so whenever it is larger than the largest seen before, the
- * difference is added to our clock. */
+ * difference is added to our clock.
+ *
+ * A reply slower than the fastest is that much older than it looks: rx_age
+ * says by how much, and whatever runs on from a state (pe_now, since_rx,
+ * the auction lines, the grant cursor) starts that many jiffies on. */
+uint8_t rx_age;
+
 static void clock_sync(void)
 {
     static uint16_t base;
     static uint8_t have;
     uint16_t lag = st.h.t - frame_count, d;
+    rx_age = 0;
     if (test_mode)
         return;
     if (!have) {
@@ -85,6 +92,13 @@ static void clock_sync(void)
         frame_lost((uint8_t)d);
     else if (d >= 60 && d < 0x8000)
         base = lag;             /* a long stall (or a new game): start again */
+    else if (d) {
+        d = base - lag;         /* older than the fastest reply */
+        if (d > 120)
+            base = lag;         /* the server's clock went back: start again */
+        else
+            rx_age = d > 30 ? 30 : (uint8_t)d;
+    }
 }
 
 /* A full state is in st. */
@@ -98,7 +112,7 @@ void state_arrived(void)
     rnd = st.h.round;
     my_seat = (uint8_t)st.h.mySeat;
     rx_pe = st.h.elapsed;
-    rx_frame = frame_count;
+    rx_frame = frame_count - rx_age;
     st_ok = 1;
     bank_overlay(ovl_of[phase]);
     if (phase != last_phase || (phase == PHASE_GRANT && rnd != last_round)) {
@@ -121,9 +135,7 @@ static void reply(void)
     } else if (net_have == 2) {
         /* the server refused us outright (unknown table, table full...) */
         if (st.h.err == ERR_TABLEFULL || st.h.err == ERR_SEAT) {
-            appkey_clear_room();
             choose_table();
-            appkey_save_room();
             last_phase = 255;
             st_ok = 0;
         }
@@ -133,12 +145,13 @@ static void reply(void)
     poll_rate();
 }
 
-/* The table list is in the boot overlay: swap it in, then back. */
+/* Another table (the appkey cleared, the list, the choice kept): that is
+ * all in the boot overlay, so swap it in, then back. */
 void choose_table(void)
 {
     uint8_t cur = bank_current();
     bank_overlay(OV_BOOT);
-    table_select();
+    table_rechoose();
     bank_overlay(cur);
 }
 
@@ -162,9 +175,7 @@ void leave_table(void)
     spr_hide_all();
     act = ACT_LEAVE;
     net_sync();
-    appkey_clear_room();
     choose_table();
-    appkey_save_room();
     game_start();
 }
 
@@ -244,11 +255,19 @@ void main(void)
 #endif
         dbg_at = 4;
         /* what moves by itself, once for every frame that has passed (a
-         * slow frame, or a network call, is caught up with) */
+         * slow frame, or a network call, is caught up with): more than two
+         * behind, half of it now and the rest after, so a stall plays out
+         * as a moment's hurry rather than one jump (a loop that always
+         * takes three frames still keeps up); more than 8, the rest is
+         * let go */
         n = frame_count - done;
-        done = frame_count;
-        if (n > 8)
+        if (n > 8) {
+            done = frame_count - 8;
             n = 8;
+        }
+        if (n > 2)
+            n = (n + 1) >> 1;
+        done += n;
         while (n--) {
             if (anim == AN_WALK)
                 walk_isr();

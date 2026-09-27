@@ -54,9 +54,20 @@ void grant_enter(void)
     }
 }
 
+/* The free plot after p (NUM_PLOTS past the last). */
+static uint8_t next_free(uint8_t p)
+{
+    for (;;) {
+        if (++p >= NUM_PLOTS)
+            return p;
+        if (p != STORE_PLOT && OWNER(p) == 255)
+            return p;
+    }
+}
+
 void grant_state(void)
 {
-    uint8_t k, j, mine;
+    uint8_t k, j, mine, aged;
     uint16_t w;
 
     map_update();
@@ -69,13 +80,18 @@ void grant_state(void)
     w = st.grant.next;
     if (w > 255)
         w = 255;
-    if (k != g_cur || w < g_next) {
-        if (k != g_cur)
+    /* the state is rx_age jiffies old: the step it waited for may have
+     * come since, and our cursor already made it (no jump back) */
+    aged = w <= rx_age;
+    w = aged ? 1 : w - rx_age;
+    if (k != g_cur) {
+        if (!(aged && k < NUM_PLOTS && g_cur == next_free(k))) {
             gr_was = 255;
-        g_cur = k;
+            g_cur = k;
+            g_next = (uint8_t)w;
+        }
+    } else if (w < g_next) {
         g_next = (uint8_t)w;
-        if (g_next == 0)
-            g_next = 1;
     }
     if (!gr_depart)
         g_show = 1;
@@ -128,12 +144,7 @@ void grant_isr(void)
             g_next = 1;
         if (g_next == 0) {
             gr_was = g_cur;
-            for (;;) {
-                if (++g_cur >= NUM_PLOTS)
-                    break;
-                if (g_cur != STORE_PLOT && OWNER(g_cur) == 255)
-                    break;
-            }
+            g_cur = next_free(g_cur);
             g_next = g_step;
             spr_hide(SLOT_CURSOR);
             return;

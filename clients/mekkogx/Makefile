@@ -36,7 +36,9 @@ PLATFORM_COMBOS = \
 # ---- Apple II -------------------------------------------------------------
 # HGR page 1 sits at $2000-$3FFF: the linker config keeps code and data out
 # of it. ProDOS stays resident (overlays and assets are read with it).
-CFLAGS_EXTRA_APPLE2 += -Os -Cl
+# Stream mode over an N:TCP socket (src/nsnet.c, src/nstrans_fn.c): an HTTP
+# poll held the machine for the whole request.
+CFLAGS_EXTRA_APPLE2 += -Os -Cl -DPLAT_NETSTREAM
 ifeq ($(AUTOPLAY),1)
   CFLAGS_EXTRA += -DMULE_AUTOPLAY
 endif
@@ -77,7 +79,10 @@ apple2/disk-post::
 # mulehi.bin and the overlays mule1..5.bin.
 COCO_TOOLS = $(CURDIR)/tools/coco
 # -O1: CMOC 0.1.100's -O2 drops index reloads (a[i]; b[i]; read b[a[i]])
+# Stream mode over N:TCP; a status call only every other frame (DriveWire
+# masks the IRQ while it talks).
 CFLAGS_EXTRA_COCO += -O1 -funsigned-char -fomit-frame-pointer -Wno-const -DPLAT_BIG_ENDIAN \
+                     -DPLAT_NETSTREAM -DNT_POLL_EVERY=2 \
                      --lwasm=$(COCO_TOOLS)/lwasm-sect
 ASFLAGS_EXTRA_COCO += --lwasm=$(COCO_TOOLS)/lwasm-sect
 LDFLAGS_EXTRA_COCO += --lwlink=$(COCO_TOOLS)/lwlink-mule.py --initial-s=8000
@@ -97,6 +102,7 @@ $(COOBJ)/src/grant.o $(COOBJ)/src/events.o:   export MULE_SECT = ov3
 $(COOBJ)/src/auction.o:                       export MULE_SECT = ov4
 $(COOBJ)/src/develop.o:                       export MULE_SECT = ov5
 $(COOBJ)/src/text.o $(COOBJ)/src/map.o $(COOBJ)/src/fx.o $(COOBJ)/src/test.o \
+  $(COOBJ)/src/nstrans_fn.o \
   $(COOBJ)/src/coco/gfx.o $(COOBJ)/src/coco/input.o \
   $(COOBJ)/src/coco/sound.o $(COOBJ)/gen/coco/gfx.o:   export MULE_SECT = hi
 
@@ -124,7 +130,7 @@ ifeq ($(PLATFORM),msdos)
   AR_OW2 = $(DOS_TOOLS)/ow wlib
   LD_OW2 = $(DOS_TOOLS)/wlink-mule.py OPTION quiet
 endif
-CFLAGS_EXTRA_MSDOS += -zq -mm -os -s -of -zp1 -DKEY_END_NAME='"ENTER"' -DPLAT_NET_PROBE \
+CFLAGS_EXTRA_MSDOS += -zq -mm -os -s -of -zp1 -DKEY_END_NAME='"ENTER"' -DPLAT_NET_PROBE -DPLAT_NETSTREAM \
                       -DQUIT_HINT='"ESC: LOBBY"'
 EXTRA_INCLUDE_MSDOS += build/fnlib-msdos/include
 # (-ad names the object in the .d without its directory: -adt names it)

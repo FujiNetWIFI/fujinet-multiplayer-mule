@@ -41,6 +41,9 @@ extern uint8_t ns_fbuf[];
 #define DEAD_AFTER 300          /* frames without a frame: the link is gone (the
                                  * server's clock alone comes every 30) */
 #define SETTLE     3            /* jiffies between the motor off and SIO */
+#define RESYNC_GAP 30           /* frames between RESYNCs: the whole state is
+                                 * 18 frames of the line, and one bad frame in
+                                 * a burst mustn't ask for it again and again */
 
 #define DDEVIC (*(volatile uint8_t *)0x0300)
 #define DUNIT  (*(volatile uint8_t *)0x0301)
@@ -54,13 +57,24 @@ extern uint8_t ns_fbuf[];
 
 static uint8_t stage[sizeof(MuleState)];
 static uint8_t link, joined;    /* connected; HELLO sent for sc_table */
-static uint8_t seq, wait_seq, wait_act, credited, paused;
+static uint8_t seq, wait_seq, wait_act, credited, paused, resync_hold;
 static uint16_t quiet;
 
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
 typedef char mule_table_is_33_bytes[sizeof(MuleTable) == 33 ? 1 : -1];
 
 /* ---- sending ------------------------------------------------------------ */
+
+static void send(uint8_t type, const uint8_t *p, uint8_t n);
+
+/* Lost or garbled: the whole state again, once in a while at most. */
+static void resync(void)
+{
+    if (!resync_hold) {
+        send(SC_RESYNC, 0, 0);
+        resync_hold = RESYNC_GAP;
+    }
+}
 
 /* A frame: COBS of type, payload, Fletcher-16; then 0. */
 static void send(uint8_t type, const uint8_t *p, uint8_t n)
@@ -211,19 +225,23 @@ void ns_close(void)
 
 /* ---- receiving ---------------------------------------------------------- */
 
-/* One frame from the ring, handled. 0: none (yet); 1: a state came in (st);
- * 2: the server refused us (st.h.err). */
+/* The frames waiting, handled. 0: none (yet); 1: a state came in (st);
+ * 2: the server refused us (st.h.err). The server sends every change (up
+ * to twenty a second), more than a frame's drawing keeps up with: of the
+ * states waiting only the last is kept (drawing each in turn would put us
+ * ever further behind), except that the one answering our action is
+ * handed on at once (its error and result are for that state alone). */
 static uint8_t take(void)
 {
-    uint8_t n;
+    uint8_t n, got = 0;
     uint16_t off;
     for (;;) {
         n = ns_frame();
         if (n == 0)
-            return 0;
+            return got;
         quiet = 0;
         if (n == 255) {
-            send(SC_RESYNC, 0, 0);      /* lost: the whole state again */
+            resync();                   /* lost: the whole state again */
             continue;
         }
         switch (ns_fbuf[0]) {
@@ -240,10 +258,11 @@ static uint8_t take(void)
             if (wait_seq && ns_fbuf[1] == wait_seq) {
                 act_sent = wait_act;
                 wait_seq = 0;
-            } else {
-                act_sent = ACT_STATE;
+                return 1;
             }
-            return 1;
+            act_sent = ACT_STATE;
+            got = 1;
+            break;
         case CS_ERROR:
             st.h.err = ns_fbuf[1];
             return 2;
@@ -283,6 +302,8 @@ uint8_t net_step(void)
     uint8_t r;
     if (!joined)
         return 0;
+    if (resync_hold)
+        --resync_hold;
     if (act != ACT_NONE && !wait_seq) {
         if (++seq == 0)
             seq = 1;
@@ -301,7 +322,7 @@ uint8_t net_step(void)
         send_credit();
     if (ns_err & 0xD0) {        /* framing, overrun or a full ring */
         ns_err = 0;
-        send(SC_RESYNC, 0, 0);
+        resync();
     }
     if (r) {
         net_have = r;

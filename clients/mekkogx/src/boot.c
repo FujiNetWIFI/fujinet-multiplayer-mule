@@ -190,6 +190,15 @@ void table_select(void)
     snd_play(SND_SELECT);
 }
 
+/* From a game (main.c choose_table): the room we had is forgotten, then
+ * the new one is kept for next time. */
+void table_rechoose(void)
+{
+    appkey_clear_room();
+    table_select();
+    appkey_save_room();
+}
+
 void boot(void)
 {
     text_center(16, "CONNECTING...", C_WHITE);

@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"io"
 	"net"
 	"testing"
 	"time"
 
 	"fujinet-multiplayer-mule/internal/proto"
+	"fujinet-multiplayer-mule/internal/rules"
 )
 
 func TestCOBSAndFrames(t *testing.T) {
@@ -336,5 +338,79 @@ func TestStreamLeaveInGame(t *testing.T) {
 	}
 	if v := h.view("/view?table=dev1"); v.Players[0].AI {
 		t.Fatal("rejoined seat still AI")
+	}
+}
+
+// auctionView is a goods auction in its active stage at jiffy t.
+func auctionView(t int, pos, target [4]int) *proto.View {
+	a := &proto.AuctionV{Stage: rules.StageActive, Step: 1, Crit: -1, Ticks: 50, TickLeft: 10}
+	for i := range 4 {
+		a.Lines = append(a.Lines, proto.LineV{Role: rules.RoleBuyer, Pos: pos[i], Target: target[i]})
+	}
+	return &proto.View{T: t, Phase: "trading", PhaseID: int(rules.PhaseTrading), Auction: a}
+}
+
+// Lines walking to their targets as the client walks them are clocks: no
+// push before StreamClockOnly. A new target, or a line held back, goes out.
+func TestStreamPredictedLines(t *testing.T) {
+	sc := &streamConn{}
+	v0 := auctionView(800, [4]int{40, 40, 40, 40}, [4]int{60, 40, 40, 40})
+	sc.queueState(v0, false, 0)
+	sc.q = nil
+
+	v1 := auctionView(824, [4]int{43, 40, 40, 40}, [4]int{60, 40, 40, 40}) // 3 steps, 24 jiffies
+	v1.Auction.TickLeft = 11                                                // 10 then 25: 24 jiffies on is 11
+	v1.Auction.Ticks = 49
+	if !predicted(v0, v1) {
+		t.Fatal("walking line not predicted")
+	}
+	sc.queueState(v1, false, 0)
+	if len(sc.q) != 0 {
+		t.Fatalf("pushed a predicted change: %d frames", len(sc.q))
+	}
+
+	v2 := auctionView(824, [4]int{42, 40, 40, 40}, [4]int{60, 40, 40, 40}) // held back a step
+	v2.Auction.TickLeft, v2.Auction.Ticks = 11, 49
+	sc.queueState(v2, false, 0)
+	if len(sc.q) == 0 {
+		t.Fatal("held-back line not pushed")
+	}
+	sc.q = nil
+
+	v3 := auctionView(824, [4]int{42, 40, 40, 40}, [4]int{60, 50, 40, 40}) // a new target
+	v3.Auction.TickLeft, v3.Auction.Ticks = 11, 49
+	sc.queueState(v3, false, 0)
+	if len(sc.q) == 0 {
+		t.Fatal("new target not pushed")
+	}
+
+	v4 := auctionView(832, [4]int{43, 41, 40, 40}, [4]int{60, 50, 40, 40})
+	v4.Auction.TickLeft, v4.Auction.Ticks = 11, 49 // the bar stopped (a trade in contact)
+	if predicted(v3, v4) {
+		t.Fatal("stopped time bar predicted")
+	}
+}
+
+// A client that is behind gets no new state built, but an answer to its
+// action still is.
+func TestStreamBehindWaits(t *testing.T) {
+	h := newHarness(t)
+	a, b := net.Pipe()
+	t.Cleanup(func() { a.Close(); b.Close() })
+	go io.Copy(io.Discard, b)
+	sc := &streamConn{s: h.s, nc: a, table: h.s.Table("dev1"), player: "ALICE"}
+	sc.sent, sc.taken = proto.StreamWindow/2+10, 0
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if sc.last != nil || len(sc.q) != 0 {
+		t.Fatal("built a state for a client that is behind")
+	}
+	sc.ack, sc.ackSeq = h.s.apply(sc.table, "ALICE", nil, nil), 9
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if sc.last == nil {
+		t.Fatal("answer held back")
 	}
 }

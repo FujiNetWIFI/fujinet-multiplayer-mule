@@ -14,7 +14,7 @@
 void aux_get(void *dst, const void *src, uint16_t n);  /* lowlevel.s */
 void aux_put(void *dst, const void *src, uint16_t n);
 
-extern uint8_t _OVLADDR__[], _OVLSIZE__[], _AUXGFX__[], _AUXTXT__[];
+extern uint8_t _OVLADDR__[], _OVLSIZE__[], _AUXSTAGE__[], _AUXGFX__[], _AUXTXT__[];
 
 #define TEMP ((uint8_t *)0x2000)        /* HGR page 1, 8K */
 #define OVL_AUX(n) ovl_at[n]
@@ -55,7 +55,7 @@ const char *bank_init(void)
         if (n < 5)
             ovl_at[n + 1] = ovl_at[n] + got;
     }
-    if (ovl_at[5] + ovl_len[5] > _AUXGFX__)
+    if (ovl_at[5] + ovl_len[5] > _AUXSTAGE__)
         return "OVERLAYS TOO BIG FOR AUX RAM";
     if (load(6, _AUXGFX__) <= 0 || load(7, _AUXTXT__) <= 0)
         return "CAN'T LOAD MULE.6 / MULE.7";

@@ -199,11 +199,21 @@ void summary_enter(void)
 
 void summary_state(void)
 {
+    uint8_t all = 0;
     if (su_land)
         return;
-    if (!su_drawn && (uint16_t)(frame_count - ph_t0) >= 410)
+    if (!su_drawn && (uint16_t)(frame_count - ph_t0) >= 410) {
         su_table();
-    if (su_drawn)
+        all = 1;
+    }
+    /* the big digits again only when a number under them changed: the
+     * players (money, goods, score), the plots and their M.U.L.E.s (owner
+     * and mule, one after the other), the prices, the colony's total */
+    if (su_drawn && (all ||
+        memcmp(st.players, prev.players, sizeof(st.players)) ||
+        memcmp(st.map.owner, prev.map.owner, sizeof(st.map.owner) + sizeof(st.map.mule)) ||
+        memcmp(st.store.price, prev.store.price, sizeof(st.store.price)) ||
+        st.colony.total != prev.colony.total))
         su_values();
 }
 
@@ -287,6 +297,7 @@ void gameover_tick(void)
  * ------------------------------------------------------------------------- */
 static uint8_t lb_species, lb_sent, lb_last[4];
 static uint16_t lb_lastcd;
+static uint8_t lb_spec;         /* watching (no seat): the waiting line says so */
 
 #define LB_ROW(k) (6 + (k) * 4)
 
@@ -338,11 +349,6 @@ void lobby_state(void)
             spr_hide(k);
         }
     }
-    if (my_seat > 3) {
-        msg_row = 22;
-        msg_col = C_WHITE;
-        msg_show(M_SPECTATE, 0, 0);
-    }
 }
 
 void lobby_tick(void)
@@ -354,7 +360,12 @@ void lobby_tick(void)
         leave_table();
         return;
     }
-    /* the countdown to the start, in seconds */
+    /* the countdown to the start, in seconds (redrawn only when it
+     * changes: a scrolling line would start again) */
+    if ((my_seat > 3) != lb_spec) {
+        lb_spec = my_seat > 3;
+        lb_lastcd = 0xFFFE;
+    }
     w = (uint16_t)st.h.countdown;
     if (!(w & 0x8000)) {
         v = since_rx();
@@ -371,7 +382,7 @@ void lobby_tick(void)
         lb_lastcd = 0xFFFF;
         msg_row = 22;
         msg_col = C_WHITE;
-        msg_show(M_WAITING, 0, 0);
+        msg_show(lb_spec ? M_SPECTATE : M_WAITING, 0, 0);
     }
     if (my_seat > 3)
         return;

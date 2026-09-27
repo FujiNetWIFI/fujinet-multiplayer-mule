@@ -6,7 +6,8 @@ the conventions of the other FujiNet game servers in fujinet-game-system:
 - Every route accepts both `GET` and `POST`.
 - The client polls `/state`. (Stream mode, below, is a TCP alternative for
   clients whose network calls are slow: the Atari and the Lynx through
-  FujiNet netstream, the Adam through an `N:TCP` socket.)
+  FujiNet netstream; the Adam, the CoCo, the Apple II and MS-DOS through an
+  `N:TCP` socket.)
 - Every call carries `?table=<id>&player=<name>`. The player name is the
   identity and is matched without regard to case. The first call from a new
   name at a table in its lobby takes a free seat.
@@ -144,10 +145,12 @@ Stream mode is for clients whose network calls are slow. The Atari is one:
 it goes through SIO, and each HTTP poll costs about eight SIO frames and
 0.45 s of blocking. The client uses FujiNet's netstream, which turns the SIO
 line into a raw serial link to a TCP socket. It holds one connection to
-`-stream` (default `:9902`, `MULE_STREAM_ADDR`; empty turns it off). The
-Adam is another: its FujiNet makes an HTTP request inside the AdamNet call,
-so the Z80 waited out each poll; it opens `N:TCP://host:9902/` instead
-(`clients/mekkogx/src/adam/nstrans.c`). The
+`-stream` (default `:9902`, `MULE_STREAM_ADDR`; empty turns it off). On
+every other bus FujiNet makes an HTTP request inside the first status call
+after the open, so the machine waits out the whole round trip on every
+poll. The Adam, the CoCo, the Apple II and MS-DOS therefore open
+`N:TCP://host:9902/` instead (`clients/mekkogx/src/nstrans_fn.c`). A TCP
+status call is quick, and they read only when it says bytes wait. The
 server pushes the binary state as it changes, and the client sends actions
 as they happen. Constants and codes are in `clients/mule_proto.h`
 (`SC_*`, `CS_*`, `STREAM_*`), and the implementation is
@@ -182,8 +185,22 @@ over the type and the payload. A decoded frame is at most 128 bytes.
 **Pushes.** Every 50 ms, and at once after an action, the server builds the
 player's view, exactly as `/state` would. The first push after `H`, and any
 push after `R`, sends the whole state; after that only the byte runs that
-changed are sent. If only the clocks changed (`t`, elapsed, countdown and the
-phase timers), the push waits until 500 ms after the last one. A connection
+changed are sent. If only the clocks changed, the push waits until 500 ms
+after the last one. The clocks are `t`, elapsed, countdown and the phase
+timers. In an auction they also include the lines' positions and the time
+bar, but only while those move the way a client works out for itself from
+the last state:
+
+- each line steps one price step towards its target on every jiffy where
+  `t` is a multiple of 8, during the active stage (the critical seller's
+  line stays put);
+- the bar loses a tick every 25 jiffies, or every 6 when `AF_IDLE` is set
+  and while declaring.
+
+A line held back (a buyer's ceiling, a seller's floor) or a bar stopped by
+a trade goes out at once. A client still holding more than half a window
+unread gets no new state until it has caught up, so what it reads next is
+current, not queued. An action's answer is never held back. A connection
 keeps its seat online just as polling does. A connection that has sent
 nothing for 35 s is dropped.
 

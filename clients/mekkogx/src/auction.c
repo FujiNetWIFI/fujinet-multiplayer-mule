@@ -37,9 +37,11 @@
 static const uint8_t col_x[4] = { 39, 63, 87, 111 };
 
 static uint8_t au_kind, au_good, au_stage, au_new, au_stepv;
+static uint16_t au_lim;         /* land: 30 steps, how far a bid runs over the base */
 static uint8_t au_role[4];
 static uint16_t au_pos[4], au_tgt[4], au_base;
 static uint8_t au_on, au_tick;
+static uint8_t au_money_all;    /* the money fields were cleared: all again */
 static uint8_t au_push;         /* our stick as sent: 0 released, 1 up, 2 down */
 static uint8_t au_held;         /* frame (low byte) our goods line was let go */
 static uint8_t au_ln1, au_ln2;  /* lines of the sellers' / buyers' price lines (255 none) */
@@ -53,6 +55,23 @@ static uint8_t au_bar[4], au_bar_t[4];
 /* ---------------------------------------------------------------------------
  * Prices and lines.
  * ------------------------------------------------------------------------- */
+#if defined(__ATARI__) || defined(__LYNX__)
+/* What runs every frame stays out of the overlay here: its window is full
+ * and main RAM isn't. */
+#pragma code-name (push, "CODE")
+#endif
+/* A player, and their colour: calls, not the 29-byte stride inline at
+ * every use. */
+static MulePlayer *au_pl(uint8_t i)
+{
+    return &st.players[i];
+}
+
+static uint8_t au_col(uint8_t i)
+{
+    return pl_col[au_pl(i)->color & 3];
+}
+
 static uint8_t price_y(uint16_t w)
 {
     uint16_t d;
@@ -90,17 +109,34 @@ static void au_draw(void)
             spr_hide(i);
             continue;
         }
-        f = (PL(i).species & 7) * 11 + 5;
+        f = (au_pl(i)->species & 7) * 11 + 5;
         if (au_pos[i] != au_tgt[i] && (frame_count & 8))
             ++f;
-        spr_set(i, SH_SPECIES, f, col_x[i], (int16_t)y - 22, PLCOL(i), 0);
+        spr_set(i, SH_SPECIES, f, col_x[i], (int16_t)y - 22, au_col(i), 0);
     }
+}
+
+/* One price step of a line towards its target. */
+static void au_step(uint8_t i)
+{
+    uint16_t p = au_pos[i], t = au_tgt[i];
+    if (p < t) {
+        p += au_stepv;
+        if (p > t)
+            p = t;
+    } else if (p > t) {
+        p = p > t + au_stepv ? p - au_stepv : t;
+    }
+    au_pos[i] = p;
+    /* land: a bid past 30 steps over the base scrolls the scale up, the
+     * high bidder staying at the top and the rest sliding down */
+    if (au_kind == 1 && au_role[i] == ROLE_BUYER && p > au_base + au_lim)
+        au_base = p - au_lim;
 }
 
 void auction_isr(void)
 {
     uint8_t i;
-    uint16_t lim;
     if (!au_on)
         return;
     if (++au_tick < 8) {
@@ -109,26 +145,14 @@ void auction_isr(void)
         return;
     }
     au_tick = 0;
-    for (i = 0; i < 4; ++i) {
-        if (au_pos[i] < au_tgt[i]) {
-            au_pos[i] += au_stepv;
-            if (au_pos[i] > au_tgt[i])
-                au_pos[i] = au_tgt[i];
-        } else if (au_pos[i] > au_tgt[i]) {
-            au_pos[i] = au_pos[i] >= au_stepv ? au_pos[i] - au_stepv : 0;
-            if (au_pos[i] < au_tgt[i])
-                au_pos[i] = au_tgt[i];
-        }
-        /* land: a bid past 30 steps over the base scrolls the scale up, the
-         * high bidder staying at the top and the rest sliding down */
-        if (au_kind == 1 && au_role[i] == ROLE_BUYER) {
-            lim = au_stepv * 30;
-            if (au_pos[i] > au_base + lim)
-                au_base = au_pos[i] - lim;
-        }
-    }
+    for (i = 0; i < 4; ++i)
+        au_step(i);
     au_draw();
 }
+
+#if defined(__ATARI__) || defined(__LYNX__)
+#pragma code-name (pop)
+#endif
 
 /* The dotted price lines: the sellers' (lowest ask, or the store's price
  * while it has stock) and the buyers' (highest bid, or the store's buying
@@ -196,9 +220,9 @@ static void au_lbl_tick(void)
         au_lbl[i] = w;
         gfx_clear_text(AU_FX(i), ROW_LBL, AU_FW(i));
         if (w == 0)
-            gfx_big(AU_FX(i) + BIGW, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), PLCOL(i));
+            gfx_big(AU_FX(i) + BIGW, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), au_col(i));
         else if (w > 1)
-            big_num(AU_FX(i), ROW_LBL, w, 5, PLCOL(i));
+            big_num(AU_FX(i), ROW_LBL, w, 5, au_col(i));
     }
 }
 
@@ -217,23 +241,42 @@ static void au_labels(void)
     }
 }
 
-/* Money and (goods) units, in ten-cell fields under the players. */
+/* Money and (goods) units, in ten-cell fields under the players: again
+ * only when a player's changed (a trade), not for every state that comes
+ * (up to twenty a second; the big digits are slow to draw). */
 static void au_money(void)
 {
     uint8_t i;
+    if (!au_money_all && !memcmp(st.players, prev.players, sizeof(st.players)))
+        return;
+    au_money_all = 0;
     for (i = 0; i < 4; ++i) {
-        big_num(AU_FX(i), ROW_MONEY, PL(i).money, 5, PLCOL(i));
+        big_num(AU_FX(i), ROW_MONEY, au_pl(i)->money, 5, au_col(i));
         if (au_kind == 2 && au_stage >= STAGE_LEAD)
-            put_num(AU_FX(i) + 4, ROW_UNITS, PL(i).goods[au_good], 4, C_WHITE);
+            put_num(AU_FX(i) + 4, ROW_UNITS, au_pl(i)->goods[au_good], 4, C_WHITE);
     }
 }
 
-/* The auction clock: a bar, a line for every tick left. */
+/* The auction clock: a bar, a line for every tick left. Between states it
+ * runs on by itself: the tick under way has tickLeft jiffies left, and
+ * each one after lasts 25, or 6 when idle (and while declaring). */
+static uint8_t au_ticks_now(void)
+{
+    uint16_t el = since_rx();
+    uint8_t per = 25;
+    if (au_stage == STAGE_DECLARE || (st.auction.flags & AF_IDLE))
+        per = 6;
+    /* as if the tick under way were whole: el + per - tickLeft */
+    el += per;
+    el = el > st.auction.tickLeft ? (el - st.auction.tickLeft) / per : 0;
+    return el < st.auction.ticks ? st.auction.ticks - (uint8_t)el : 0;
+}
+
 static void au_timebar(void)
 {
     bar_col = C_WHITE;
     if (au_stage == STAGE_ACTIVE || au_stage == STAGE_DECLARE)
-        bar_draw(st.auction.ticks);
+        bar_draw(au_ticks_now());
     else
         bar_draw(0);
 }
@@ -379,17 +422,19 @@ static void au_bar_draw(uint8_t i)
     uint8_t x = col_x[i] + 1;
     gfx_fill(x, BAR_BOT - BAR_MAX, 8, BAR_MAX - au_bar[i], C_BLACK);
     if (au_bar[i])
-        gfx_fill(x, BAR_BOT - au_bar[i], 8, au_bar[i], PLCOL(i));
+        gfx_fill(x, BAR_BOT - au_bar[i], 8, au_bar[i], au_col(i));
 }
 
 static void au_status_targets(void)
 {
     uint8_t i, c, j, n;
     uint16_t w, a;
+    MulePlayer *p;
     for (i = 0; i < 4; ++i) {
-        w = PL(i).goods[au_good];
-        c = PL(i).prod[au_good];
-        j = PL(i).spoil[au_good];
+        p = au_pl(i);
+        w = p->goods[au_good];
+        c = p->prod[au_good];
+        j = p->spoil[au_good];
         n = au_need(i, rnd);
         /* previous = now - production + spoilage + usage */
         a = w + j + n;
@@ -419,7 +464,7 @@ static void au_need_draw(void)
         n = au_need(i, rnd + 1);
         if (!n)
             continue;
-        w = PL(i).goods[au_good];
+        w = au_pl(i)->goods[au_good];
         y = n > 20 ? BAR_BOT - BAR_MAX : BAR_BOT - n * 4;
         gfx_hdots(col_x[i] - 8, y, 8, C_WHITE);
         gfx_hdots(col_x[i] + 12, y, 8, C_WHITE);
@@ -535,6 +580,7 @@ static void au_stage_begin(void)
     au_ln1 = au_ln2 = 255;
     au_msg = 255;
     bar_last = 255;
+    au_money_all = 1;
     au_sb = 0xFFFF;
     au_hb = 0xFFFF;
     /* a new plot or good: the server has no push from us yet */
@@ -579,13 +625,14 @@ void goods_enter(void)
  * ------------------------------------------------------------------------- */
 void auction_state(void)
 {
-    uint8_t i, k;
+    uint8_t i, k, j, c, n;
     au_kind = st.auction.kind;
     au_new = st.auction.stage;
     au_good = (uint8_t)st.auction.good & 3;
     au_stepv = st.auction.step;
     if (au_stepv == 0)
         au_stepv = 1;
+    au_lim = au_stepv * 30;
     for (i = 0; i < 4; ++i)
         au_role[i] = st.auction.role[i];
 
@@ -633,11 +680,22 @@ void auction_state(void)
     if (au_kind == 2 && au_stage == STAGE_ACTIVE && au_push == 0 &&
         (uint8_t)((uint8_t)frame_count - au_held) < 60)
         k = my_seat;
+    /* The server steps the lines on every 8th jiffy of its clock: ours
+     * step in time with it, and the state (rx_age jiffies old) is moved on
+     * by the steps it missed, so a line doesn't jump back and walk on. */
+    j = ((uint8_t)st.h.t & 7) + rx_age;
+    au_tick = j & 7;
+    j = au_stage == STAGE_ACTIVE ? j >> 3 : 0;
+    c = 255;
+    if (au_kind == 2 && (st.auction.flags & AF_CRITICAL))
+        c = st.auction.seller;             /* its line is held */
     for (i = 0; i < 4; ++i) {
         if (i == k && (st.auction.push[i] || st.auction.pos[i] != st.auction.target[i]))
             continue;
-        au_tgt[i] = st.auction.target[i];
         au_pos[i] = st.auction.pos[i];     /* snap; the frame handler walks it on */
+        au_tgt[i] = i == c ? au_pos[i] : st.auction.target[i];
+        for (n = j; n; --n)
+            au_step(i);
     }
     if (au_stage >= STAGE_LEAD) {
         au_on = 1;
@@ -683,7 +741,7 @@ static void au_stick(void)
     if (k == 1) {
         if (au_kind == 1) {
             /* land: as high as our money goes (the scale scrolls up) */
-            w = PL(my_seat).money;
+            w = au_pl(my_seat)->money;
             au_tgt[my_seat] = w - (w & 3);
         } else {
             au_tgt[my_seat] = st.auction.hi;
@@ -724,6 +782,7 @@ void auction_tick(void)
     }
     au_lines();
     au_lbl_tick();
+    au_timebar();
     if (au_stage == STAGE_DECLARE && my_seat < 4) {
         /* push the stick to declare: up = seller, down = buyer */
         i = au_role[my_seat];
@@ -739,7 +798,7 @@ void auction_tick(void)
             snd_play(SND_SELECT);
         }
         if (ev_key == KEY_SITOUT &&
-            (i != ROLE_NONE || !(PL(my_seat).flags & PF_DECLARED))) {
+            (i != ROLE_NONE || !(au_pl(my_seat)->flags & PF_DECLARED))) {
             au_role[my_seat] = ROLE_NONE;
             act_send(ACT_DECLARE, 0);
             au_labels();

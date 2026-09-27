@@ -25,6 +25,7 @@ extern MuleState st;            /* the last good state */
 extern MuleState prev;          /* the state drawn last (for redraw diffs) */
 extern uint8_t phase, rnd, my_seat, last_phase, last_round, st_ok;
 extern uint16_t rx_pe, rx_frame;    /* phase-elapsed and frame at the last state */
+extern uint8_t rx_age;          /* jiffies the last state is older than the fastest */
 extern uint16_t ph_t0;          /* frame a phase's own animation started */
 #define pe_now() ((uint16_t)(rx_pe + (uint16_t)(frame_count - rx_frame)))
 #define since_rx() ((uint16_t)(frame_count - rx_frame))
@@ -164,6 +165,7 @@ void gameover_tick(void);
 void boot(void);
 void game_start(void);
 void table_select(void);        /* boot overlay: call choose_table() */
+void table_rechoose(void);      /* boot overlay: the room cleared, chosen, saved */
 void choose_table(void);
 void leave_table(void);        /* main.c: leave, then the table list */
 void test_start(uint8_t ph, uint8_t arg, uint8_t pev);

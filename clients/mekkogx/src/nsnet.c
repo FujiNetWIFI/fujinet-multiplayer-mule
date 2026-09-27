@@ -1,14 +1,16 @@
 /*
  * nsnet.c -- mule.h's network calls in stream mode: one TCP connection to
  * the server instead of an HTTP GET a poll (net.c), as on the Atari
- * (src/atari/nsnet.c, docs/PROTOCOL.md "Stream mode"). The Lynx and the
- * Adam share it; each brings the bytes its own way (nstrans.h):
+ * (src/atari/nsnet.c, docs/PROTOCOL.md "Stream mode"). Everyone but the
+ * Atari and the MSX shares it; each brings the bytes its own way
+ * (nstrans.h):
  *
  *   Lynx  FujiNet-Lynx's netstream: ComLynx becomes a raw pipe to the
  *         socket, for good (src/lynx/nstrans.c).
- *   Adam  an N:TCP socket, read only when its status says bytes wait: an
- *         HTTP poll there held the Z80 for the whole request
- *         (src/adam/nstrans.c).
+ *   Adam, CoCo, Apple II, MS-DOS
+ *         an N:TCP socket, read only when its status says bytes wait: an
+ *         HTTP poll held the machine for the whole request
+ *         (src/nstrans_fn.c).
  *
  * The receiver's ring is small: the server sends at most STREAM_WINDOW
  * bytes we haven't credited (SC_CREDIT), so it can't overflow while the
@@ -38,7 +40,25 @@ static uint8_t ns_taken;        /* bytes taken, mod 256 (SC_CREDIT) */
 static uint8_t fbuf[FMAX];
 static uint8_t flen, fover;
 
+#ifdef __APPLE2__
+/* The state being built is kept in aux RAM (mule-hgr.cfg's AUXSTAGE): main
+ * RAM has no 550 bytes to spare. AUXMOVE takes it there and back, the
+ * whole state in two halves so the clock (frame_tick) keeps counting. */
+void aux_get(void *dst, const void *src, uint16_t n);  /* lowlevel.s */
+void aux_put(void *dst, const void *src, uint16_t n);
+extern uint8_t _AUXSTAGE__[];
+#define stage_put(off, p, n) aux_put(_AUXSTAGE__ + (off), (p), (n))
+static void stage_get(void)
+{
+    aux_get(&st, _AUXSTAGE__, 275);
+    frame_tick();
+    aux_get((uint8_t *)&st + 275, _AUXSTAGE__ + 275, sizeof(MuleState) - 275);
+}
+#else
 static uint8_t stage[sizeof(MuleState)];
+#define stage_put(off, p, n) memcpy(stage + (off), (p), (n))
+#define stage_get() memcpy(&st, stage, sizeof(MuleState))
+#endif
 static uint8_t joined, heard;
 static uint8_t seq, wait_seq, wait_act, credited, hello_n, hello_t, resync_hold;
 static uint16_t quiet;
@@ -168,6 +188,9 @@ static void send_hello(void)
     static uint8_t h[18];
     memset(h, 0, sizeof(h));
     h[0] = STREAM_VERSION;
+#ifdef PLAT_BIG_ENDIAN
+    h[1] = 1;                   /* the 16- and 32-bit fields in our order */
+#endif
     strncpy((char *)h + 2, sc_table, 8);
     strncpy((char *)h + 10, sc_name, 8);
     send(SC_HELLO, h, sizeof(h));
@@ -184,10 +207,11 @@ static void send_hello(void)
 
 /* ---- the link ----------------------------------------------------------- */
 
-/* "http://host:9900/..." -> host */
+/* "http://host:9900/..." -> host, in fbuf: nothing is being received
+ * while we connect (nt_open copies it before a byte comes in). */
 static const char *endpoint_host(void)
 {
-    static char host[61];
+    char *host = (char *)fbuf;
     const char *p = strstr(sc_endpt, "://");
     uint8_t n = 0;
     p = p ? p + 3 : sc_endpt;
@@ -270,13 +294,13 @@ static uint8_t take(void)
         case CS_PATCH:
             off = fbuf[1] | fbuf[2] << 8;
             n -= 3;
-            if (off + n <= sizeof(stage))
-                memcpy(stage + off, fbuf + 3, n);
+            if (off + n <= sizeof(MuleState))
+                stage_put(off, fbuf + 3, n);
             break;
         case CS_COMMIT:
             if (!joined)
                 break;
-            memcpy(&st, stage, sizeof(MuleState));
+            stage_get();
             if (wait_seq && fbuf[1] == wait_seq) {
                 act_sent = wait_act;
                 wait_seq = 0;
@@ -387,6 +411,12 @@ uint8_t net_sync(void)
     return net_have;
 }
 
+#ifdef __APPLE2__
+/* Only boot.c calls these: they live in its overlay (main RAM is full). */
+#pragma code-name (push, "OVERLAY1")
+#pragma rodata-name (push, "OVERLAY1")
+#endif
+
 /* Is there a FujiNet? (Once the stream is on, it answers for it.) */
 uint8_t net_detect(void)
 {
@@ -424,5 +454,10 @@ uint8_t net_tables(uint8_t *buf, uint8_t max)
     buf[0] = count > max ? max : count;
     return buf[0];
 }
+
+#ifdef __APPLE2__
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+#endif
 
 #endif

@@ -1,6 +1,6 @@
 /*
- * nstrans.h -- the bytes under stream mode (src/nsnet.c): each platform
- * that uses it has an nstrans.c of its own.
+ * nstrans.h -- the bytes under stream mode (src/nsnet.c): src/nstrans_fn.c
+ * (an N:TCP socket through fujinet-lib) or a platform's own nstrans.c.
  */
 #ifndef NSTRANS_H
 #define NSTRANS_H

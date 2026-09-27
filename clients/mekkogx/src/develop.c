@@ -720,6 +720,8 @@ static void say_turn(void)
     msg_start(n + 7);
 }
 
+static void dv_bar(void);
+
 void develop_state(void)
 {
     uint8_t k;
@@ -797,15 +799,26 @@ void develop_state(void)
     if (dv_seat < 4)
         bar_col = PLCOL(dv_seat);
     if ((dv_flags & TF_STARTED) && !(dv_flags & TF_ENDED))
-        bar_draw(dv_left / dv_ptu);
+        dv_bar();
     else
         bar_draw(0);
     map_update();
 }
 
+/* The turn's time bar, run down from the last state (which is since_rx
+ * old already when it comes: rx_age). A line more than it shows now is
+ * only a later reply's jitter, not time given back: it stays down. */
+static void dv_bar(void)
+{
+    uint16_t w = since_rx();
+    uint8_t px = w < dv_left ? (dv_left - w) / dv_ptu : 0;
+    if (bar_last != 255 && px == bar_last + 1)
+        return;
+    bar_draw(px);
+}
+
 void develop_tick(void)
 {
-    uint16_t w;
     msg_tick();
     if (dv_state == DV_PROMPT) {
         if (ev_btn) {
@@ -818,16 +831,13 @@ void develop_tick(void)
         if (dv_state == DV_WAIT)
             dv_ai_marks();
         /* watching: run the bar down between polls */
-        if ((dv_flags & TF_STARTED) && !(dv_flags & TF_ENDED)) {
-            w = since_rx();
-            bar_draw(w < dv_left ? (dv_left - w) / dv_ptu : 0);
-        }
+        if ((dv_flags & TF_STARTED) && !(dv_flags & TF_ENDED))
+            dv_bar();
         return;
     }
 
     /* our own turn */
-    w = since_rx();
-    bar_draw(w < dv_left ? (dv_left - w) / dv_ptu : 0);
+    dv_bar();
     dv_event_msg();
     if (dv_bwait) {
         if ((uint16_t)(frame_count - dv_bt0) > 600)

@@ -12,7 +12,7 @@
 ; below the window, and that each overlay fits it.
 
         defc    OVL_ORG = $A000
-        defc    OVL_SIZE = $1800        ; 6K: whole blocks
+        defc    OVL_SIZE = $1C00        ; 7K: whole blocks
 
         PUBLIC  _ovl_window, OVL_SIZE
         defc    _ovl_window = OVL_ORG

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"fujinet-multiplayer-mule/internal/proto"
+	"fujinet-multiplayer-mule/internal/rules"
 )
 
 // Stream timing (package vars so tests can change them).
@@ -43,12 +44,14 @@ type streamConn struct {
 	s  *Server
 	nc net.Conn
 
+	pollMu   sync.Mutex // a push's poll against a leave: the poll must not use the old name
 	mu       sync.Mutex
 	table    *Table
 	player   string
 	be       bool
-	last     []byte // the state the client has once q is out
-	steady   []byte // last without the clocks
+	last     []byte      // the state the client has once q is out
+	steady   []byte      // last without the clocks
+	lastV    *proto.View // the view last sent (what the client predicts from)
 	lastSend time.Time
 	q        [][]byte    // frames waiting for credit
 	sent     uint8       // encoded bytes sent, mod 256
@@ -133,7 +136,7 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		t := s.Table(id)
 		sc.mu.Lock()
 		sc.table, sc.player, sc.be = t, cstr(p[10:18]), p[1]&1 != 0
-		sc.last, sc.steady, sc.q = nil, nil, nil
+		sc.last, sc.steady, sc.lastV, sc.q = nil, nil, nil, nil
 		if t == nil {
 			sc.q = append(sc.q, proto.Frame(proto.CSError, []byte{byte(proto.ErrBadRequest)}))
 		}
@@ -160,6 +163,7 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		}
 		var v *proto.View
 		if p[1] == proto.ActLeave {
+			sc.pollMu.Lock()
 			t.mu.Lock()
 			seat := t.seatOf(player, s.Now(), false)
 			t.leave(seat)
@@ -172,6 +176,7 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 				sc.player = ""
 			}
 			sc.mu.Unlock()
+			sc.pollMu.Unlock()
 			v = s.apply(t, "", nil, nil)
 		} else {
 			f, ps := streamAction(p[1], int(p[2])|int(p[3])<<8, int(p[4]))
@@ -182,7 +187,7 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		sc.mu.Unlock()
 	case proto.SCResync:
 		sc.mu.Lock()
-		sc.last, sc.steady, sc.q = nil, nil, nil
+		sc.last, sc.steady, sc.lastV, sc.q = nil, nil, nil, nil
 		sc.mu.Unlock()
 	case proto.SCBye:
 		sc.mu.Lock()
@@ -260,7 +265,8 @@ func streamAction(id byte, arg, seen int) (action, params) {
 }
 
 // writer pushes: on each tick or poke, the next state if nothing is
-// queued, then as much of the queue as the credit allows.
+// queued and the client isn't behind, then as much of the queue as the
+// credit allows.
 func (sc *streamConn) writer() {
 	tk := time.NewTicker(StreamPush)
 	defer tk.Stop()
@@ -279,11 +285,16 @@ func (sc *streamConn) writer() {
 }
 
 func (sc *streamConn) push() error {
+	sc.pollMu.Lock()
 	sc.mu.Lock()
 	t, player, ack, seq := sc.table, sc.player, sc.ack, sc.ackSeq
 	idle := len(sc.q) == 0
+	// A client still holding half a window unread is behind (drawing, or a
+	// slow line): a state built now would be stale when it got there, so
+	// the next one is built once it has caught up. An answer goes at once.
+	behind := int(sc.sent-sc.taken) > proto.StreamWindow/2
 	sc.mu.Unlock()
-	if idle && t != nil {
+	if idle && t != nil && (ack != nil || !behind) {
 		v := ack
 		if v == nil {
 			v = sc.s.apply(t, player, nil, nil) // what /state would say
@@ -295,6 +306,7 @@ func (sc *streamConn) push() error {
 		sc.queueState(v, ack != nil, seq)
 		sc.mu.Unlock()
 	}
+	sc.pollMu.Unlock() // not held through the write: it may wait out a slow client
 
 	sc.mu.Lock()
 	inflight := int(sc.sent - sc.taken) // the window is < 256: mod 256 is enough
@@ -318,16 +330,18 @@ func (sc *streamConn) push() error {
 
 // queueState queues v as patches and a commit, if the client needs it:
 // always for an action's answer, else when something besides the clocks
-// changed, or the clocks did a while ago. sc.mu held.
+// changed, or the clocks did a while ago. Auction lines and the auction
+// time bar count as clocks while they go the way the client works out on
+// its own from the last state (predicted). sc.mu held.
 func (sc *streamConn) queueState(v *proto.View, isAck bool, ackSeq byte) {
 	cur := proto.Encode(proto.ToBin(v), sc.be)
-	std := proto.Encode(proto.ToBin(steady(v)), sc.be)
+	std := proto.Encode(proto.ToBin(streamSteady(v)), sc.be)
 	now := time.Now()
 	if !isAck && sc.last != nil {
 		if bytes.Equal(cur, sc.last) {
 			return
 		}
-		if bytes.Equal(std, sc.steady) && now.Sub(sc.lastSend) < StreamClockOnly {
+		if bytes.Equal(std, sc.steady) && predicted(sc.lastV, v) && now.Sub(sc.lastSend) < StreamClockOnly {
 			return
 		}
 	}
@@ -340,7 +354,84 @@ func (sc *streamConn) queueState(v *proto.View, isAck bool, ackSeq byte) {
 		seq = ackSeq
 	}
 	sc.q = append(sc.q, proto.Frame(proto.CSCommit, []byte{seq}))
-	sc.last, sc.steady, sc.lastSend = cur, std, now
+	sc.last, sc.steady, sc.lastV, sc.lastSend = cur, std, v, now
+}
+
+// streamSteady is steady without the auction's line positions and time bar
+// (predicted decides whether those still go as the client expects).
+func streamSteady(v *proto.View) *proto.View {
+	cp := steady(v)
+	if cp.Auction != nil {
+		ac := *cp.Auction
+		ac.Ticks = 0
+		ac.Lines = append([]proto.LineV(nil), ac.Lines...)
+		for i := range ac.Lines {
+			ac.Lines[i].Pos = 0
+		}
+		cp.Auction = &ac
+	}
+	return cp
+}
+
+// predicted reports whether cur's auction lines and time bar are where a
+// client that got prev puts them by itself: each line a price step toward
+// its target on every LineStep jiffy of the active stage (the critical
+// seller's stays put), and the bar a tick every ATU jiffies (ATUIdle when
+// idle or declaring). A line held back (a ceiling, a trade) or a bar
+// stopped by a trade is not, and goes out at once.
+func predicted(prev, cur *proto.View) bool {
+	if prev == nil {
+		return false
+	}
+	pa, ca := prev.Auction, cur.Auction
+	if pa == nil || ca == nil {
+		return pa == ca
+	}
+	if pa.Stage != ca.Stage || len(pa.Lines) != len(ca.Lines) || cur.T < prev.T {
+		return false
+	}
+	dt := cur.T - prev.T
+	moving := ca.Stage == rules.StageActive
+	steps := 0
+	if moving {
+		steps = cur.T/rules.LineStep - prev.T/rules.LineStep
+	}
+	for i, l := range ca.Lines {
+		want := pa.Lines[i].Pos
+		if l.Role != rules.RoleNone && i != ca.Crit {
+			for k := 0; k < steps; k++ {
+				want = stepToward(want, l.Target, ca.Step)
+			}
+		}
+		if l.Pos != want {
+			return false
+		}
+	}
+	if ca.Stage != rules.StageActive && ca.Stage != rules.StageDeclare {
+		return ca.Ticks == pa.Ticks
+	}
+	per := rules.ATU
+	if pa.Idle || ca.Stage == rules.StageDeclare {
+		per = rules.ATUIdle
+	}
+	tk, tl := pa.Ticks, pa.TickLeft
+	for ; dt > 0; dt-- {
+		if tl--; tl <= 0 {
+			tk--
+			tl = per
+		}
+	}
+	return tk == ca.Ticks && tl == ca.TickLeft
+}
+
+func stepToward(pos, target, st int) int {
+	switch {
+	case pos < target:
+		return min(pos+st, target)
+	case pos > target:
+		return max(pos-st, target)
+	}
+	return pos
 }
 
 // ListenStream serves stream mode on addr (":9902") in the background.

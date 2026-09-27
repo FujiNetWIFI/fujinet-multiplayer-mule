@@ -30,7 +30,7 @@ static char *add(char *p, const char *s)
     return p;
 }
 
-#ifndef PLAT_NETSTREAM          /* the Atari talks stream mode: src/atari/nsnet.c */
+#ifndef PLAT_NETSTREAM          /* the MSX: everyone else talks stream mode (nsnet.c) */
 static char url[200];
 static uint8_t rx[sizeof(MuleState)];
 static uint16_t rx_got, bw_last;
@@ -290,6 +290,12 @@ extern uint8_t ns_on;
 #define AK_NO_BUS(r)
 #endif
 
+#ifdef __APPLE2__
+/* Only boot.c calls these: they live in its overlay (main RAM is full). */
+#pragma code-name (push, "OVERLAY1")
+#pragma rodata-name (push, "OVERLAY1")
+#endif
+
 static uint8_t ak_read(uint8_t key)
 {
     uint16_t count = 0;
@@ -382,6 +388,11 @@ void appkey_load(void)
         sc_endpt[n - 1] = 0;
 }
 
+#ifdef __APPLE2__
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+#endif
+
 #ifdef PLAT_NO_KEYBOARD
 /* The name typed at boot, kept for next time (the lobby's key: a platform
  * with no lobby to type it in). */
@@ -391,6 +402,12 @@ void appkey_save_name(void)
     fuji_set_appkey_details(1, 1, DEFAULT);
     fuji_write_appkey(AK_NAME, strlen(sc_name), (uint8_t *)sc_name);
 }
+#endif
+
+#ifdef __APPLE2__
+/* Only boot.c calls these: they live in its overlay (main RAM is full). */
+#pragma code-name (push, "OVERLAY1")
+#pragma rodata-name (push, "OVERLAY1")
 #endif
 
 /* The buffer is zeroed first: some buses (the CoCo's) send all 64 bytes of
@@ -422,3 +439,8 @@ void appkey_clear_room(void)
     ns_resume();
     sc_table[0] = 0;
 }
+
+#ifdef __APPLE2__
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+#endif

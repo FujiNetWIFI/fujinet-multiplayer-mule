@@ -1,7 +1,7 @@
 # M.U.L.E. for FujiNet 8-bit computers (MekkoGX)
 
 A C client for the M.U.L.E. Tournament server in this repository, built with the [MekkoGX](https://github.com/fozzTexx/MekkoGX) template and [fujinet-lib](https://github.com/FujiNetWIFI/fujinet-lib). It is a port of the Intellivision client (`../intv`), and plays the same way:
-- it polls `/state?bin=1` (the Atari: holds a stream-mode connection) and draws what comes back the way the Atari 800 original does;
+- it holds a stream-mode connection to the server (`docs/PROTOCOL.md`; the MSX polls `/state?bin=1` instead) and draws what comes back the way the Atari 800 original does;
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
@@ -89,13 +89,14 @@ A joystick works too if one is centred when the game starts.
 - **Main RAM** holds the core. HGR page 1 sits at $2000-$3FFF. The language card holds a little more code.
 - **Overlays.** Each phase's code is an overlay (boot, lobby and summary, grant and production, auctions, development).
 - **Aux RAM** holds all five overlays, plus the sprites, the town and the strings.
-- **Loading.** Everything is read from `MULE.1`…`MULE.7` at start-up. At each phase change the phase's overlay is copied into an 8K window with AUXMOVE.
+- **Loading.** Everything is read from `MULE.1`…`MULE.7` at start-up. At each phase change the phase's overlay is copied into a 7.5K window ($9D00-$BAFF) with AUXMOVE.
+- **The network's state being built** (550 bytes) lives in aux RAM at $8900 (`AUXSTAGE`), and the code only the boot screens use (the table list, the appkeys) is in the boot overlay: main RAM is full.
 - **Memory map.** See `src/apple2/mule-hgr.cfg`.
 
 **Timing.**
 - **Counting frames.** The clock is the vertical blank ($C019, or the //c's VBL flag). The drawing routines check it every few milliseconds, so a busy frame still counts every blank.
 - **Catching up.** The game logic (walking, the grant cursor, auction lines, the scripts) runs once for every frame that passed. The game keeps the Atari's speeds even when drawing can't keep up.
-- **Network calls block** while they run. The server clock (`elapsed`) resynchronises the phase timers on every reply.
+- **The network: stream mode over N:TCP** (`src/nsnet.c`, `src/nstrans_fn.c`), as on the Adam. An HTTP poll held the machine for the whole request (FujiNet makes the GET inside the first status call). A status call a frame is quick; the socket is read only when bytes wait. The server clock resynchronises the phase timers on every state.
 
 ## Testing
 
@@ -158,7 +159,7 @@ How it gets there:
 
 **Timing.**
 - **The clock:** the VDG's field-sync interrupt counts the frames and scans the keyboard, so a quick key press isn't lost while the game is busy.
-- **Network calls:** the DriveWire ROM masks interrupts while it talks to the FujiNet. The server's clock (`elapsed`) resynchronises the game after each call.
+- **Network calls:** stream mode over N:TCP (`src/nsnet.c`, `src/nstrans_fn.c`, in the high core), with a status call every other frame (`NT_POLL_EVERY=2`): the DriveWire ROM masks interrupts while it talks to the FujiNet, and the frames lost are put back from the server's clock. The HELLO asks for big-endian states.
 
 **Testing.**
 - **Offline:** `tools/cocosim/cocosim.py` is `a2sim.py` for MAME's CoCo 2 (`coco2b`, Disk BASIC), with the same scenario language and test hooks:
@@ -208,13 +209,13 @@ How it gets there:
 - **Drawing:** sprites are software sprites with save-under (`src/msdos/gfx.c`, the CoCo's slot logic). Plots and sprite rows are drawn a word at a time through nibble-to-mask tables. The 8088's shifts by a count are too slow for anything else.
 
 **Memory.** Open Watcom's medium model: far code, near data. Each phase is an overlay (the Apple's groups), loaded from `MULE.EXE` by Watcom's dynamic overlay manager when it's first called (`tools/dos/wlink-mule.py`). The game is about 54K resident, with a 1K stack (about 300 bytes are used).
-- **The tight case is a 128K PCjr in 16 colours.** Its screen is the last 32K of the 128K (from 18000h). The BIOS keeps only the top 16K from DOS, so the game claims the rest itself, and everything must end below 18000h. With PC-DOS 2.1 and FUJINET.SYS that leaves about 5K, which goes to the overlay manager. If there isn't room (a bigger DOS, another resident program), the PCjr uses the 4-colour mode instead.
+- **The tight case is a 128K PCjr in 16 colours.** Its screen is the last 32K of the 128K (from 18000h). The BIOS keeps only the top 16K from DOS, so the game claims the rest itself, and everything must end below 18000h. With PC-DOS 2.1 and FUJINET.SYS that leaves about 3.5K (the stream code took 1.3K of it), which goes to the overlay manager on top of its own area. If there isn't room (a bigger DOS, another resident program), the PCjr uses the 4-colour mode instead.
 - **Elsewhere** the overlay manager gets 16K more, so every overlay stays loaded after its first use.
 
 **Timing.**
 - **The clock:** the PIT runs at 60 Hz, and the timer interrupt counts the frames. Every 3.3rd tick goes on to the BIOS, so the time of day and the floppy motor still work.
 - **The keyboard:** INT 9 is hooked to know which keys are held. On a PC the scan code comes from port 60h; on a PCjr the BIOS passes it in AL. The BIOS still queues typed characters.
-- **Network calls** go through FUJINET.SYS (INT F5h) and block. The server's clock resynchronises the game after each one.
+- **Network calls** go through FUJINET.SYS (INT F5h) and block: stream mode over N:TCP (`src/nsnet.c`, `src/nstrans_fn.c`) keeps each one to a short status call, and the socket is read only when bytes wait. The server's clock resynchronises the game.
 - **Without FUJINET.SYS**, INT F5h may point anywhere (on the PCjr it's left over from BASIC). FUJINET.SYS is recognised by its device header (attributes 6002h) in the vector's segment. If it isn't there, the game answers INT F5h itself and says NO FUJINET FOUND.
 
 **Testing.** `tools/dossim/dossim.py` is `cocosim.py` for MAME's `ibmpcjr` (128K) or `ibm5150` (CGA). It boots a copy of a DOS disk (`DOSSIM_BOOT`, by default PC-DOS 2.1 with FUJINET.SYS) with `MULE.EXE` on it, and uses the same scenario language and test hooks:
@@ -275,7 +276,7 @@ How it gets there:
   z88dk's bootstrap loads the program a 1K block at a time. Each phase is an overlay that `bank.c` reads from the boot medium, in whole blocks, at a phase change. `tools/adam/mkimage.py` puts the overlays after the program, fills in the program's table of where they are, and checks the map.
 - **The clock** is the VDP's frame interrupt, which is the Z80's NMI (`nmi.asm`). The NMI can't be masked, so while the game is at the VDP it only notes that the interrupt came (`vdp_busy`), and `VDP_UNLOCK` reads the status then. The clock keeps counting while AdamNet calls wait.
 - **Sound** (`sound.c`) is timed by the NMI too (`snd_frame`), so an effect ends on time however long the game is held up (an overlay loading, an AdamNet call).
-- **The network: stream mode over N:TCP** (`src/nsnet.c`, `src/adam/nstrans.c`; `docs/PROTOCOL.md`). An HTTP poll held the Z80 for the whole request, because FujiNet makes the GET inside its AdamNet handler, and the game froze with the clock running. The Adam instead keeps one socket open to `N:TCP://<endpoint host>:9902/`.
+- **The network: stream mode over N:TCP** (`src/nsnet.c`, `src/nstrans_fn.c`, shared with the CoCo, the Apple II and MS-DOS; `docs/PROTOCOL.md`). An HTTP poll held the Z80 for the whole request, because FujiNet makes the GET inside its AdamNet handler, and the game froze with the clock running. The Adam instead keeps one socket open to `N:TCP://<endpoint host>:9902/`.
   - The socket's status is asked at most once a frame, and it is read only when bytes wait. A read with nothing waiting gets no answer, which costs fujinet-lib 20 timeouts.
   - A read brings everything waiting. The server's 192-byte window keeps that under the 256-byte buffer.
   - EOS puts the length received back in the DCB, but ADAMEm doesn't. A read that seems to fill the buffer takes the status's count instead.
@@ -333,7 +334,8 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 - **Plain SIO** (the overlays, the appkeys) drops the motor line. FujiNet then answers SIO normally and holds the socket's data until the motor comes back.
 - **The immediate VBI starts with `CLI`**, so the serial IRQ is not held off while the VBI and the sound run.
 - **Quitting** sends a goodbye, then turns FujiNet's netstream off (`$F0` with host `STOP`).
-- **The other `net.c` platforms are unchanged.** `PLAT_NETSTREAM` compiles out `net.c`'s HTTP half and keeps its appkeys.
+- **Only the latest state is drawn.** Of the states waiting in the ring, the last is kept (the one answering an action goes at once): drawing each in turn put the game ever further behind.
+- **Only the MSX still polls.** `PLAT_NETSTREAM` compiles out `net.c`'s HTTP half and keeps its appkeys.
 
 **Memory** (a 48K 400/800; `src/atari/mule-atari.cfg`, `src/atari/atari.h`):
 
@@ -489,7 +491,7 @@ The name is picked a letter at a time (`PLAT_NO_KEYBOARD` in `boot.c`): up and d
 - **Lynx: the screen is 102 lines.** Text rows on the map and town screens share lines, as described above. A long message's two rows (22 and 23) are tight.
 - **Lynx: sprites flicker a little** as they move: they are redrawn on the screen being shown (there's no room for a second one).
 - **Lynx: untested on hardware** as written: MAME has no ComLynx to the outside, so the network half has only been run on paper and the offline test mode.
-- **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS at 9600 bps that is a few seconds, and every server poll stalls the animations (about 13 frames a second get drawn): use 115200.
+- **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS at 9600 bps that is a few seconds, and every network call stalls the animations: use 115200.
 - **MS-DOS, CGA:** the fourth player is striped, and the fence around the town's corral is white.
 - **Adam: phase changes** read the phase's overlay (up to 6 blocks). That is quick from a FujiNet, and slow from a real tape.
 - **Adam: arrow keys** repeat rather than hold (the keyboard sends characters): walking is smoother with a controller.
