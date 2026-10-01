@@ -34,4 +34,13 @@ uint8_t plat_rand(void);
 uint8_t plat_net_probe(void);
 #endif
 
+#ifdef PLAT_NET_GUARD
+/* Around each network call (1 before, 0 after): a platform whose FujiNet
+ * driver can hang in a call for long caps it (msdos/plat.c). */
+void plat_net_guard(uint8_t on);
+#define NET_GUARD(on) plat_net_guard(on)
+#else
+#define NET_GUARD(on)
+#endif
+
 #endif

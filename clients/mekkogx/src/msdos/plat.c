@@ -14,6 +14,15 @@
  * game shrinks itself to what it needs and claims the rest up to the top.
  * If DOS or a resident program is in the way, it uses the 4-colour mode.
  *
+ * FUJINET.SYS used to wait 15 s for each byte of a reply, with no retry:
+ * a reply cut short (a byte lost on the line) held the game that long,
+ * pushing all the while in an auction. The driver now gives a reply up
+ * 110 ms after its last byte and asks the FujiNet for it again (RESEND),
+ * so plat_net_guard only times the calls (nt_worst). It can still run the
+ * BIOS tick NET_TICK_SPEED faster during a call, which shortens the 15 s
+ * a FujiNet that never answers costs, but that shortens the driver's
+ * 110 ms the same way, and gaps that long occur (MAME's socket); 0 now.
+ *
  * LEAVE goes back to the lobby the way the FujiNet's other DOS games do:
  * mount it and run its AUTOEXEC.BAT (src/msdos/lobby.c).
  */
@@ -39,12 +48,31 @@ static uint8_t old_mode;
 static void (__interrupt __far *old_int8)(void);
 static void (__interrupt __far *old_int1b)(void);
 static void (__interrupt __far *old_int23)(void);
+static void (__interrupt __far *old_int24)(void);
 static uint16_t bios_acc;
+
+#define NET_TICK_SPEED 0        /* extra BIOS ticks a jiffy in a network
+                                 * call (4: 272 ticks, 15 s, take about
+                                 * 1 s; and the driver's 110 ms, 8 ms) */
+#define BIOS_TICK (*(volatile uint32_t __far *)MK_FP(0x40, 0x6C))
+static volatile uint8_t net_guard;
+static volatile uint16_t net_extra;     /* ticks added in this call */
+static uint16_t net_t0;
+uint16_t nt_worst;              /* the longest call, jiffies (tools/dossim) */
 
 static void __interrupt __far timer_isr(void)
 {
     uint16_t a = bios_acc;
     ++frame_count;
+    /* Not just below midnight: the BIOS starts a new day only when the
+     * count is exactly 1800B0h, and a jump over it would miss that. (One
+     * already past it, as seen after boot on MAME, never rolls over.) */
+#if NET_TICK_SPEED
+    if (net_guard && (uint16_t)(BIOS_TICK >> 16) != 0x18) {
+        BIOS_TICK += NET_TICK_SPEED;
+        net_extra += NET_TICK_SPEED;
+    }
+#endif
     bios_acc += PIT_60HZ;
     if (bios_acc < a)           /* 65536 counts: the BIOS's tick */
         _chain_intr(old_int8);
@@ -53,6 +81,14 @@ static void __interrupt __far timer_isr(void)
 
 static void __interrupt __far no_break(void)
 {
+}
+
+/* DOS's critical error (INT 24h): a read of MULE.EXE (an overlay) that
+ * FUJINET.SYS gave up on, after its own retries. Retry it, rather than
+ * DOS's "Abort, Retry, Ignore?" over the game. */
+static void __interrupt __far crit_err(union INTPACK r)
+{
+    r.h.al = 1;                 /* retry */
 }
 
 /* Without FUJINET.SYS nothing answers INT F5h, and its vector may point
@@ -220,6 +256,7 @@ const char *plat_init(void)
     old_int8 = _dos_getvect(0x08);
     old_int1b = _dos_getvect(0x1B);
     old_int23 = _dos_getvect(0x23);
+    old_int24 = _dos_getvect(0x24);
     if (!have_fujinet()) {
         no_fn = 1;
         old_intf5 = _dos_getvect(0xF5);
@@ -227,6 +264,7 @@ const char *plat_init(void)
     }
     _dos_setvect(0x1B, no_break);
     _dos_setvect(0x23, no_break);
+    _dos_setvect(0x24, crit_err);
     _disable();
     _dos_setvect(0x08, timer_isr);
     pit(PIT_60HZ);
@@ -246,6 +284,7 @@ void plat_restore(void)
     _dos_setvect(0x08, old_int8);
     _dos_setvect(0x1B, old_int1b);
     _dos_setvect(0x23, old_int23);
+    _dos_setvect(0x24, old_int24);
     if (no_fn)
         _dos_setvect(0xF5, old_intf5);
     r.h.ah = 0;
@@ -277,6 +316,29 @@ void frame_wait(void)
 
 void frame_tick(void)
 {
+}
+
+void plat_net_guard(uint8_t on)
+{
+    uint16_t d;
+    if (on) {
+        net_extra = 0;
+        net_t0 = frame_count;
+        net_guard = 1;
+        return;
+    }
+#if NET_TICK_SPEED
+    _disable();
+    net_guard = 0;
+    if (BIOS_TICK >= net_extra) /* (else midnight came in the call) */
+        BIOS_TICK -= net_extra;
+    _enable();
+#else
+    net_guard = 0;
+#endif
+    d = frame_count - net_t0;
+    if (d > nt_worst)
+        nt_worst = d;
 }
 
 void frame_lost(uint8_t jiffies)

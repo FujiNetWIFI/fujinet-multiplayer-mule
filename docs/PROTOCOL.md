@@ -165,8 +165,8 @@ over the type and the payload. A decoded frame is at most 128 bytes.
 
 | Type | Payload | |
 |------|---------|--|
-| `H` | ver (1), flags (bit 0: big-endian), table[8], player[8] (NUL padded) | join: from now on the connection is a `/state` poll for this player at this table |
-| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH` and `ACT_HOLD`. `ACT_HOLD` (21) is `/auction/push/hold/:seen/:at`, with `at` in arg. `ACT_LEAVE` leaves the table (as `/leave`) and the connection then watches as a spectator until the next `H`, which rejoins |
+| `H` | ver (1), flags (bit 0: big-endian; bit 1: a slow link, see Pushes), table[8], player[8] (NUL padded) | join: from now on the connection is a `/state` poll for this player at this table |
+| `A` | seq (1–255), act, arg lo, arg hi, seen | an action. `act` is the clients' `ACT_*` (the HTTP route it stands for); `seen` is the units-traded count for `ACT_PUSH` and `ACT_HOLD`. `ACT_HOLD` (21) is `/auction/push/hold/:seen/:at`, with `at` in arg. `ACT_LEAVE` leaves the table (as `/leave`) and the connection then watches as a spectator until the next `H`, which rejoins. The seq last applied, sent again (a client whose write failed, not knowing whether it went), is answered again and not applied again |
 | `T` | (1: the hidden dev tables) | list the tables |
 | `R` | | send the whole state again (the client lost a frame) |
 | `C` | n | credit: bytes taken out of the receive ring since connecting, mod 256 |
@@ -200,16 +200,33 @@ the last state:
 A line held back (a buyer's ceiling, a seller's floor) or a bar stopped by
 a trade goes out at once. A client still holding more than half a window
 unread gets no new state until it has caught up, so what it reads next is
-current, not queued. An action's answer is never held back. A connection
-keeps its seat online just as polling does. A connection that has sent
-nothing for 35 s is dropped.
+current, not queued. An action's answer is never held back. A client that
+said its link is slow (HELLO flag bit 1: MS-DOS over FUJINET.SYS, 9600 bps
+on a PCjr, where every read blocks it for a good part of a second) gets a
+push at most every 300 ms, and the clocks alone every second; it animates
+the lines and the bar between pushes as above. A connection
+keeps its seat online just as polling does, but only while the client is
+reading: one that owes a credit (48 bytes or more unacknowledged) and has
+sent nothing for 500 ms isn't counted as heard from. A connection that has
+sent nothing for 35 s is dropped.
+
+**A quiet player's line stops.** In an auction, a human pushing the stick who
+hasn't been heard from for 1 s (no poll, or a stream client that stopped
+reading) has their line stopped where it is, and it trades nothing, until
+they are heard from again. Then a stick still pushed carries on. A client
+frozen in a network call can't let go of the stick, and without this the
+catch-up when it came back went on buying (or selling) for it the whole time.
 
 **Flow control.** A small machine's receive ring is small (the Atari's is 256
 bytes), and it may go a while without draining it, for example while it
 loads an overlay or draws a screen. So the server keeps no more than
 `STREAM_WINDOW` (192) encoded bytes unacknowledged. The client reports what
 it has taken with `C` frames. The count is cumulative mod 256, so a lost
-credit frame is made good by the next one. Set `MULE_STREAM_DEBUG=1` to log
+credit frame is made good by the next one. A client whose read failed after
+its FujiNet had taken the bytes counts them as taken all the same; a credit
+for more than was sent is taken as everything sent. (On MS-DOS a reply the PCjr's keyboard NMI cut short is fetched again
+below this protocol: FUJINET.SYS asks the FujiNet for its last reply,
+FUJICOM command 05h, see fujinet-msdos.) Set `MULE_STREAM_DEBUG=1` to log
 every frame.
 
 **On the Atari** (`clients/mekkogx/src/atari/nstream.s`, `nsnet.c`):

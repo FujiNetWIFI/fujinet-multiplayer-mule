@@ -86,6 +86,10 @@ type Line struct {
 	Floor  int  // seller keeps at least this many units
 	Want   int  // buyer stops after this many units (0 = unlimited)
 	Dir    int  // last stick push, +1 up or -1 down (0 none yet)
+	// Stalled: the player's client has gone quiet (the server's PushStale).
+	// The line stays where it is and trades nothing until they are back;
+	// Push is kept, so a stick still held carries on. [IMPL]
+	Stalled bool
 }
 
 const (

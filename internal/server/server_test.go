@@ -274,3 +274,69 @@ func TestHoldRouteInTrading(t *testing.T) {
 		t.Fatalf("line at %d, want %d", v.Auction.Lines[0].Pos, at)
 	}
 }
+
+// A pushing buyer whose client goes quiet (frozen in a network call) buys
+// only until PushStale, not for the whole silence when it comes back, and
+// goes on buying once it is heard from again.
+func TestQuietPusherStalls(t *testing.T) {
+	for _, ticked := range []bool{false, true} {
+		h := newHarness(t)
+		q := "?table=dev3&player=solo"
+		v := startSolo(h, "dev3")
+		for i := 0; i < 20000 && !(v.Phase == "trading" && v.Auction != nil && v.Auction.Stage == rules.StageActive); i++ {
+			h.advance(100 * time.Millisecond)
+			if v.Phase == "develop" {
+				h.view("/turn/begin" + q)
+				h.view("/turn/end" + q)
+			}
+			v = h.view("/ready/1" + q)
+		}
+		if v.Phase != "trading" {
+			t.Fatalf("no trading: phase %s", v.Phase)
+		}
+		tb := h.s.Table("dev3")
+		tb.mu.Lock()
+		g := tb.game
+		a := g.Auction
+		a.Ticks = 1000
+		g.Store.Stock[a.Good] = 40
+		g.Players[0].Money = 20000
+		g.Players[0].Goods[a.Good] = 0
+		a.Lines[0].Role, a.Lines[0].Home, a.Lines[0].Pos, a.Lines[0].Target = rules.RoleBuyer, a.Lo, a.Lo, a.Lo
+		for s := 1; s < rules.NumSeats; s++ {
+			a.Lines[s].Role = rules.RoleNone
+		}
+		good := a.Good
+		tb.mu.Unlock()
+
+		h.view("/auction/push/up" + q)
+		// silence: the line reaches the store and buys for PushStale at most
+		if ticked {
+			h.advance(15 * time.Second)
+		} else {
+			h.now = h.now.Add(15 * time.Second)
+		}
+		v = h.view("/state" + q) // back
+		tb.mu.Lock()
+		got := g.Players[0].Goods[good]
+		tb.mu.Unlock()
+		tb.mu.Lock()
+		pos, lo, top := a.Lines[0].Pos, a.Lo, a.StoreSell
+		tb.mu.Unlock()
+		// what the line can walk in PushStale (and a tick's slack)
+		walk := (int(PushStale/time.Millisecond)+200)*rules.JiffiesPerSecond/1000/rules.LineStep*a.Step + a.Step
+		if got > 3 || pos-lo > walk {
+			t.Fatalf("ticked=%v: bought %d units, line %d..%d of %d while quiet", ticked, got, lo, pos, top)
+		}
+		for i := 0; i < 400; i++ {
+			h.now = h.now.Add(100 * time.Millisecond)
+			h.view("/state" + q)
+		}
+		tb.mu.Lock()
+		after := g.Players[0].Goods[good]
+		tb.mu.Unlock()
+		if after <= got {
+			t.Fatalf("ticked=%v: no units once back (%d)", ticked, after)
+		}
+	}
+}

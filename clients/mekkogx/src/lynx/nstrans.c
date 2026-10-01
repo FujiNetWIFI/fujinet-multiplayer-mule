@@ -50,8 +50,9 @@ uint8_t nt_put(uint8_t c)
     return 1;
 }
 
-void nt_flush(void)
+uint8_t nt_flush(void)
 {
+    return 1;
 }
 
 #endif

@@ -947,10 +947,27 @@ func (g *Game) HoldAt(seat, price, seen int) error {
 	return g.SetTarget(seat, price)
 }
 
+// Stall stops (on) or restarts a seat's line while its player can't be
+// heard: a frozen client can't let go of the stick, and the server must not
+// go on trading for it. [IMPL]
+func (g *Game) Stall(seat int, on bool) {
+	a := g.Auction
+	if a == nil || seat < 0 || seat >= len(a.Lines) || a.Lines[seat].Stalled == on {
+		return
+	}
+	a.Lines[seat].Stalled = on
+	if a.Stage == StageActive {
+		g.applyPush(seat)
+	}
+}
+
 // applyPush sets a line's target from its stick.
 func (g *Game) applyPush(seat int) error {
 	a := g.Auction
 	l := &a.Lines[seat]
+	if l.Stalled {
+		return g.SetTarget(seat, l.Pos)
+	}
 	// A seller stopped at the critical level, or sent back after running
 	// dry, stays at the edge. One at the critical level from the start may
 	// step in once, to be told.
@@ -1123,6 +1140,9 @@ func (g *Game) bestLine(role int, land bool) int {
 	best := -1
 	for s := range a.Lines {
 		l := &a.Lines[s]
+		if l.Stalled {
+			continue // (Stall)
+		}
 		ok := false
 		if role == RoleBuyer {
 			ok = g.canBuy(s, l.Pos)

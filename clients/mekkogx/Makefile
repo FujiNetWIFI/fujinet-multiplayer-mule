@@ -121,6 +121,9 @@ coco/disk-post::
 # (tools/dos/wlink-mule.py) so the game fits a 128K PCjr in its 16-colour
 # mode. Watcom runs from defoogi unless installed (tools/dos/ow). fujinet-lib
 # is fujinet-lib-experimental, rebuilt medium model (tools/dos/mkfnlib.sh).
+# FUJINET.SYS may run at 9600 bps (a PCjr): a status call is 25 ms there, so
+# the socket is asked every 6th frame, and the server is told the link is
+# slow (PLAT_NS_SLOW: a push at most every 300 ms).
 FNLIB_EXP ?= $(HOME)/Workspace/fujinet-lib-experimental
 DOS_TOOLS = $(CURDIR)/tools/dos
 ifeq ($(PLATFORM),msdos)
@@ -131,7 +134,7 @@ ifeq ($(PLATFORM),msdos)
   LD_OW2 = $(DOS_TOOLS)/wlink-mule.py OPTION quiet
 endif
 CFLAGS_EXTRA_MSDOS += -zq -mm -os -s -of -zp1 -DKEY_END_NAME='"ENTER"' -DPLAT_NET_PROBE -DPLAT_NETSTREAM \
-                      -DQUIT_HINT='"ESC: LOBBY"'
+                      -DPLAT_NET_GUARD -DQUIT_HINT='"ESC: LOBBY"' -DNT_POLL_EVERY=6 -DPLAT_NS_SLOW -DNT_BUS_READ
 EXTRA_INCLUDE_MSDOS += build/fnlib-msdos/include
 # (-ad names the object in the .d without its directory: -adt names it)
 CFLAGS_EXTRA_MSDOS += -adt=$@
@@ -140,6 +143,18 @@ EXECUTABLE_EXTRA_DEPS_MSDOS += $(DOS_TOOLS)/wlink-mule.py
 msdos/disk-post::
 	printf '@ECHO OFF\r\nMULE.EXE\r\n' > build/autoexec.bat
 	mcopy -o -i $(DISK) build/autoexec.bat "::AUTOEXEC.BAT"
+
+# A boot floppy with the game on it, for a PCjr whose MULE.EXE would
+# otherwise come over FUJINET.SYS (an overlay, 4.6K, is 5 s at 9600 bps,
+# and the 128K PCjr reloads one at every phase change). PCJR_BOOT is a DOS
+# disk with FUJINET.SYS and a CONFIG.SYS for the PCjr: the 86Box rig's.
+PCJR_BOOT ?= $(HOME)/Vintage/IBM 5160 PCXT/fn-dos21.img
+.PHONY: pcjr-floppy
+pcjr-floppy: r2r/msdos/$(PRODUCT)
+	cp "$(PCJR_BOOT)" r2r/msdos/pcjr-boot.img
+	mcopy -o -i r2r/msdos/pcjr-boot.img r2r/msdos/mule.exe ::MULE.EXE
+	mcopy -o -i r2r/msdos/pcjr-boot.img build/autoexec.bat ::AUTOEXEC.BAT
+	@echo "r2r/msdos/pcjr-boot.img: boot it (fdd_01_fn in 86box.cfg) and MULE runs from A:"
 
 # ---- Coleco Adam (and the MSX): z88dk --------------------------------------
 # zcc with zsdcc, from defoogi unless installed (tools/z80/z88dk). The

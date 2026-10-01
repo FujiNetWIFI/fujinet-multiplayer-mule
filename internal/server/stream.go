@@ -23,6 +23,8 @@ import (
 var (
 	StreamPush      = 50 * time.Millisecond  // how often to look for changes
 	StreamClockOnly = 500 * time.Millisecond // a change of the clocks alone waits this long
+	StreamSlowHold  = 300 * time.Millisecond // a slow link (HELLO): any push but an answer waits this long
+	StreamSlowClock = time.Second            // ... and the clocks alone this long
 	StreamIdle      = 35 * time.Second       // no frame from the client: drop it
 )
 
@@ -49,6 +51,9 @@ type streamConn struct {
 	table    *Table
 	player   string
 	be       bool
+	slow     bool        // HELLO flags bit 1: a slow link (MS-DOS at 9600 bps)
+	lastSeq  byte        // the action last applied, and its answer: a repeat
+	lastAck  *proto.View // (a client whose write failed) is answered, not applied
 	last     []byte      // the state the client has once q is out
 	steady   []byte      // last without the clocks
 	lastV    *proto.View // the view last sent (what the client predicts from)
@@ -56,6 +61,7 @@ type streamConn struct {
 	q        [][]byte    // frames waiting for credit
 	sent     uint8       // encoded bytes sent, mod 256
 	taken    uint8       // bytes the client took from its ring, mod 256 (SC_CREDIT)
+	lastIn   time.Time   // a frame from the client (s.Now())
 	ack      *proto.View // an action's answer, to go out next
 	ackSeq   byte
 	kick     chan struct{}
@@ -124,6 +130,9 @@ func cstr(b []byte) string {
 // handle one frame; false ends the connection.
 func (sc *streamConn) handle(typ byte, p []byte) bool {
 	s := sc.s
+	sc.mu.Lock()
+	sc.lastIn = s.Now()
+	sc.mu.Unlock()
 	switch typ {
 	case proto.SCHello:
 		if len(p) < 18 {
@@ -135,8 +144,9 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		}
 		t := s.Table(id)
 		sc.mu.Lock()
-		sc.table, sc.player, sc.be = t, cstr(p[10:18]), p[1]&1 != 0
+		sc.table, sc.player, sc.be, sc.slow = t, cstr(p[10:18]), p[1]&1 != 0, p[1]&2 != 0
 		sc.last, sc.steady, sc.lastV, sc.q = nil, nil, nil, nil
+		sc.lastSeq, sc.lastAck = 0, nil
 		if t == nil {
 			sc.q = append(sc.q, proto.Frame(proto.CSError, []byte{byte(proto.ErrBadRequest)}))
 		}
@@ -161,6 +171,15 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		if t == nil {
 			return true
 		}
+		sc.mu.Lock()
+		again := p[0] == sc.lastSeq && sc.lastAck != nil
+		if again {
+			sc.ack, sc.ackSeq = sc.lastAck, p[0]
+		}
+		sc.mu.Unlock()
+		if again {
+			break // sent again because its FujiNet's answer was lost: not twice
+		}
 		var v *proto.View
 		if p[1] == proto.ActLeave {
 			sc.pollMu.Lock()
@@ -184,6 +203,7 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		}
 		sc.mu.Lock()
 		sc.ack, sc.ackSeq = v, p[0]
+		sc.lastSeq, sc.lastAck = p[0], v
 		sc.mu.Unlock()
 	case proto.SCResync:
 		sc.mu.Lock()
@@ -204,6 +224,10 @@ func (sc *streamConn) handle(typ byte, p []byte) bool {
 		if len(p) > 0 {
 			sc.mu.Lock()
 			sc.taken = p[0]
+			if int(sc.sent-sc.taken) > proto.StreamWindow {
+				sc.taken = sc.sent // credit for more than was sent: a client
+				// that counted bytes it lost; don't wedge the window
+			}
 			sc.mu.Unlock()
 		}
 	case proto.SCPing:
@@ -293,11 +317,15 @@ func (sc *streamConn) push() error {
 	// slow line): a state built now would be stale when it got there, so
 	// the next one is built once it has caught up. An answer goes at once.
 	behind := int(sc.sent-sc.taken) > proto.StreamWindow/2
+	// Reading: a client owing credit (it sends it every 48 bytes taken) and
+	// silent a while has stopped taking bytes, and isn't heard from, so a
+	// held auction push stops (Table.stallQuiet).
+	reading := int(sc.sent-sc.taken) < 48 || sc.s.Now().Sub(sc.lastIn) < PushStale/2
 	sc.mu.Unlock()
 	if idle && t != nil && (ack != nil || !behind) {
 		v := ack
 		if v == nil {
-			v = sc.s.apply(t, player, nil, nil) // what /state would say
+			v = sc.s.applyAs(t, player, nil, nil, reading) // what /state would say
 		}
 		sc.mu.Lock()
 		if ack != nil && sc.ack == ack {
@@ -332,7 +360,9 @@ func (sc *streamConn) push() error {
 // always for an action's answer, else when something besides the clocks
 // changed, or the clocks did a while ago. Auction lines and the auction
 // time bar count as clocks while they go the way the client works out on
-// its own from the last state (predicted). sc.mu held.
+// its own from the last state (predicted). A slow link (HELLO) gets any
+// push but an answer at most every StreamSlowHold: each one costs it a
+// blocking read, and it animates between them from what it has. sc.mu held.
 func (sc *streamConn) queueState(v *proto.View, isAck bool, ackSeq byte) {
 	cur := proto.Encode(proto.ToBin(v), sc.be)
 	std := proto.Encode(proto.ToBin(streamSteady(v)), sc.be)
@@ -341,7 +371,15 @@ func (sc *streamConn) queueState(v *proto.View, isAck bool, ackSeq byte) {
 		if bytes.Equal(cur, sc.last) {
 			return
 		}
-		if bytes.Equal(std, sc.steady) && predicted(sc.lastV, v) && now.Sub(sc.lastSend) < StreamClockOnly {
+		var hold time.Duration // a change goes at once
+		clocks := StreamClockOnly
+		if sc.slow {
+			hold, clocks = StreamSlowHold, StreamSlowClock
+		}
+		if bytes.Equal(std, sc.steady) && predicted(sc.lastV, v) {
+			hold = clocks
+		}
+		if hold > 0 && now.Sub(sc.lastSend) < hold {
 			return
 		}
 	}

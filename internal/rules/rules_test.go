@@ -423,3 +423,34 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// A stalled buyer's line stays put and buys nothing; back, it goes on.
+func TestStallStopsTrading(t *testing.T) {
+	g := humanGame(3, Humanoid)
+	toGrant(t, g)
+	runTo(t, g, 60000, func() bool {
+		return g.Phase == PhaseTrading && g.Auction.Good == Food && g.Auction.Stage == StageActive
+	})
+	a := g.Auction
+	a.Ticks = 1000 // time enough
+	g.Store.Stock[Food] = 30
+	g.Players[0].Money = 10000
+	g.Players[0].Goods[Food] = 0
+	a.Lines[0].Role, a.Lines[0].Home, a.Lines[0].Pos, a.Lines[0].Target = RoleBuyer, a.Lo, a.Lo, a.Lo
+	for s := 1; s < NumSeats; s++ {
+		a.Lines[s].Role = RoleNone
+	}
+	must(t, g.Push(0, 1))
+	runTo(t, g, 3000, func() bool { return g.Players[0].Goods[Food] >= 1 })
+	g.Stall(0, true)
+	units, pos := g.Players[0].Goods[Food], a.Lines[0].Pos
+	g.Advance(g.T + 900)
+	if g.Players[0].Goods[Food] != units || a.Lines[0].Pos != pos {
+		t.Fatalf("stalled: units %d -> %d, pos %d -> %d", units, g.Players[0].Goods[Food], pos, a.Lines[0].Pos)
+	}
+	g.Stall(0, false)
+	g.Advance(g.T + 900)
+	if g.Players[0].Goods[Food] <= units {
+		t.Fatalf("no units bought after the stall: %d", g.Players[0].Goods[Food])
+	}
+}

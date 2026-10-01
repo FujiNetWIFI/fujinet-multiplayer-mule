@@ -312,12 +312,21 @@ func (s *Server) act(f action) gin.HandlerFunc {
 // apply runs f (nil: none, a poll) for player at t and returns the view the
 // player gets back, with the action's result and error in it.
 func (s *Server) apply(t *Table, player string, f action, p params) *proto.View {
+	return s.applyAs(t, player, f, p, true)
+}
+
+// applyAs is apply; heard false is a poll made for the player (a stream
+// push) while they aren't reading: it doesn't count as hearing from them.
+func (s *Server) applyAs(t *Table, player string, f action, p params, heard bool) *proto.View {
 	now := s.Now()
 	t.mu.Lock()
 	before := t.humans()
 	wasGame := t.game != nil
 	changed := t.update(now)
-	seat := t.seatOf(player, now, true)
+	seat := t.seatNamed(player)
+	if heard {
+		seat = t.seatOf(player, now, true)
+	}
 	var res int
 	var err error
 	if f != nil {

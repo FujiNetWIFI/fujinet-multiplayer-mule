@@ -36,6 +36,7 @@
                                  * mustn't start a storm of them */
 
 uint8_t ns_on;                  /* the link is up */
+uint16_t nt_dropped;            /* (nstrans.h) */
 static uint8_t ns_taken;        /* bytes taken, mod 256 (SC_CREDIT) */
 static uint8_t fbuf[FMAX];
 static uint8_t flen, fover;
@@ -61,6 +62,7 @@ static uint8_t stage[sizeof(MuleState)];
 #endif
 static uint8_t joined, heard;
 static uint8_t seq, wait_seq, wait_act, credited, hello_n, hello_t, resync_hold;
+static uint8_t pending;         /* an action whose write failed: again, as it was */
 static uint16_t quiet;
 
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
@@ -94,6 +96,11 @@ static uint8_t take_frame(void)
     uint8_t i, o, k, code, n, s1, s2;
     for (;;) {
         k = nt_get(&c);
+        if (k == NT_DROP) {
+            ns_taken += (uint8_t)nt_dropped;    /* credit them all the same */
+            fover = 1;              /* the frame they were in is bad */
+            continue;
+        }
         if (k != 1) {
             if (k == NT_LOST)
                 lost = 1;
@@ -145,8 +152,9 @@ static uint8_t take_frame(void)
 /* ---- sending ------------------------------------------------------------ */
 
 /* A frame: COBS of type, payload, Fletcher-16; then 0. A frame given up
- * half way is ended with its 0 all the same (the server drops it). */
-static void send(uint8_t type, const uint8_t *p, uint8_t n)
+ * half way is ended with its 0 all the same (the server drops it). 0: the
+ * write failed (it may have gone all the same: the FujiNet's answer lost). */
+static uint8_t send(uint8_t type, const uint8_t *p, uint8_t n)
 {
     static uint8_t raw[24];
     uint8_t s1, s2, i, code, from;
@@ -173,7 +181,7 @@ static void send(uint8_t type, const uint8_t *p, uint8_t n)
     }
     put_ok = 1;
     put(0);
-    nt_flush();
+    return nt_flush();
 }
 
 static void send_credit(void)
@@ -191,6 +199,9 @@ static void send_hello(void)
 #ifdef PLAT_BIG_ENDIAN
     h[1] = 1;                   /* the 16- and 32-bit fields in our order */
 #endif
+#ifdef PLAT_NS_SLOW
+    h[1] |= 2;                  /* a slow link: a push at most every 300 ms */
+#endif
     strncpy((char *)h + 2, sc_table, 8);
     strncpy((char *)h + 10, sc_name, 8);
     send(SC_HELLO, h, sizeof(h));
@@ -199,6 +210,10 @@ static void send_hello(void)
         joined = 1;
         heard = 0;
         hello_n = 0;
+        if (pending) {
+            pending = 0;
+            wait_seq = 1;       /* (as one sent and unanswered) */
+        }
         if (wait_seq && act == ACT_NONE && wait_act != ACT_LEAVE)
             act = wait_act;
         wait_seq = 0;
@@ -354,7 +369,14 @@ uint8_t net_step(void)
         ++hello_n;
         send_hello();               /* the socket may not have been open */
     }
-    if (act != ACT_NONE && !wait_seq) {
+    if (pending) {
+        /* the write failed: the same frame again (the same seq: if it did
+         * go, the server answers it once more rather than act twice) */
+        if (send(SC_ACT, a, 5)) {
+            pending = 0;
+            wait_seq = a[0];
+        }
+    } else if (act != ACT_NONE && !wait_seq) {
         if (++seq == 0)
             seq = 1;
         a[0] = seq;
@@ -362,10 +384,12 @@ uint8_t net_step(void)
         a[2] = (uint8_t)act_arg;
         a[3] = act_arg >> 8;
         a[4] = au_traded;       /* the units we have shown (ACT_PUSH) */
-        send(SC_ACT, a, 5);
-        wait_seq = seq;
         wait_act = act;
         act = ACT_NONE;
+        if (send(SC_ACT, a, 5))
+            wait_seq = seq;
+        else
+            pending = 1;
     }
     r = take();
     if ((uint8_t)(ns_taken - credited) >= 48)

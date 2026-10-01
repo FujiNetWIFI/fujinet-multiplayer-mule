@@ -20,6 +20,11 @@ var (
 	LobbyPingTimeout  = 30 * time.Second // human removed from the lobby
 	AbandonTimeout    = 5 * time.Minute  // no humans left: table resets
 	GameOverLinger    = 60 * time.Second
+	// PushStale: a human in an auction not heard from for this long has
+	// their line stopped (rules.Game.Stall) until they are back. A client
+	// frozen in a network call can't let go of the stick, and the catch-up
+	// when it returns would otherwise trade for it all the while.
+	PushStale = 1 * time.Second
 )
 
 type seat struct {
@@ -85,11 +90,9 @@ func (t *Table) seatOf(name string, now time.Time, join bool) int {
 	if name == "" {
 		return -1
 	}
-	for i := range t.seats {
-		if t.seats[i].human && strings.EqualFold(t.seats[i].name, name) {
-			t.ping(i, now)
-			return i
-		}
+	if i := t.seatNamed(name); i >= 0 {
+		t.ping(i, now)
+		return i
 	}
 	if !join || t.game != nil || t.humans() >= t.MaxHumans {
 		return -1
@@ -100,6 +103,19 @@ func (t *Table) seatOf(name string, now time.Time, join bool) int {
 			*s = seat{name: truncName(name), species: rules.Species(1 + (i*2)%int(rules.NumSpecies-1)), human: true, lastPing: now}
 			t.countFrom, t.allReady = now, time.Time{}
 			t.lastHuman = now
+			return i
+		}
+	}
+	return -1
+}
+
+// seatNamed is name's seat (-1 none), without counting it as heard from.
+func (t *Table) seatNamed(name string) int {
+	if name == "" {
+		return -1
+	}
+	for i := range t.seats {
+		if t.seats[i].human && strings.EqualFold(t.seats[i].name, name) {
 			return i
 		}
 	}
@@ -119,6 +135,43 @@ func (t *Table) ping(i int, now time.Time) {
 	t.lastHuman = now
 	if t.game != nil && t.game.Players[i].AI && t.game.Players[i].Human {
 		t.game.SetAI(i, false) // player came back
+	}
+	if t.game != nil {
+		t.game.Stall(i, false)
+	}
+}
+
+// stallQuiet advances the game to each moment a pushing human went quiet
+// (PushStale after their last ping) and stops their line there, so a catch
+// up over a long silence doesn't go on pushing for them.
+func (t *Table) stallQuiet(now time.Time) {
+	for {
+		g := t.game
+		if g.Auction == nil {
+			return
+		}
+		best, bj := -1, 0
+		for i := range t.seats {
+			s := &t.seats[i]
+			if !s.human || g.Players[i].AI || s.lastPing.IsZero() || now.Sub(s.lastPing) <= PushStale {
+				continue
+			}
+			if l := &g.Auction.Lines[i]; l.Stalled || l.Push == 0 {
+				continue
+			}
+			if j := t.jiffy(s.lastPing.Add(PushStale)); best < 0 || j < bj {
+				best, bj = i, j
+			}
+		}
+		if best < 0 {
+			return
+		}
+		g.Advance(bj)
+		// (if the auction ended or moved on meanwhile, look again: the
+		// seat can't come up again without a push, and so a ping)
+		if g.Auction != nil && g.Auction.Lines[best].Push != 0 {
+			g.Stall(best, true)
+		}
 	}
 }
 
@@ -142,6 +195,7 @@ func (t *Table) update(now time.Time) (changed bool) {
 		}
 		return
 	}
+	t.stallQuiet(now)
 	t.game.Advance(t.jiffy(now))
 	humans := false
 	for i := range t.seats {

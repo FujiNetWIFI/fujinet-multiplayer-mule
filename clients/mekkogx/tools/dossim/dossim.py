@@ -269,9 +269,12 @@ end, "dossim")
     flop = "-flop" if machine == "ibmpcjr" else "-flop1"
     # (the 5150's memory switches stay at MAME's default: 128K there is a
     # POST error 201; a CGA's screen isn't in main memory anyway)
-    ram = os.environ.get("DOSSIM_RAM", "128K" if machine == "ibmpcjr" else "")
+    ram = os.environ.get("DOSSIM_RAM", "128k" if machine == "ibmpcjr" else "")
+    # MAME 0.289+ makes the PCjr's memory a slot (-ram 128k); before that it
+    # was -ramsize 128K (DOSSIM_RAMOPT=-ramsize for an older MAME)
+    ramopt = os.environ.get("DOSSIM_RAMOPT", "-ram")
     cmd = ["./mame", machine, "-rompath", "roms", flop, disk] + \
-          (["-ramsize", ram] if ram else []) + [
+          ([ramopt, ram] if ram else []) + [
            "-video", "none", "-sound", "none", "-nothrottle", "-snapshot_directory", snapdir,
            "-cfg_directory", cfgdir, "-nvram_directory", os.path.join(out, "nvram"),
            "-autoboot_script", luafile, "-skip_gameinfo"]

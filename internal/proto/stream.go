@@ -21,7 +21,7 @@ package proto
 
 // Client -> server frame types.
 const (
-	SCHello  = 'H' // ver, flags (bit 0: big-endian), table[8], player[8] (NUL padded)
+	SCHello  = 'H' // ver, flags (bit 0: big-endian, bit 1: a slow link), table[8], player[8] (NUL padded)
 	SCAct    = 'A' // seq, act (ACT_*), arg lo, arg hi, seen
 	SCTables = 'T' // list the tables (dev: payload 1)
 	SCResync = 'R' // send the whole state again

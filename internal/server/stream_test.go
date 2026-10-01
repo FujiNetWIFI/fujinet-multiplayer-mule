@@ -359,7 +359,7 @@ func TestStreamPredictedLines(t *testing.T) {
 	sc.q = nil
 
 	v1 := auctionView(824, [4]int{43, 40, 40, 40}, [4]int{60, 40, 40, 40}) // 3 steps, 24 jiffies
-	v1.Auction.TickLeft = 11                                                // 10 then 25: 24 jiffies on is 11
+	v1.Auction.TickLeft = 11                                               // 10 then 25: 24 jiffies on is 11
 	v1.Auction.Ticks = 49
 	if !predicted(v0, v1) {
 		t.Fatal("walking line not predicted")
@@ -412,5 +412,124 @@ func TestStreamBehindWaits(t *testing.T) {
 	}
 	if sc.last == nil {
 		t.Fatal("answer held back")
+	}
+}
+
+// A client owing credit and silent isn't counted as heard from by the
+// pushes made for it; one reading is. Credit for more than was sent (bytes
+// a client counted as lost) doesn't wedge the window.
+func TestStreamQuietNotPinged(t *testing.T) {
+	h := newHarness(t)
+	a, b := net.Pipe()
+	t.Cleanup(func() { a.Close(); b.Close() })
+	go io.Copy(io.Discard, b)
+	tb := h.s.Table("dev1")
+	h.s.apply(tb, "ALICE", nil, nil) // seated
+	sc := &streamConn{s: h.s, nc: a, table: tb, player: "ALICE", lastIn: h.now}
+	ping := func() time.Time {
+		tb.mu.Lock()
+		defer tb.mu.Unlock()
+		return tb.seats[tb.seatNamed("ALICE")].lastPing
+	}
+	h.now = h.now.Add(2 * time.Second)
+	sc.sent, sc.taken = 60, 0 // owes credit, silent 2 s
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if ping().Equal(h.now) {
+		t.Fatal("a client not reading was counted as heard from")
+	}
+	sc.q = nil
+	sc.handle(proto.SCCredit, []byte{sc.sent})
+	h.now = h.now.Add(100 * time.Millisecond)
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if !ping().Equal(h.now) {
+		t.Fatal("a reading client wasn't counted as heard from")
+	}
+	sc.sent = 10
+	sc.handle(proto.SCCredit, []byte{20})
+	if sc.taken != sc.sent {
+		t.Fatalf("over-credit kept: sent %d taken %d", sc.sent, sc.taken)
+	}
+}
+
+// A slow link (HELLO flag bit 1) gets a push at most every StreamSlowHold;
+// an answer goes at once.
+func TestStreamSlowHold(t *testing.T) {
+	h := newHarness(t)
+	a, b := net.Pipe()
+	t.Cleanup(func() { a.Close(); b.Close() })
+	go io.Copy(io.Discard, b)
+	tb := h.s.Table("dev1")
+	sc := &streamConn{s: h.s, nc: a, table: tb, player: "ALICE", slow: true, lastIn: h.now}
+	drain := func() { // the client takes all that is queued
+		for {
+			sc.mu.Lock()
+			sc.taken = sc.sent
+			empty := len(sc.q) == 0
+			sc.mu.Unlock()
+			if empty {
+				return
+			}
+			if err := sc.push(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if sc.last == nil {
+		t.Fatal("no first state")
+	}
+	drain()
+	first := sc.last
+	h.s.apply(tb, "BOB", nil, nil) // a change: Bob sits down
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sc.last, first) {
+		t.Fatal("a slow link was pushed within the hold")
+	}
+	sc.lastSend = time.Now().Add(-StreamSlowHold)
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(sc.last, first) {
+		t.Fatal("not pushed once the hold was over")
+	}
+	drain()
+	sc.ack, sc.ackSeq = h.s.apply(tb, "ALICE", nil, nil), 9
+	if err := sc.push(); err != nil {
+		t.Fatal(err)
+	}
+	if sc.ack != nil || sc.sent == sc.taken {
+		t.Fatal("an answer was held")
+	}
+}
+
+// An action's seq sent again (a client whose write failed, not knowing
+// whether it went) is answered again, not applied again.
+func TestStreamDupAct(t *testing.T) {
+	_, addr := startStream(t)
+	c := dialStream(t, addr)
+	c.hello("dev1", "ALICE")
+	c.next(proto.CSCommit)
+	c.send(proto.SCAct, 7, proto.ActSpecies, 2, 0, 0)
+	for c.next(proto.CSCommit)[0] != 7 {
+	}
+	c.send(proto.SCAct, 7, proto.ActSpecies, 3, 0, 0) // the same seq, not the same arg
+	for c.next(proto.CSCommit)[0] != 7 {
+	}
+	if st := c.state(); st.Players[0].Species != 2 {
+		t.Fatalf("a repeated seq was applied: species %d", st.Players[0].Species)
+	}
+	c.send(proto.SCAct, 8, proto.ActSpecies, 3, 0, 0)
+	for c.next(proto.CSCommit)[0] != 8 {
+	}
+	if st := c.state(); st.Players[0].Species != 3 {
+		t.Fatalf("the next seq wasn't applied: species %d", st.Players[0].Species)
 	}
 }
