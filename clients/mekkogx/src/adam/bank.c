@@ -21,6 +21,8 @@ const uint8_t ovl_table[4 + 5 * 3] = { 'O', 'V', 'L', 'T' };
 
 static uint8_t dev, cur;
 
+void nt_quiesce(void);          /* nstrans.c: the network call going, done */
+
 const char *bank_init(void)
 {
     dev = CURRENT_DEV;
@@ -38,6 +40,7 @@ void bank_overlay(uint8_t n)
         return;
     t = ovl_table + 4 + (n - 1) * 3;
     blk = t[0] | (uint16_t)t[1] << 8;
+    nt_quiesce();
     eos_dev = dev;
     for (k = 0; k < t[2]; ++k, ++blk, dst += 1024) {
         eos_blk = blk;
