@@ -1,0 +1,9 @@
+test 3 0
+wait 120
+hold l
+wait 240
+hold u
+wait 60
+hold none
+wait 30
+snap 09-develop-map

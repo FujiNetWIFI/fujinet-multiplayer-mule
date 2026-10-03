@@ -1,0 +1,4 @@
+wait 30
+key 13
+wait 120
+snap 01-title
