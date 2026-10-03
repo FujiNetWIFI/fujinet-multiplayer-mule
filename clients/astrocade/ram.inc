@@ -173,6 +173,9 @@ XFV2    EQU     GTMP            ; XFILL
         VAR     SNDNF,1
         VAR     SNDV,1          ; its volume (VOLAB)
         VAR     MUTED,1
+        VAR     BTK,1           ; the time bar's tick (mappg.inc XBARTICK):
+        VAR     BTG,1           ; frames to the next, high/low, FRAMES' low
+        VAR     BTF,1           ; byte when last run
 
 ; ---- text and messages --------------------------------------------------------
         VAR     TXCOL,1         ; the XPAND pair text draws in

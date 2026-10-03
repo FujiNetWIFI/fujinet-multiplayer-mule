@@ -14,6 +14,13 @@
     ' fx.bas owns $8600-$8643 (FXB), input.bas $8FF0-$8FF4 (TEST_HOOK).
     ' fujinet.bas owns $9100-$917F (SC_NAME, SC_ENDPT, SC_QUERY).
     CONST SC_TABLE  = $9180     ' table id, 8 chars + NUL
+    ' bar_tick's state, in cartridge RAM (map.bas; the 8-bit variables
+    ' are full)
+    CONST SND_TK = $8814        ' 1: the sound playing is a tick
+    CONST TK_N = $8815          ' frames to the next tick
+    CONST TK_G = $8816          ' 1: the next tick is the low one
+    CONST TK_F = $8817          ' FRAME AND 255 when last run
+    CONST TK_U = $8818          ' the bar's units left (the caller's)
 
     ' ---- Intellivision colours ----------------------------------------------
     CONST C_BLACK = 0

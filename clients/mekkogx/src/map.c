@@ -103,3 +103,30 @@ void bar_draw(uint8_t px)
     }
     bar_last = px;
 }
+
+/* The original's tick (its VBI, $5E98): with u units of the bar left (PTU
+ * on a turn, ticks in an auction) and u under 30, a tick every u frames,
+ * high and low by turns, so it hurries as the bar runs out. Called every
+ * frame the bar runs; it counts the frames gone by, so a slow loop keeps
+ * the original's time. */
+static uint8_t bar_tk = 1, bar_tg, bar_fr;
+
+void bar_tick(uint8_t u)
+{
+    uint8_t d = (uint8_t)frame_count - bar_fr;     /* frames gone by */
+    if (!d)
+        return;
+    bar_fr += d;
+    if (!u || u >= 30) {
+        bar_tk = 1;                 /* the first tick comes at 29, high */
+        bar_tg = 0;
+        return;
+    }
+    if (bar_tk > d) {
+        bar_tk -= d;
+        return;
+    }
+    bar_tk = u;
+    snd_play(SND_TICK + bar_tg);
+    bar_tg ^= 1;
+}

@@ -155,21 +155,14 @@ AR5N:   inx
         sta     MNUMH
         jsr     PENT
         sta     ASSELE
-; the clock: 70 ticks, a bar 64 entries tall
+; the clock: 70 ticks (30 declaring), a bar 64 entries tall
         lda     FNRPLY+SATICKS
         ldx     ASTG
         cpx     #STGACT
-        beq     AR6
-        lda     #0
-AR6:    cmp     ATKS
         beq     AR6A
-        bcs     AR6A
-        cmp     #10             ; the last ten ticks, heard
-        bcs     AR6A
-        pha
-        lda     #SNDTCK
-        jsr     SNDPLAY
-        pla
+        cpx     #STGDECL
+        beq     AR6A
+        lda     #0
 AR6A:   sta     ATKS
         lsr     a
         lsr     a
@@ -350,6 +343,26 @@ AL9:    rts
 ; ---------------------------------------------------------------------------
 ; APPVBL: the lines' steps, this frame's figures, the stick, the text.
 APPVBL: jsr     SNDRUN
+; the clock's tick, the original's: under 30 ticks, every `ticks` frames,
+; so faster as it runs out (devbar.inc)
+        lda     ATKS
+        beq     AVT0
+        cmp     #30
+        bcs     AVT0
+        dec     ATKF
+        bpl     AVT1
+        sta     ATKF
+        ldx     SNDCNT          ; never over the bell
+        beq     AVT2
+        ldx     SNDPTR
+        cpx     #SNDBELL
+        beq     AVT1
+AVT2:   lda     #SNDTCK
+        jsr     SNDPLAY
+        jmp     AVT1
+AVT0:   lda     #0              ; the first tick as soon as it is under 30
+        sta     ATKF
+AVT1:
         jsr     INSCAN
         jsr     RSTCHK
 ; a step every 8 frames, toward the targets

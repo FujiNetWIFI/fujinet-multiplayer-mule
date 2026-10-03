@@ -4,6 +4,7 @@
  * the land grant, an auction, the summary, the lobby's countdown): it is
  * the only two-note sound and the loudest. A platform plays them however it
  * can; snd_tick() runs once a frame for effects that last several frames.
+ * The one sound that repeats is the time bar's tick as time runs out.
  */
 #ifndef SOUND_H
 #define SOUND_H
@@ -20,7 +21,13 @@
 #define SND_EVENT        7
 #define SND_FOUNDER      8
 #define SND_STEP         9      /* a footstep: only when nothing else sounds */
-#define SND_COUNT        10
+#define SND_TICK         10     /* the time bar's tick, high (map.c bar_tick) */
+#define SND_TOCK         11     /* and low: they alternate, as the original's */
+#define SND_COUNT        12
+
+/* Ids from SND_STEP up are soft: they never cut another sound, only each
+ * other. */
+#define SND_SOFT(id)     ((id) >= SND_STEP)
 
 void snd_init(void);
 void snd_play(uint8_t id);

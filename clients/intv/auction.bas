@@ -440,6 +440,7 @@ END
 ' Per frame in phases 2, 5 and 6.
 ' ---------------------------------------------------------------------------
 auction_tick: PROCEDURE
+    GOSUB bar_tick_au
     IF au_kind = 1 AND au_stage = STAGE_SHOW THEN
         ' The plot for sale blinks on the map (a white outline, 16 frames on
         ' and 16 off); the button skips the wait.

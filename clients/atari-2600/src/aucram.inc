@@ -22,4 +22,5 @@ ALOE    EQU     $EE
 ASSELE  EQU     $EF             ; the store's selling price, an entry
 APEND   EQU     $F0             ; a state waits to be read (next overscan)
 AHELD   EQU     $F1             ; MFRAME when my goods line was let go
+ATKF    EQU     $F2             ; frames to the clock's next tick
 

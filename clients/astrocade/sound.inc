@@ -6,7 +6,8 @@
 ; Here tone A with the master oscillator at 32: f = 1789773 / (33 (T+1) 2),
 ; so T+1 = 0.744 d (computed below, in the table). SNTURN is the one that
 ; matters: rung whenever the game wants your hand on the stick (SNDALRT),
-; it is the only effect with two notes, and the loudest.
+; it is the only effect with two notes, and the loudest. The one sound
+; that repeats is the time bar's tick (SNTICK/SNTOCK, mappg.inc XBARTICK).
 
 SNSEL   EQU     0
 SNSAMP  EQU     1
@@ -18,6 +19,8 @@ SNTRADE EQU     6
 SNEVT   EQU     7
 SNFOUND EQU     8
 SNSTEP  EQU     9
+SNTICK  EQU     10              ; soft, as the step: SNSTEP and up
+SNTOCK  EQU     11
 
 TONEA   EQU     11H
 SNDMO   EQU     32
@@ -49,6 +52,10 @@ SNDTAB: TN      42
         DB      10,0,0          ; founder
         TN      200
         DB      1,0,0           ; step
+        TN      13
+        DB      2,0,0           ; tick (~2800 Hz)
+        TN      18
+        DB      2,0,0           ; tock (~2000 Hz)
 
 ; SNDALRT: the alert, for a seated player. Preserves BC,DE,HL.
 SNDALRT: LD     A,(MYSEAT)
@@ -64,10 +71,10 @@ SNDPLAY: PUSH   HL
         OR      A
         JR      NZ,SNP9
         LD      A,L
-        LD      H,03H           ; the step soft
+        LD      H,03H           ; the step and the tick soft
         CP      SNSTEP
-        JR      NZ,SNP0
-        LD      A,(SNDF)        ; a footstep never cuts another sound
+        JR      C,SNP0
+        LD      A,(SNDF)        ; and they never cut another sound
         OR      A
         JR      NZ,SNP9
         JR      SNP1

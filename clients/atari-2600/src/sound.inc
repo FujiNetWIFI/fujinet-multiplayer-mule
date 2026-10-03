@@ -2,9 +2,9 @@
 ;
 ; The bell rings when the game wants you: "press the button to start" on
 ; your turn, the land grant's cursor setting off, an auction opening, the
-; summary waiting for your button. The tick is the timer running out: the
-; MekkoGX client's SND_TICK (pokey.s SNX_TIMER), a short blip whose pitch
-; alternates, fired more and more often as the time bar empties.
+; summary waiting for your button. The tick is the timer running out, the
+; original's (MekkoGX map.c bar_tick): a short blip whose pitch alternates,
+; fired more and more often as the time bar empties.
 ;
 ; The left difficulty switch at A mutes both.
 

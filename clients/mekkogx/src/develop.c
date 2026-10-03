@@ -812,6 +812,7 @@ static void dv_bar(void)
 {
     uint16_t w = since_rx();
     uint8_t px = w < dv_left ? (dv_left - w) / dv_ptu : 0;
+    bar_tick(px);
     if (bar_last != 255 && px == bar_last + 1)
         return;
     bar_draw(px);

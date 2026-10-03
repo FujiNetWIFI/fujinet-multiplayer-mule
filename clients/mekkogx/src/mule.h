@@ -131,6 +131,7 @@ void map_draw_all(void);
 void map_update(void);
 extern uint8_t bar_x, bar_top, bar_h, bar_col, bar_last;
 void bar_draw(uint8_t px);
+void bar_tick(uint8_t u);
 
 /* ---- sprite scripts (fx.c) -------------------------------------------- */
 #include "fx.h"

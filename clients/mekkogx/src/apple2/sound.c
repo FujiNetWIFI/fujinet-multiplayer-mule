@@ -34,9 +34,11 @@ static const Effect fx[SND_COUNT] = {
     { 165,  4,   0,  0 },   /* event */
     {  47,  5,   0,  0 },   /* founder */
     {   0,  0,   0,  0 },   /* step: none, the CPU would pay every stride */
+    {  13,  1,   0,  0 },   /* tick: the time bar running out (map.c) */
+    {  18,  1,   0,  0 },   /* tock */
 };
 
-static uint8_t cur_d, cur_f, next_d, next_f, muted;
+static uint8_t cur_d, cur_f, next_d, next_f, muted, soft, tk_at;
 
 void snd_init(void)
 {
@@ -48,6 +50,14 @@ void snd_play(uint8_t id)
     const Effect *e = &fx[id];
     if (muted || !e->f1)
         return;                     /* no footsteps here */
+    if (SND_SOFT(id)) {
+        /* a tick cuts only a tick, and at most every other frame: the
+         * last second would spend every frame on the speaker */
+        if ((cur_f && !soft) || (uint8_t)((uint8_t)frame_count - tk_at) < 2)
+            return;
+        tk_at = (uint8_t)frame_count;
+    }
+    soft = SND_SOFT(id);
     cur_d = e->d1;
     cur_f = e->f1;
     next_d = e->d2;

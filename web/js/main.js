@@ -69,6 +69,32 @@ function alertOnce(v, key) {
   });
 }
 
+// The time bar's tick, the original's (its VBI, $5E98): with u units of the
+// bar left (PTU on a turn, ticks in an auction) and u under 30, a quiet
+// tick every u jiffies, high and low by turns (AUDF $0A and $0F: ~2900 and
+// ~2000 Hz), so it hurries as the bar runs out. The retro clients' bar_tick.
+let tickNext = 0, tickLow = 0, tickSeen = 0;
+
+function barTick(u) {
+  const now = performance.now();
+  if (now - tickSeen > 100) tickNext = 0;            // the bar was away: start over
+  tickSeen = now;
+  u = Math.floor(u);
+  if (u <= 0 || u >= 30) { tickNext = 0; tickLow = 0; return; }
+  if (now < tickNext) return;
+  tickNext = now + u * 1000 / 60;
+  const hz = tickLow ? 1998 : 2906;
+  tickLow ^= 1;
+  if (!audio || audio.state !== 'running') return;
+  const t0 = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+  o.type = 'square';
+  o.frequency.value = hz;
+  g.gain.value = 0.03;
+  o.connect(g).connect(audio.destination);
+  o.start(t0);
+  o.stop(t0 + 2 / 60);
+}
+
 function log(s) {
   const el = $('log');
   el.textContent = s + '\n' + el.textContent.slice(0, 4000);
@@ -348,8 +374,10 @@ function statusLine(v, s) {
   }
 }
 
-// A vertical time bar at the right edge, 1 pixel per unit (as the original's).
-function timeBar(units, color = 0x84) {
+// A vertical time bar at the right edge, 1 pixel per unit (as the original's),
+// ticking as it runs out.
+function timeBar(units, color = 0x84, tick = true) {
+  barTick(tick ? units : 0);
   const h = Math.max(0, Math.min(110, Math.round(units)));
   gfx.rect(W - 8, 176 - h, 4, h, color);
 }
@@ -698,7 +726,7 @@ function auction(v) {
     gfx.text(p.n.slice(0, 7), x - 8, 172, col);
     gfx.text(a.land ? '$' + p.m : `${p.g[a.gd] ?? 0}${l.u ? (l.u > 0 ? '+' : '') + l.u : ''}`, x - 8, 182, col);
   });
-  timeBar(predictTicks(a), 0x0e);
+  timeBar(predictTicks(a), 0x0e, a.sg === STAGE.active || a.sg === STAGE.declare);
   let msg = '';
   if (a.sg === STAGE.declare) msg = 'PUSH STICK TO DECLARE AS BUYER OR SELLER';
   else if (a.sg === STAGE.lead) msg = 'GET READY...';

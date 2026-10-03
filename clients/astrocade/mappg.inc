@@ -679,6 +679,53 @@ XMAPENTER: XOR  A
         LD      (BARLAST),A
         JP      XMAPALL
 
+; XBARTICK: the time bar's tick, the original's (its VBI, $5E98): with A
+; units of the bar left (PTU on a turn, ticks in an auction) and A under 30,
+; a tick every A frames, high and low by turns, so it hurries as the bar
+; runs out (map.c bar_tick). Run every frame the bar runs; it counts the
+; frames gone by. A tick cuts only a tick (SNDV 03H: a soft sound).
+XBARTICK: LD    C,A
+        LD      A,(BTF)
+        LD      E,A
+        LD      A,(FRAMES)
+        LD      (BTF),A
+        SUB     E               ; frames gone by
+        RET     Z
+        LD      B,A
+        LD      A,C
+        OR      A
+        JR      Z,BTK0
+        CP      30
+        JR      C,BTK1
+BTK0:   LD      A,1             ; the first tick comes at 29, high
+        LD      (BTK),A
+        XOR     A
+        LD      (BTG),A
+        RET
+BTK1:   LD      A,(BTK)
+        SUB     B
+        JR      C,BTK2
+        JR      Z,BTK2
+        LD      (BTK),A
+        RET
+BTK2:   LD      A,C
+        LD      (BTK),A
+        LD      A,(SNDF)
+        OR      A
+        JR      Z,BTK3
+        LD      A,(SNDV)
+        CP      03H
+        RET     NZ
+        XOR     A
+        LD      (SNDF),A
+BTK3:   LD      A,(BTG)
+        LD      E,A
+        XOR     1
+        LD      (BTG),A
+        LD      A,E
+        ADD     A,SNTICK
+        JP      SNDPLAY
+
 ; XBARDRAW: the time bar at px lines (Atari) of BARH, in BARCOL (map.c
 ; bar_draw). Redrawn whole: it is one byte wide.
 XBARDRAW: LD    B,A

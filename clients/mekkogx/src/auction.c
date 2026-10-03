@@ -284,11 +284,12 @@ static uint8_t au_ticks_now(void)
 
 static void au_timebar(void)
 {
+    uint8_t u = 0;
     bar_col = C_WHITE;
     if (au_stage == STAGE_ACTIVE || au_stage == STAGE_DECLARE)
-        bar_draw(au_ticks_now());
-    else
-        bar_draw(0);
+        u = au_ticks_now();
+    bar_tick(u);
+    bar_draw(u);
 }
 
 static void au_message(void)

@@ -367,20 +367,9 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 - **Sprites** are players, single line. A player can show several sprites whose rows don't meet: the DLI moves it between them. On the map players 0 and 1 are free; in town, 0-2, with missile 3 the time bar.
 - **Shapes** come from the original: the species, the map figures, the M.U.L.E., mountains, store, ships, pest, cloud and bolt. The wampus, meteor and the ship's hull are still the Intellivision's.
 
-**Sound** (`pokey.s`, `sound.c`). The original's sounds, reverse-engineered and played by a driver in the immediate VBI:
-- **The title theme** plays in the lobby, and **the round's tune** on the status screens (its length grows every 4 rounds, as the original's does). The driver is the original's four-voice engine: note streams with a held attack and a decay per voice. It matches the original frame for frame.
-- **The voice-4 effects** use the original's tables: the player blip, the message beep (four times when an auction ends), and the production chirp.
-- **Other effects:**
-  - each species' footstep;
-  - the time bar's tick, faster as time runs out;
-  - the colony ship's drone;
-  - the colony events: pest, pirates, acid rain, planetquake, meteorite, radiation, fire;
-  - the good and bad news jingles;
-  - outfitting a M.U.L.E.
-
-  These are scripts, written from how the original plays them. They are started through `SND_X()` in the shared code (`sound.h`), which is empty on the other platforms.
-- **During SIO, and while the network stream is on,** only voices 1 and 2 are written: the serial port is clocked with voices 3 and 4 and AUDCTL. In practice the music is two-voice while you are online.
-- **Where the data lives:** the tunes are in the status overlay, the colony events in production's and the jingles in develop's. They stop when their overlay goes.
+**Sound** (`sound.c`, `snd.s`). Short blips on POKEY voice 1, no music, from the table every platform shares (`src/platform-specific/sound.h`). The immediate VBI times them, so a tone ends on time however busy the game is. Voices 3 and 4 are left alone: SIO and the network stream clock the serial port with them.
+- **The alert** (`SND_ALERT`) is the only two-note sound and the loudest. It rings whenever the game wants your hand on the stick.
+- **The time bar's tick** (`SND_TICK`/`SND_TOCK`, `map.c` `bar_tick`) is the original's. Once fewer than 30 units are left (PTU on a turn, ticks in an auction), it ticks every that-many frames, alternating AUDF `$0A` and `$0F`, so it hurries as the bar empties. It is soft and never cuts another sound. Every MekkoGX platform plays it.
 
 **Keys:** the stick or the arrow keys (with CONTROL) walk, and the trigger or SPACE is the button. RETURN ends a turn, ESC leaves, 0 sits out, and CONTROL-S turns the sound off and on.
 

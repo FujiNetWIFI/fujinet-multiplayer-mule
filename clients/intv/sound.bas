@@ -5,7 +5,8 @@
 ' down and plays an optional second tone, so nothing here blocks the game.
 ' Tone values are 3579545 / 32 / Hz. snd_myturn is the one that matters: rung
 ' whenever the game wants your hand on the controller, it is the only effect
-' with two notes, and the loudest.
+' with two notes, and the loudest. The one sound that repeats is the time
+' bar's tick as time runs out (bar_tick).
 ' ===========================================================================
 
     DIM snd_t, snd_t2, #snd_f2
@@ -27,7 +28,7 @@ END
 ' snd_play: #val = tone, k = frames; #snd_f2 / snd_t2 = optional second tone
 ' (only the alert has one: it plays loud).
 snd_play: PROCEDURE
-    snd_t = 0
+    snd_t = 0 : POKE SND_TK, 0
     IF snd_t2 THEN SOUND 0, #val, 15 ELSE SOUND 0, #val, 10
     snd_t = k
 END
@@ -74,3 +75,4 @@ END
 snd_founder: PROCEDURE
     #val = 144 : k = 10 : snd_t2 = 0 : GOSUB snd_play
 END
+

@@ -245,3 +245,39 @@ bar_draw: PROCEDURE                ' bar_px = height in pixels
         #BACKTAB(#h_a) = #h_w
     NEXT h_i
 END
+
+' ---------------------------------------------------------------------------
+' The time bar's tick, the original's (its VBI, $5E98): with tk_u units of
+' the bar left (PTU on a turn, ticks in an auction) and tk_u under 30, a
+' tick every tk_u frames, high and low by turns (~2900 and ~2000 Hz), so it
+' hurries as the bar runs out. Soft, and it cuts only another tick. Run
+' every frame (develop_tick, auction_tick); it counts the frames gone by.
+' The sound's half: sound.bas (SND_TK and the TK_ state).
+' ---------------------------------------------------------------------------
+bar_tick_dv: PROCEDURE
+    POKE TK_U, 0
+    IF (dv_flags AND TF_STARTED) AND (dv_flags AND TF_ENDED) = 0 THEN
+        IF FRAME - #rx_jiffy < #dv_left THEN POKE TK_U, (#dv_left - (FRAME - #rx_jiffy)) / dv_ptu
+    END IF
+    GOSUB bar_tick
+END
+bar_tick_au: PROCEDURE
+    POKE TK_U, 0
+    IF au_stage = STAGE_ACTIVE OR au_stage = STAGE_DECLARE THEN POKE TK_U, st8(ST_AUCTION_TICKS)
+    GOSUB bar_tick
+END
+' (#val and k are the effects' scratch: free here)
+bar_tick: PROCEDURE
+    k = (FRAME - PEEK(TK_F)) AND 255            ' frames gone by
+    IF k = 0 THEN RETURN
+    POKE TK_F, FRAME AND 255
+    #val = PEEK(TK_U)
+    IF #val = 0 OR #val >= 30 THEN POKE TK_N, 1 : POKE TK_G, 0 : RETURN
+    IF PEEK(TK_N) > k THEN POKE TK_N, PEEK(TK_N) - k : RETURN
+    POKE TK_N, #val
+    IF snd_t > 0 AND PEEK(SND_TK) = 0 THEN RETURN
+    snd_t = 0 : snd_t2 = 0
+    IF PEEK(TK_G) THEN SOUND 0, 56, 6 ELSE SOUND 0, 38, 6
+    snd_t = 2 : POKE SND_TK, 1
+    POKE TK_G, PEEK(TK_G) XOR 1
+END

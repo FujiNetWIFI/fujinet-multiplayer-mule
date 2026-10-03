@@ -122,6 +122,7 @@ END
 ' Per frame while in develop.
 develop_tick: PROCEDURE
     GOSUB msg_tick_run
+    GOSUB bar_tick_dv
     IF dv_state = DV_PROMPT THEN
         IF ev_btn THEN act = ACT_BEGIN : poll_wait = 0 : GOSUB snd_select
         RETURN

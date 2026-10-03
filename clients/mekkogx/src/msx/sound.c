@@ -27,9 +27,11 @@ static const Effect fx[SND_COUNT] = {
     { 165,  8,   0,  0 },   /* event */
     {  47, 10,   0,  0 },   /* founder */
     { 200,  1,   0,  0 },   /* step: a soft click */
+    {  13,  2,   0,  0 },   /* tick: the time bar running out (map.c) */
+    {  18,  2,   0,  0 },   /* tock */
 };
 
-static uint8_t cur_f, next_d, next_f, muted, vol;
+static uint8_t cur_f, next_d, next_f, muted, soft, vol;
 
 static void psg(uint8_t r, uint8_t v)
 {
@@ -63,9 +65,10 @@ void snd_init(void)
 void snd_play(uint8_t id)
 {
     const Effect *e = &fx[id];
-    if (muted || (id == SND_STEP && cur_f))
-        return;                     /* a footstep never cuts another sound */
-    vol = id == SND_ALERT ? 15 : id == SND_STEP ? 8 : 11;  /* the alert loudest */
+    if (muted || (SND_SOFT(id) && cur_f && !soft))
+        return;                     /* a footstep or tick cuts only its own */
+    soft = SND_SOFT(id);
+    vol = id == SND_ALERT ? 15 : soft ? 8 : 11;  /* the alert loudest */
     tone(e->d1);
     cur_f = e->f1;
     next_d = e->d2;

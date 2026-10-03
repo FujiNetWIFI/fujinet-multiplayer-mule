@@ -27,6 +27,8 @@ static const Effect fx[SND_COUNT] = {
     { 165,  8,   0,  0 },   /* event */
     {  47, 10,   0,  0 },   /* founder */
     { 200,  1,   0,  0 },   /* step: a soft click */
+    {  13,  2,   0,  0 },   /* tick: the time bar running out (map.c) */
+    {  18,  2,   0,  0 },   /* tock */
 };
 
 /* What the frame clock plays (src/adam/nmi.asm snd_frame): snd_f frames
@@ -35,7 +37,7 @@ static const Effect fx[SND_COUNT] = {
  * snd_f is 0, so snd_play clears it first and sets it last. */
 volatile uint8_t snd_f, snd_nf;
 uint8_t snd_n[3];
-static uint8_t muted, vol;
+static uint8_t muted, vol, soft;
 
 /* A tone's three bytes for tone 0: the divisor, then the volume. */
 static void tone_bytes(uint8_t *b, uint8_t d)
@@ -64,10 +66,11 @@ void snd_play(uint8_t id)
 {
     const Effect *e = &fx[id];
     uint8_t b[3];
-    if (muted || (id == SND_STEP && snd_f))
-        return;                     /* a footstep never cuts another sound */
+    if (muted || (SND_SOFT(id) && (snd_f || snd_nf) && !soft))
+        return;                     /* a footstep or tick cuts only its own */
+    soft = SND_SOFT(id);
     snd_f = 0;
-    vol = id == SND_ALERT ? 0 : id == SND_STEP ? 8 : 4;    /* the alert loudest */
+    vol = id == SND_ALERT ? 0 : soft ? 8 : 4;    /* the alert loudest */
     tone_bytes(b, e->d1);
     SN_PORT = b[0];
     SN_PORT = b[1];

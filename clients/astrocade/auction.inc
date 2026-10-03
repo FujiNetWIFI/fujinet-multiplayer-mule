@@ -894,15 +894,18 @@ AUM2:   LD      A,(AUI)
 ; AUTIMEBAR: the auction clock: a bar, a line for every tick left.
 AUTIMEBAR: LD   A,CW
         LD      (BARCOL),A
-        LD      A,(AUSTAGE)
+        CALL    AUBARU
+        JP      BARDRAW
+
+; AUBARU: A = the clock's ticks left (0 when it isn't running).
+AUBARU: LD      A,(AUSTAGE)
         CP      ST_ACTIVE
         JR      Z,ATB1
         CP      ST_DECL
         LD      A,0
-        JR      NZ,ATB2
+        RET     NZ
 ATB1:   LD      E,AO_TICKS
-        CALL    AGB
-ATB2:   JP      BARDRAW
+        JP      AGB
 
 ; AUMESSAGE: the message row.
 AUMESSAGE: LD   A,ROWMSG
@@ -1975,7 +1978,11 @@ AK7:    EX      DE,HL
         LD      (HL),D
         RET
 
-AUTICK: LD      A,(AUKIND)
+AUTICK: CALL    AUBARU          ; the clock's tick, every frame
+        CALL    FARCALL
+        DB      PGMAP
+        DW      XBARTICK
+        LD      A,(AUKIND)
         CP      1
         JR      NZ,AT3
         LD      A,(AUSTAGE)

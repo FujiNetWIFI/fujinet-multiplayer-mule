@@ -1090,7 +1090,12 @@ DVBR2:  LD      A,D
         LD      A,E
         JR      Z,DVBR3
         LD      A,255
-DVBR3:  JP      BARDRAW
+DVBR3:  PUSH    AF
+        CALL    FARCALL         ; the tick as it runs out
+        DB      PGMAP
+        DW      XBARTICK
+        POP     AF
+        JP      BARDRAW
 
 ; DVLEFTNOW: HL = the turn's jiffies left now.
 DVLEFTNOW: CALL SINCERX

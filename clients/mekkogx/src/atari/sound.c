@@ -29,9 +29,11 @@ static const Effect fx[SND_COUNT] = {
     { 165,  8,   0,  0 },   /* event */
     {  47, 10,   0,  0 },   /* founder */
     { 200,  1,   0,  0 },   /* step: a soft click */
+    {  13,  2,   0,  0 },   /* tick: AUDF $0A, as the original's */
+    {  19,  2,   0,  0 },   /* tock: AUDF $0F */
 };
 
-static uint8_t muted;
+static uint8_t muted, soft;
 
 static uint8_t audf(uint8_t d)
 {
@@ -47,13 +49,14 @@ void snd_init(void)
 void snd_play(uint8_t id)
 {
     const Effect *e = &fx[id];
-    if (muted || (id == SND_STEP && snd_f))
-        return;                     /* a footstep never cuts another sound */
+    if (muted || (SND_SOFT(id) && (snd_f || snd_nf) && !soft))
+        return;                     /* a footstep or tick cuts only its own */
+    soft = SND_SOFT(id);
     /* the VBI plays nothing new while snd_f is 0: it goes last */
     snd_nf = 0;
     snd_f = 0;
     snd_fq = audf(e->d1);
-    snd_c = 0xA0 | (id == SND_ALERT ? 15 : id == SND_STEP ? 5 : 10);
+    snd_c = 0xA0 | (id == SND_ALERT ? 15 : soft ? 5 : 10);
     snd_nfq = audf(e->d2);
     snd_nf = e->f2;
     snd_f = e->f1;

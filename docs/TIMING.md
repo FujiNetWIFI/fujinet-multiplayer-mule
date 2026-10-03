@@ -139,6 +139,21 @@ Each step is 2 scanlines: $1 for Food, Energy and Smithore, $4 for Crystite. The
 
 **When a line can no longer trade.** It goes back to its starting edge, after a message of about 19 jiffies. (M)
 
+## The time bar's tick
+
+The original's countdown tick runs every jiffy from the VBI (`$5D07` calls `$5E98` while `$B33C` is set). `$D3` is the bar's units left: PTU on a development turn, ticks in an auction or while declaring.
+
+| Item | Value | Source |
+|---|---|---|
+| When it ticks | while `0 < $D3 < 30` (threshold `$B33A = $1E`, set by `$3101`) | C |
+| Interval | `$D3` jiffies: the counter `$B33E` reloads from `$D3` after each tick, so 29 jiffies at 29 left, 1 at 1 | C |
+| First tick | the jiffy `$D3` first drops below 30 (`$B33E` starts at 1). Declare (30 ticks) ticks throughout | C |
+| The sound | AUDF1 alternates `$0A` (~2906 Hz, first) and `$0F` (~1998 Hz); AUDC1 `$A2`, `$A1`, then `$A0`, plus a 1-jiffy noise click on voice 2 (AUDC2 `$81`) | C |
+| Where it runs | development (`$67E3`), land auction and trading (`$9E14`), declare (`$656B`). Not the land grant | C |
+| At 0 | voices 1 and 2 silenced, the tick disabled | C |
+
+Every client plays it this way (MekkoGX `map.c` `bar_tick`, the Intellivision's `map.bas` `bar_tick`, the Astrocade's `mappg.inc` `XBARTICK`, the 2600's `devbar.inc` and `auction.asm`, the web's `barTick`).
+
 ## Where the server departs from these timings
 
 - **Claim latency allowance.** A land-grant claim can name the plot the cursor left up to 24 jiffies earlier. This covers the round trip for a player pressing just as the cursor steps.
