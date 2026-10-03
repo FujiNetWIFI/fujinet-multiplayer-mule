@@ -27,11 +27,13 @@
 #define ROW_UNITS 21
 /* Each player's field under them: ten 40-column cells, or the cells under
  * the same stretch of the picture (TX). */
-#define AU_FX(i)  TX((i) * 10)
 #if TCOLS == 40
+#define AU_FX(i)  ((i) * 10)
 #define AU_FW(i)  10
 #else
-#define AU_FW(i)  (TX((i) * 10 + 10) - TX((i) * 10))
+static const uint8_t au_fx[5] = { TX(0), TX(10), TX(20), TX(30), TX(40) };
+#define AU_FX(i)  au_fx[i]
+#define AU_FW(i)  (au_fx[(i) + 1] - au_fx[i])
 #endif
 
 static const uint8_t col_x[4] = { 39, 63, 87, 111 };
@@ -195,11 +197,19 @@ static void au_lines(void)
         gfx_hdots(LINE_X, y, LINE_W, C_WHITE);
 }
 
+/* Seat i's field on row 18 cleared; its first cell. */
+static uint8_t au_field(uint8_t i)
+{
+    uint8_t x = AU_FX(i);
+    gfx_clear_text(x, ROW_LBL, AU_FW(i));
+    return x;
+}
+
 /* Row 18, over each player's money: BUY / SELL while the player stands at
  * its starting line, else the price it has moved to (as on the Atari). */
 static void au_lbl_tick(void)
 {
-    uint8_t i;
+    uint8_t i, x;
     uint16_t w;
     for (i = 0; i < 4; ++i) {
         if (au_role[i] == ROLE_NONE) {
@@ -218,11 +228,11 @@ static void au_lbl_tick(void)
         if (w == au_lbl[i])
             continue;
         au_lbl[i] = w;
-        gfx_clear_text(AU_FX(i), ROW_LBL, AU_FW(i));
+        x = au_field(i);
         if (w == 0)
-            gfx_big(AU_FX(i) + BIGW, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), au_col(i));
+            gfx_big(x + BIGW, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), au_col(i));
         else if (w > 1)
-            big_num(AU_FX(i), ROW_LBL, w, 5, au_col(i));
+            big_num(x, ROW_LBL, w, 5, au_col(i));
     }
 }
 
@@ -476,8 +486,7 @@ static void au_need_draw(void)
             buf[0] = '-';
         }
         fmt_num(buf + 1, v);
-        gfx_clear_text(AU_FX(i), ROW_LBL, AU_FW(i));
-        gfx_big(AU_FX(i) + BIGW, ROW_LBL, buf, w >= n ? C_WHITE : C_ORANGE);
+        gfx_big(au_field(i) + BIGW, ROW_LBL, buf, w >= n ? C_WHITE : C_ORANGE);
     }
 }
 

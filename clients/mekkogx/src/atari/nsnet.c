@@ -58,6 +58,7 @@ extern uint8_t ns_fbuf[];
 static uint8_t stage[sizeof(MuleState)];
 static uint8_t link, joined;    /* connected; HELLO sent for sc_table */
 static uint8_t seq, wait_seq, wait_act, credited, paused, resync_hold;
+static uint8_t resync_owed;     /* a bad frame came during the hold: ask after it */
 static uint16_t quiet;
 
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
@@ -67,12 +68,16 @@ typedef char mule_table_is_33_bytes[sizeof(MuleTable) == 33 ? 1 : -1];
 
 static void send(uint8_t type, const uint8_t *p, uint8_t n);
 
-/* Lost or garbled: the whole state again, once in a while at most. */
+/* Lost or garbled: the whole state again, once a RESYNC_GAP at most. One
+ * held back is only put off: the server counts what was lost as ours, so
+ * nothing else would ever bring it (the map, the auction's setup). */
 static void resync(void)
 {
+    resync_owed = 1;
     if (!resync_hold) {
         send(SC_RESYNC, 0, 0);
         resync_hold = RESYNC_GAP;
+        resync_owed = 0;
     }
 }
 
@@ -121,6 +126,7 @@ static void send_hello(void)
     strncpy((char *)h + 10, sc_name, 8);
     send(SC_HELLO, h, sizeof(h));
     joined = 1;
+    resync_owed = 0;            /* HELLO brings the whole state */
     if (wait_seq && act == ACT_NONE && wait_act != ACT_LEAVE)
         act = wait_act;
     wait_seq = 0;
@@ -304,6 +310,8 @@ uint8_t net_step(void)
         return 0;
     if (resync_hold)
         --resync_hold;
+    else if (resync_owed)
+        resync();
     if (act != ACT_NONE && !wait_seq) {
         if (++seq == 0)
             seq = 1;

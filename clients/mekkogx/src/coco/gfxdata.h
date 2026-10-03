@@ -14,7 +14,7 @@ typedef struct {
     uint8_t h;              /* lines */
 } ShapeDef;
 
-extern const uint8_t pm_font[64 * 8];       /* 6 pixels: bits 7..2 */
+extern const uint8_t pm_font[64 * 8];       /* the Namco font: 8 x 8 */
 extern const uint8_t plot_parts[12][64];    /* 32 lines x 12 colour pixels */
 extern const uint8_t plot_dots[8][2];       /* line, colour pixel */
 extern const ShapeDef pm_shapes[];

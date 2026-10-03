@@ -40,7 +40,7 @@
 /* The text grid. TCOLS cells across; BIGW cells a big character; TX(c)
  * is the cell over the same spot of the picture as the 40-column cell c
  * (text laid over the art: the town's prices, the auction's scale). */
-#if defined(__ADAM__) || defined(__MSX__)
+#if defined(__ADAM__) || defined(__MSX__) || defined(_CMOC_VERSION_)
 #define TCOLS 32
 #define BIGW  1
 #define TX(c) ((uint8_t)(((c) * 3 + 2) >> 2))

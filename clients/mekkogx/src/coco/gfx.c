@@ -9,8 +9,9 @@
  * stripes (A on even lines, B on odd).
  *
  * Atari colour clocks x become colour pixels x - x/4 + 2 (160 -> 120): a
- * map plot is 12 colour pixels (3 bytes) from byte 2, a text cell 6 pixels
- * from pixel 4 (40 columns), the town 72 colour pixels (tools/mkgfx_pmode4.py).
+ * map plot is 12 colour pixels (3 bytes) from byte 2, the town 72 colour
+ * pixels (tools/mkgfx_pmode4.py). A text cell is a byte (32 columns, the
+ * Namco font, as on the TMS9918).
  * Sprites of characters keep their 8 colour pixels. Scanlines are 1:1.
  */
 #include <string.h>
@@ -156,153 +157,80 @@ static uint8_t glyph_of(char c)
     return (uint8_t)(c - 32);
 }
 
-/* glyph_rows's arguments: an 8-row glyph (6 pixels, bits 7..2), drawn in
- * the cell at screen byte gl_dst, sh pixels in, in the patterns of an even
- * and an odd line; gl_big doubles each pixel (a 12-pixel cell). */
-const uint8_t *gl_src;
-uint8_t *gl_dst;
-uint8_t gl_sh, gl_pt0, gl_pt1, gl_big;
-uint8_t gl_c, gl_n, gl_m0, gl_m1, gl_t;
-
-static void glyph_rows(void)
+/* A character: the 8 x 8 Namco glyph fills the byte at text cell tx, in
+ * colour kind k. White keeps every pixel. A colour has 4 colour pixels a
+ * cell: each is lit where the glyph's odd pixel is, so a character has the
+ * same shape in blue, in orange and in the stripes (A alone would take the
+ * odd pixels and B the even ones: two shapes, mixed line by line). */
+static void glyph(uint8_t tx, uint8_t ty, char c, uint8_t k)
 {
-    asm {
-        pshs    u,y
-        ldy     _gl_src
-        ldu     _gl_dst
-        lda     #8
-        sta     _gl_n
-@row
-        ldb     ,y+
-        tst     _gl_big
-        bne     @big
-        tfr     b,a
-        clrb
-        ldx     #$FC00
-        bra     @shift
-@big
-        leax    _dbl8,pcr
-        clra
-        lslb
-        rola
-        ldd     d,x
-        ldx     #$FFF0
-@shift
-        pshs    x               ; 0,s: the cell mask
-        tst     _gl_sh
-        beq     @put
-        pshs    a
-        lda     _gl_sh
-        sta     _gl_c
-        puls    a
-@sh
-        lsra
-        rorb
-        lsr     ,s
-        ror     1,s
-        dec     _gl_c
-        bne     @sh
-@put
-        anda    _gl_pt0         ; the lit pixels in the line pattern
-        andb    _gl_pt0
-        std     _gl_m0          ; (gl_m0, gl_m1)
-        puls    x
-        tfr     x,d
-        coma
-        comb
-        anda    ,u
-        andb    1,u
-        ora     _gl_m0
-        orb     _gl_m1
-        std     ,u
-        lda     _gl_pt0         ; the next line: the other stripe
-        ldb     _gl_pt1
-        sta     _gl_pt1
-        stb     _gl_pt0
-        leau    32,u
-        dec     _gl_n
-        bne     @row
-        puls    u,y
+    const uint8_t *src = pm_font + ((uint16_t)glyph_of(c) << 3);
+    uint8_t *d = ROW(ty << 3) + tx;
+    uint8_t p0 = pat(k, 0), p1 = pat(k, 1), r, m;
+    for (r = 0; r < 8; ++r, d += 32) {
+        m = *src++;
+        if (k != PW) {
+            m &= 0x55;
+            m |= m << 1;
+        }
+        *d = m & ((r & 1) ? p1 : p0);
     }
-}
-
-static void glyph(uint8_t tx, uint8_t ty, char c, uint8_t k, uint8_t big)
-{
-    uint8_t px = 4 + 6 * tx, y = ty << 3;
-    gl_src = pm_font + ((uint16_t)glyph_of(c) << 3);
-    gl_dst = ROW(y) + (px >> 3);
-    gl_sh = px & 7;
-    gl_pt0 = pat(k, y);
-    gl_pt1 = pat(k, y + 1);
-    gl_big = big;
-    glyph_rows();
 }
 
 void gfx_char(uint8_t tx, uint8_t ty, char c, uint8_t col)
 {
-    if (tx > 39 || ty > 23)
+    if (tx >= TCOLS || ty > 23)
         return;
-    glyph(tx, ty, c, kind[col], 0);
+    glyph(tx, ty, c, kind[col]);
 }
 
 void gfx_textn(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
 {
-    if (ty > 23)
+    uint8_t k = kind[col];
+    if (ty > 23 || tx >= TCOLS)
         return;
     spr_bg(tx, n, ty << 3, 8);
-    while (n-- && *s && tx < 40)
-        gfx_char(tx++, ty, *s++, col);
+    while (n-- && *s && tx < TCOLS)
+        glyph(tx++, ty, *s++, k);
     bg_done();
 }
 
 void gfx_text(uint8_t tx, uint8_t ty, const char *s, uint8_t col)
 {
-    gfx_textn(tx, ty, s, 40, col);
+    gfx_textn(tx, ty, s, TCOLS, col);
 }
-
-/* A text cell's first pixel; spr_bg's rectangles are in bytes. */
-#define CELL_PX(tx) (4 + 6 * (uint16_t)(tx))
 
 void gfx_clear_text(uint8_t tx, uint8_t ty, uint8_t w)
 {
-    if (tx >= 40 || ty > 23)
+    if (tx >= TCOLS || ty > 23)
         return;
-    if (tx + w > 40)
-        w = 40 - tx;
+    if (tx + w > TCOLS)
+        w = TCOLS - tx;
     spr_bg(tx, w, ty << 3, 8);
-    fill_px(CELL_PX(tx), CELL_PX(tx + w), ty << 3, 8, PK, 0xFF);
+    fill_px((uint16_t)tx << 3, (uint16_t)(tx + w) << 3, ty << 3, 8, PK, 0xFF);
     bg_done();
 }
 
+/* Big text is the same font (BIGW 1), as on the TMS9918. */
 void gfx_bign(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
 {
-    uint8_t k = kind[col];
-    char c;
-    tx &= 0xFE;
-    if (ty > 23)
-        return;
-    spr_bg(tx, n * 2, ty << 3, 8);
-    while (n-- && (c = *s++) != 0 && tx < 40) {
-        glyph(tx, ty, c, k, 1);
-        tx += 2;
-    }
-    bg_done();
+    gfx_textn(tx, ty, s, n, col);
 }
 
 void gfx_big(uint8_t tx, uint8_t ty, const char *s, uint8_t col)
 {
-    gfx_bign(tx, ty, s, 20, col);
+    gfx_textn(tx, ty, s, TCOLS, col);
 }
 
 /* ---- rectangles ------------------------------------------------------- */
-/* Colour pixels -> the text cells (spr_bg's units) they touch. */
+/* Colour pixels -> the text cells (bytes: spr_bg's units) they touch. */
 static uint8_t cell_of(int16_t cp)
 {
-    if (cp < 2)
+    if (cp < 0)
         return 0;
-    if (cp > 129)
-        return 42;
-    return (uint8_t)(((uint16_t)(uint8_t)(cp - 2) * 86) >> 8);     /* / 3 */
+    if (cp > 127)
+        return 32;
+    return (uint8_t)cp >> 2;
 }
 
 void gfx_fill(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t col)
@@ -576,7 +504,7 @@ void gfx_plot(uint8_t p, const PlotLook *look)
     }
     bx = 2 + (p % 9) * 3;
     y0 = 16 + (p / 9) * 32;
-    spr_bg(cell_of(bx * 4), 5, y0, 32);
+    spr_bg(bx, 3, y0, 32);
     pl_dst = ROW(y0) + bx;
     pl_po0 = pat(k, y0);
     pl_po1 = pat(k, y0 + 1);
@@ -593,7 +521,7 @@ void gfx_town(void)
     uint8_t *d = ROW(16) + 6;
     uint8_t col = 0, n, v, lit = 0, run = 0;
     uint16_t left = 144 * 19;
-    spr_bg(7, 26, 16, 144);
+    spr_bg(6, 19, 16, 144);
     while (left) {
         if (!lit && !run) {
             n = *src++;
@@ -621,8 +549,8 @@ void gfx_town(void)
 /* ---- sprites ----------------------------------------------------------
  * Each slot keeps what the game asked for and, once drawn, the rectangle
  * (bytes bx..bx+n-1, lines sy..sy+sh-1) it saved from under itself. The
- * rectangles given to spr_bg by background drawing are in text cells; the
- * sprites' are turned into cells for comparing (s_c0, s_cn).
+ * rectangles given to spr_bg by background drawing are in text cells
+ * (bytes); the sprites' are turned into cells for comparing (s_c0, s_cn).
  */
 #define SAVE_MAX 128
 /* The save-under buffers: 10 x 128 bytes at the top of RAM, above the

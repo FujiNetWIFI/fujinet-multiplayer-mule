@@ -16,8 +16,8 @@ file stores colour art with A = 01 and B = 10; src/coco/gfx.c swaps them if
 the player says the colours are the wrong way round.
 
 Scaling: Atari colour clocks x become colour pixels 3x/4 + 2 (160 -> 120,
-a plot 12 colour pixels = 3 bytes, starting on a byte; a text cell 3 colour
-pixels = 6 pixels, so 40 columns fit). Sprites of characters keep their
+a plot 12 colour pixels = 3 bytes, starting on a byte; a text cell is a
+byte, 32 columns). Sprites of characters keep their
 width (8 colour pixels); the plot cursor, the ships and the cloud, which
 line up with the map, are squeezed too. Scanlines are kept 1:1.
 """
@@ -51,65 +51,32 @@ def squeeze(row):
 
 
 # ---------------------------------------------------------------------------
-# Font: 6 pixels a cell. The Atari glyphs are 7 pixels (columns 1..7, drawn
-# with 2-pixel strokes); two neighbouring columns are merged, picking for
-# each glyph the pair of merges that keeps the most gaps, and a blank column
-# is kept between characters. Rows: bits 7..2 of a byte (bit 7 left).
+# Font: the Namco arcade font the TMS9918 clients use (tools/tms/namco.bin),
+# 8 x 8, a byte a cell (32 columns). src/coco/gfx.c draws coloured text from
+# a glyph's odd pixels (columns 1, 3, 5, 7: one a colour pixel), which the
+# 2-pixel strokes always reach; a lone pixel in an even column moves one
+# right so it isn't lost, and '#' (lone pixels both sides) is redrawn.
 # ---------------------------------------------------------------------------
-def runs(cols):
-    n, prev = 0, 0
-    for v in cols:
-        if v and not prev:
-            n += 1
-        prev = v
-    return n
+FONT_FIX = {
+    "#": [0x00, 0x44, 0xFE, 0x44, 0xFE, 0x44, 0x00, 0x00],
+}
 
 
-MERGES = [(i, j) for i in range(6) for j in range(i + 2, 6)]
-
-
-def merge7(cols, m):
-    i, j = m
-    out, k = [], 0
-    while k < 7:
-        if k in (i, j):
-            out.append(cols[k] | cols[k + 1])
-            k += 2
-        else:
-            out.append(cols[k])
-            k += 1
-    return out
-
-
-def font_pm(atari):
+def namco_font():
+    """Characters 32..95 (upper case is all the game uses)."""
+    with open(os.path.join(HERE, "tms", "namco.bin"), "rb") as f:
+        d = f.read()
     out = []
-    if atari:
-        f = atari.font()
-        for c in range(64):
-            rows = [[(b >> (6 - x)) & 1 for x in range(7)] for b in f[c]]
-            best = None
-            for m in MERGES:
-                sq = [merge7(r, m) for r in rows]
-                # keep the gaps first; then prefer strokes on pixel pairs
-                # (0-1, 2-3, 4-5 of the cell), which a TV shows white
-                score = sum(runs(s) == runs(r) for s, r in zip(sq, rows)) * 100 \
-                    + sum(s[k] & s[k + 1] for s in sq for k in (0, 2))
-                if m == (1, 4):
-                    score += 1              # the usual one wins a tie
-                if best is None or score > best[0]:
-                    best = (score, sq)
-            g = []
-            for r in best[1]:
-                v = 0
-                for x, bit in enumerate(r):
-                    if bit:
-                        v |= 0x80 >> x
-                g.append(v)
-            out.append(g)
-    else:
-        for c in range(64):
-            rows = hgr.STANDIN_FONT.get(chr(32 + c), [0] * 7)
-            out.append([0] + [(r << 3) & 0xF8 for r in rows])
+    for i in range(64):
+        g = FONT_FIX.get(chr(32 + i)) or list(d[i * 8:i * 8 + 8])
+        rows = []
+        for b in g:
+            for c in (6, 4, 2, 0):          # bit 7 - c: column c (even)
+                m = 0x80 >> c
+                if b & m and not b & (m >> 1) and not b & (m << 1):
+                    b = (b & ~m) | (m >> 1)
+            rows.append(b & 0xFF)
+        out.append(rows)
     return out
 
 
@@ -277,7 +244,7 @@ def main():
            ("converted from the Atari disk" if atari else "STAND-IN art: no ATR given"),
            "#include <stdint.h>", '#include "../../src/coco/gfxdata.h"', ""]
 
-    font = font_pm(atari)
+    font = namco_font()
     src.append("const uint8_t pm_font[64 * 8] = {")
     src.append(c_bytes([b for g in font for b in g]))
     src.append("};")
@@ -339,9 +306,9 @@ def main():
                 scr[(16 + y, 6 + b)] = v
         for i, g in enumerate(font):          # the font under the town
             for y, v in enumerate(g):
-                x = 4 + (i % 40) * 6
-                yy = 164 + (i // 40) * 9 + y
-                for k in range(6):
+                x = (i % 32) * 8
+                yy = 164 + (i // 32) * 9 + y
+                for k in range(8):
                     if v & (0x80 >> k):
                         m = x + k
                         scr[(yy, m // 8)] = scr.get((yy, m // 8), 0) | (0x80 >> (m % 8))

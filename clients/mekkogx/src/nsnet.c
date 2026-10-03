@@ -62,6 +62,7 @@ static uint8_t stage[sizeof(MuleState)];
 #endif
 static uint8_t joined, heard;
 static uint8_t seq, wait_seq, wait_act, credited, hello_n, hello_t, resync_hold;
+static uint8_t resync_owed;     /* a bad frame came during the hold: ask after it */
 static uint8_t pending;         /* an action whose write failed: again, as it was */
 static uint16_t quiet;
 
@@ -184,6 +185,19 @@ static uint8_t send(uint8_t type, const uint8_t *p, uint8_t n)
     return nt_flush();
 }
 
+/* Lost or garbled: the whole state again, once a RESYNC_GAP at most. One
+ * held back is only put off: the server counts what was lost as ours, so
+ * nothing else would ever bring it (the map, the auction's setup). */
+static void resync(void)
+{
+    resync_owed = 1;
+    if (!resync_hold) {
+        send(SC_RESYNC, 0, 0);
+        resync_hold = RESYNC_GAP;
+        resync_owed = 0;
+    }
+}
+
 static void send_credit(void)
 {
     credited = ns_taken;
@@ -206,6 +220,7 @@ static void send_hello(void)
     strncpy((char *)h + 10, sc_name, 8);
     send(SC_HELLO, h, sizeof(h));
     hello_t = 0;
+    resync_owed = 0;            /* HELLO brings the whole state */
     if (!joined) {
         joined = 1;
         heard = 0;
@@ -299,15 +314,12 @@ static uint8_t take(void)
         quiet = 0;
         heard = 1;
         if (n == 255) {
-            if (!resync_hold) {
-                send(SC_RESYNC, 0, 0);  /* lost: the whole state again */
-                resync_hold = RESYNC_GAP;
-            }
+            resync();
             continue;
         }
         switch (fbuf[0]) {
         case CS_PATCH:
-            off = fbuf[1] | fbuf[2] << 8;
+            off = fbuf[1] | (uint16_t)fbuf[2] << 8;    /* (CMOC shifts a byte in 8 bits) */
             n -= 3;
             if (off + n <= sizeof(MuleState))
                 stage_put(off, fbuf + 3, n);
@@ -365,6 +377,8 @@ uint8_t net_step(void)
         return 0;
     if (resync_hold)
         --resync_hold;
+    else if (resync_owed)
+        resync();
     if (!heard && ++hello_t >= HELLO_WAIT && hello_n < HELLO_MAX) {
         ++hello_n;
         send_hello();               /* the socket may not have been open */
