@@ -173,26 +173,51 @@ static uint8_t d_on[SPR_SLOTS], d_pen[SPR_SLOTS], d_w[SPR_SLOTS], d_h[SPR_SLOTS]
 static const uint8_t *d_data[SPR_SLOTS];
 static int16_t d_x[SPR_SLOTS], d_y[SPR_SLOTS];
 
-/* Copy what changed to SCREEN, then the sprites over it. */
+/* Copy what changed to SCREEN with the sprites over it: a band of lines at
+ * a time is made in band[] -- the background from BACK, then Suzy draws
+ * the sprites' rows in it -- and copied out, so each byte of SCREEN is
+ * written once, as it ends up: a sprite is never off the screen. */
+#define BAND 32
+static uint8_t band[BAND * LX_BPL];
+
 static void commit(void)
 {
-    uint8_t y, i, lo;
+    uint8_t y, y0, y1, t, i, lo;
+    int16_t top, bot;
     if (!dirty)
         return;
     dirty = 0;
-    for (y = 0; y < LX_H; ++y) {
-        lo = dlo[y];
-        if (lo <= dhi[y]) {
-            memcpy(SCREEN + lineoff[y] + lo, BACK + lineoff[y] + lo, dhi[y] - lo + 1);
-            dlo[y] = 255;
-            dhi[y] = 0;
+    for (y = 0; y < LX_H;) {
+        if (dlo[y] > dhi[y]) {
+            ++y;
+            continue;
+        }
+        y0 = y;
+        while (y < LX_H && dlo[y] <= dhi[y] && (uint8_t)(y - y0) < BAND)
+            ++y;
+        y1 = y;
+        for (t = y0; t < y1; ++t) {
+            lo = dlo[t];
+            memcpy(band + (uint16_t)(t - y0) * LX_BPL + lo, BACK + lineoff[t] + lo, dhi[t] - lo + 1);
+        }
+        suzy_dst = (uint16_t)band - lineoff[y0];
+        for (i = 0; i < SPR_SLOTS; ++i) {
+            if (!d_on[i])
+                continue;
+            top = d_y[i] > y0 ? d_y[i] : y0;
+            bot = d_y[i] + d_h[i] < y1 ? d_y[i] + d_h[i] : y1;
+            if (top < bot)
+                spr1(d_data[i] + (uint8_t)(top - d_y[i]) * d_wb[i], d_wb[i], (uint8_t)(bot - top),
+                     d_x[i], top, d_pen[i], 0x100);
+        }
+        suzy_dst = (uint16_t)BACK;
+        for (t = y0; t < y1; ++t) {
+            lo = dlo[t];
+            memcpy(SCREEN + lineoff[t] + lo, band + (uint16_t)(t - y0) * LX_BPL + lo, dhi[t] - lo + 1);
+            dlo[t] = 255;
+            dhi[t] = 0;
         }
     }
-    suzy_dst = (uint16_t)SCREEN;
-    for (i = 0; i < SPR_SLOTS; ++i)
-        if (d_on[i])
-            spr1(d_data[i], d_wb[i], d_h[i], d_x[i], d_y[i], d_pen[i], 0x100);
-    suzy_dst = (uint16_t)BACK;
 }
 
 void spr_set(uint8_t i, uint8_t shape, uint8_t frame, int16_t x, int16_t y,

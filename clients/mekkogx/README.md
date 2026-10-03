@@ -85,13 +85,13 @@ A joystick works too if one is centred when the game starts.
 **The screen: HGR page 1.**
 - **Scaling.** Atari colour clocks become colour pixels at 7/8 (160 across becomes 140). A map plot is exactly 4 bytes wide and starts on a byte; scanlines are kept 1:1.
 - **Colours.** Players are blue, violet, green and orange, which are HGR's four colours. White text is 40 columns. Coloured text is double width (20 columns), because single-width coloured text doesn't survive NTSC artifacting.
-- **Sprites.** They are software sprites with save-under (`src/apple2/gfx.c`, `hires.s`), drawn a colour pixel at a time.
+- **Sprites.** They are software sprites with save-under (`src/apple2/gfx.c`, `hires.s`), drawn a colour pixel at a time. The save-unders are rings of rows (a screen line's bytes in row line % rows), so a flush does each line at once, top to bottom: the old row back, the new one saved, the sprite drawn. A sprite is never off the screen, so nothing flickers; at worst the beam shows one frame torn between a sprite's old place and its new one. The same goes for the CoCo and MS-DOS.
 
 **Memory: 128K is used.**
 - **Main RAM** holds the core. HGR page 1 sits at $2000-$3FFF. The language card holds a little more code.
 - **Overlays.** Each phase's code is an overlay (boot, lobby and summary, grant and production, auctions, development).
 - **Aux RAM** holds all five overlays, plus the sprites, the town and the strings.
-- **Loading.** Everything is read from `MULE.1`…`MULE.7` at start-up. At each phase change the phase's overlay is copied into a 7.5K window ($9D00-$BAFF) with AUXMOVE.
+- **Loading.** Everything is read from `MULE.1`…`MULE.7` at start-up. At each phase change the phase's overlay is copied into a window ($9D00-$B61F) with AUXMOVE. Above it, to $BAFF, are seven sprites' save-unders (`SPRSAVE`).
 - **The network's state being built** (550 bytes) lives in aux RAM at $8900 (`AUXSTAGE`), and the code only the boot screens use (the table list, the appkeys) is in the boot overlay: main RAM is full.
 - **Memory map.** See `src/apple2/mule-hgr.cfg`.
 
@@ -136,7 +136,7 @@ A joystick works too if one is centred when the game starts.
   - Text is 40 columns of 6-pixel cells; the Atari font is squeezed from 7 pixels to 5.
   - Coloured text is double width, as on the Apple.
   - Characters' sprites keep their 8 colour pixels; the ship, cloud and plot cursor are squeezed like the map.
-- **Drawing:** sprites are software sprites with save-under (`src/coco/gfx.c`). The inner loops (sprite rows, glyphs, plots) are 6809 assembly.
+- **Drawing:** sprites are software sprites with save-under (`src/coco/gfx.c`), done a line at a time as on the Apple II. The sprite engine and the inner loops (sprite rows, glyphs, plots) are 6809 assembly: CMOC's code for the engine would not fit.
 
 **Memory: 64K, all RAM once running.** See `src/coco/mule.link`.
 
@@ -441,7 +441,7 @@ A cart image for the Atari Lynx with a FujiNet-Lynx on its ComLynx port. It keep
   - the map and the town (rows 2-21) are at half height: a plot is 16 x 16, and the town is 96 x 72 from line 10;
   - text rows there alternate 5 and 3 lines, with rows 18 and 19 up a line. No screen writes an odd row and the one after it, except the town's corral price (19) with its money (20), which the shift makes room for.
 - **Text** is a 3 x 5 font in 4-pixel cells (40 across). Big text is the same, twice as wide. On the grey screens (the map and the town) white text is black, as the Atari prints it.
-- **Everything is drawn into the background** by Suzy. What changed is copied to the screen by the CPU, and the sprites are drawn over it again, so a sprite needs nothing saved from under it.
+- **Everything is drawn into the background** by Suzy. What changed is made up again 32 lines at a time in a band buffer (the background copied in, the sprites drawn over it), then copied to the screen, so a sprite needs nothing saved from under it, and each byte of the screen is written once, as it ends up: nothing flickers.
 - **ComLynx and Suzy.** While Suzy draws the CPU sleeps and interrupts wait, and ComLynx has one byte of buffering. So fills go in pieces of 8 lines, and the town is unpacked by the CPU.
 - **Pens:** the game's colours in order, with pen 14 a second black for sprites (pen 0 may be see-through) and pen 15 the river. The town's colours are the nearest pens.
 
@@ -492,7 +492,6 @@ The name is picked a letter at a time (`PLAT_NO_KEYBOARD` in `boot.c`): up and d
 - **CoCo: phase changes** pause about a second while the phase's overlay is read.
 - **CoCo: grey** is black or white, and the fourth player is striped.
 - **Lynx: the screen is 102 lines.** Text rows on the map and town screens share lines, as described above. A long message's two rows (22 and 23) are tight.
-- **Lynx: sprites flicker a little** as they move: they are redrawn on the screen being shown (there's no room for a second one).
 - **Lynx: untested on hardware** as written: MAME has no ComLynx to the outside, so the network half has only been run on paper and the offline test mode.
 - **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS that is a sector (512 bytes) a round trip: about 5 s at 9600 bps, half a second at 115200. `make pcjr-floppy` makes a boot floppy with MULE.EXE on it (`r2r/msdos/pcjr-boot.img`, from `PCJR_BOOT`, the rig's DOS disk), from which the overlays load at floppy speed.
 - **MS-DOS, CGA:** the fourth player is striped, and the fence around the town's corral is white.
