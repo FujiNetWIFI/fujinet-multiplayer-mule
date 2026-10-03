@@ -46,6 +46,8 @@ The hand controller moves, and its trigger is the button. On the keypad:
 | 0 | sits a good out (declaring) |
 | MR | mutes |
 
+If you join a table whose game has already started (or you leave a game), you watch it as a spectator. "SPECTATOR" stays in a corner of every screen. It sits on row 0, except under the big titles of the auctions (row 2) and the summaries (row 1). Only C does anything, and it leaves at once (`SPTICK` in `status.inc`).
+
 A name is entered with the stick: up and down choose a letter, right or
 the trigger takes it. The keypad's digits go straight in.
 
@@ -150,7 +152,9 @@ the FujiNet cartridge device) from a scenario, in the other sims' language:
 The offline test mode (`test PHASE [ARG [PEVENT]]`, phase + 1 in the hook)
 needs no network. The state cannot fit in RAM, so in test mode `RXGETB`
 asks the test page, which makes each byte of `teststart.c`'s state up from
-its offset. The few things actions change are kept in RAM.
+its offset. The few things actions change are kept in RAM. `poke TESTHK 255`
+after the start makes the made-up seat none, so the screens can be checked
+as a spectator sees them.
 
 Live, against a private server and fujinet-pc:
 

@@ -78,6 +78,8 @@ The chosen table is written back to key 10, so restarting rejoins it.
 
 A joystick works too if one is centred when the game starts.
 
+**Spectating.** If you join a table whose game has already started (or you leave a game), you watch it as a spectator. "SPECTATOR" stays in a corner of every screen. It sits on row 0, except under the big titles of the auctions (row 3) and the summaries (row 1). Every key but the leave key is ignored. The leave key leaves at once, without asking, as there is no seat to lose (`main.c`, `spec_tag` in `text.c`).
+
 ## The Apple II version
 
 **The screen: HGR page 1.**

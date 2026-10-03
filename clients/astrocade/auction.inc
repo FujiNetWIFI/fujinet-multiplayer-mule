@@ -896,6 +896,10 @@ AUMESSAGE: LD   A,ROWMSG
         LD      A,(AUSTAGE)
         CP      ST_DECL
         JR      NZ,AMS1
+        LD      A,(MYSEAT)      ; (a spectator isn't asked)
+        CP      4
+        LD      A,ST_DECL
+        JR      NC,AMS1
         LD      C,M_DECLARE
 AMS1:   CP      ST_DONE
         JR      NZ,AMS2
@@ -1983,15 +1987,15 @@ AUTICK: LD      A,(AUKIND)
         LD      A,(MAPBLK)
         CALL    MAPPLOT
 AT2:    CALL    MSGTICK
+        LD      A,(MYSEAT)
+        CP      4
+        RET     NC
         LD      A,(EVBTN)
         OR      A
-        JR      Z,AT2A
+        JP      Z,AUSTICK
         LD      A,A_READY
         LD      HL,0
         CALL    ACTSEND
-AT2A:   LD      A,(MYSEAT)
-        CP      4
-        RET     NC
         JP      AUSTICK
 AT3:    LD      A,(SCRNOW)
         CP      SCR_AUC

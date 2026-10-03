@@ -91,6 +91,81 @@ LVA2:   CALL    MSGCLR          ; no: carry on
         SCF
         RET
 
+; SPTICK: every frame, from MAINLP. With a seat, the leave key asks
+; (LVASK). Without one (the game was under way when we joined, or we left
+; it), only the leave key counts, and it leaves at once: there is no seat to
+; lose. SPECTATOR goes in a corner each screen leaves free -- row 0, but
+; under the big titles of the auctions and the summaries -- every 32 frames,
+; as a repaint takes it off. C: the loop starts again (we asked, or left).
+SPTICK: LD      A,(STOK)
+        OR      A
+        JR      Z,SPT8
+        LD      A,(MYSEAT)
+        CP      4
+        JR      NC,SPT1
+        LD      HL,SPAT         ; a seat now: the tag off (the lobby's row 0)
+        BIT     0,(HL)
+        JR      Z,SPT8
+        RES     0,(HL)
+        LD      HL,SPTXT+9
+        LD      DE,0
+        LD      B,9
+        LD      C,CW
+        CALL    TXTN
+SPT8:   LD      A,(EVKEY)
+        CP      KEYLV
+        JP      Z,LVASK
+        OR      A
+        RET
+SPT1:   XOR     A
+        LD      (EVBTN),A
+        LD      (INDIR),A
+        LD      A,(EVKEY)
+        CP      KEYLV
+        JR      Z,SPT5
+SPT2:   XOR     A
+        LD      (EVKEY),A
+        LD      A,(FRAMES)
+        AND     0E0H
+        LD      HL,SPAT
+        XOR     (HL)
+        AND     0E0H
+        RET     Z               ; (NC)
+        XOR     (HL)
+        OR      1
+        LD      (HL),A
+        LD      A,(SCRNOW)
+        OR      A
+        RET     Z
+        LD      D,0
+        CP      SCR_AUC
+        JR      NZ,SPT3
+        LD      D,2
+SPT3:   CP      SCR_SUMM
+        JR      NZ,SPT4
+        INC     D
+SPT4:   CP      SCR_FOUND       ; the founder, then the final table
+        JR      NZ,SPT6
+        LD      A,(GOSTAGE)
+        OR      A
+        JR      Z,SPT6
+        INC     D
+SPT6:   LD      E,0
+        LD      HL,SPTXT
+        LD      C,CW
+        CALL    TXTAT
+        OR      A
+        RET
+SPT5:   LD      A,(PHS)
+        OR      A               ; PH_LOBBY: its tick leaves
+        RET     Z
+        LD      A,(TESTMD)
+        OR      A
+        JR      NZ,SPT2
+        CALL    FXSTOP
+        JP      LVGO
+SPTXT:  DB      "SPECTATOR",0
+
 STTICK: LD      A,(PHS)
         CP      PH_LOBBY
         JP      Z,LBTICK

@@ -1,0 +1,60 @@
+# Join a game already under way: a spectator. SPECTATOR on every screen;
+# FIRE does nothing (the server log shows no action from VCS); RESET held
+# leaves. Someone else must start the game on table irata first, e.g.
+#   curl 'localhost:8096/state?table=irata&player=alice'
+#   curl 'localhost:8096/ready/1?table=irata&player=alice'
+# and keep polling /state as alice (and /ready/1 at each summary).
+wait 60
+press fire
+bank 8
+wait 1200
+press fire
+wait 600
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+press fire
+wait 900
+text
+hold reset 80
+bank 8 600
+wait 60
+text
+quit

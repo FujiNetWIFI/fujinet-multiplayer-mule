@@ -286,7 +286,7 @@ static void au_message(void)
     uint8_t k = 255;
     msg_row = 22;
     msg_col = C_WHITE;
-    if (au_stage == STAGE_DECLARE) k = M_DECLARE;
+    if (au_stage == STAGE_DECLARE && my_seat < 4) k = M_DECLARE;
     if (au_stage == STAGE_DONE) k = M_AUCOVER;
     if (au_kind == 1 && au_stage == STAGE_DONE)
         k = (uint8_t)st.auction.winner < 4 ? M_SOLD : M_NOBIDS;
@@ -767,10 +767,11 @@ void auction_tick(void)
             map_draw_plot(map_blink);
         }
         msg_tick();
-        if (ev_btn)
-            act_send(ACT_READY, 0);
-        if (my_seat < 4)
+        if (my_seat < 4) {
+            if (ev_btn)
+                act_send(ACT_READY, 0);
             au_stick();
+        }
         return;
     }
     if (scr_now != SCR_AUCTION)

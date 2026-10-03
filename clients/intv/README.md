@@ -56,10 +56,13 @@ The chosen table is written back to key 10, so resetting the console rejoins it.
 
 ## Controls (left hand controller)
 
+If you join a table whose game has already started (or you leave a game), you watch it as a spectator. The title row has no room for a tag beside it, so it shows "SPECTATOR" for a second in every two and then puts the title back (`spec_tick` in `leave.bas`).
+
 | Screen | Control |
 |---|---|
 | Lobby | Disc left/right: species. Button: ready / not ready. Keypad CLEAR: leave the table |
 | Any screen in a game | Keypad CLEAR: leave the game (asks first: CLEAR again leaves, anything else carries on; the computer takes over your seat) |
+| Spectating | Keypad CLEAR: leave at once. Nothing else does anything |
 | Status summary | Button: continue (every player must press) |
 | Land grant | Button: claim the plot under the cursor |
 | Land auction | Button: skip the plot display. Disc up/down: raise/lower your bid; let go to hold |

@@ -114,6 +114,7 @@ void msg_show(uint8_t id, uint16_t v1, uint16_t v2);
 void msg_start(uint8_t len);    /* txt holds len characters */
 void msg_tick(void);
 void msg_clear(void);
+void spec_tag(void);
 void title_show(uint8_t id, uint16_t v);
 void text_center(uint8_t ty, const char *s, uint8_t col);
 void big_center(uint8_t ty, const char *s, uint8_t col);

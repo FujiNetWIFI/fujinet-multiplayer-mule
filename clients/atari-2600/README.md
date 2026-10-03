@@ -43,6 +43,15 @@ Every build checks:
 | FIRE | start, join, ready; claim a plot; begin your turn; install, sample, catch the wampus; collude; sit out a declaration |
 | SELECT | end your turn |
 | RESET, held a second | leave the table (the computer takes the seat) |
+
+If you join a table whose game has already started (or you leave a game), you watch it as a spectator. The row that would show your own things says "SPECTATOR" instead:
+- the money under the map;
+- your role in an auction;
+- the footer of a good's status;
+- row 18 of the summaries;
+- the ready line in the lobby.
+
+FIRE does nothing; RESET held leaves.
 | left difficulty A | mute |
 
 The name is the FujiNet lobby's shared username (appkey 0). Without one a

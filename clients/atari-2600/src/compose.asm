@@ -136,7 +136,7 @@ ACC3:   cmp     #3
         jsr     FNROWA
         ldx     HSEAT
         cpx     #4
-        bcs     ACC3X
+        bcs     ACC3S
         lda     AROLE,x
         tax
         lda     ROLEL,x
@@ -160,10 +160,17 @@ ACC3:   cmp     #3
         lda     #5
         jsr     MDEC
 ACC3X:  jmp     FNENDW
+ACC3S:  ldx     #(SSPECT)&$FF   ; no seat: we only watch
+        ldy     #(SSPECT)>>8
+        jsr     FNSTRXY
+        jmp     FNENDW
 ACC4:   cmp     #4
         bne     ACC5
         lda     #ARB0+1         ; my money, my units of the good
         jsr     FNROWA
+        ldx     HSEAT
+        cpx     #4
+        bcs     ACC4X
         lda     #'$'
         jsr     FNCHR
         lda     HMONEY
@@ -348,6 +355,7 @@ GN3S:   DB      "CRYSTITE",0
 RL0:    DB      "WATCHING",0
 RL1:    DB      "BUY",0
 RL2:    DB      "SELL",0
+SSPECT: DB      " SPECTATOR",0
 
 
         INCLUDE "mlib.inc"

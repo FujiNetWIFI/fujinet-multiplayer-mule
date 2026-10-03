@@ -400,6 +400,14 @@ TSGH:   ADD     HL,DE           ; (back to 0..15)
         LD      A,(TPH)
         RET     Z
         LD      A,E
+        CP      5               ; our seat: 0, or none (a spectator) once
+        JR      NZ,TSGH1        ; the harness pokes 0FFH into TESTHK
+        LD      A,(TESTHK)
+        CP      0FFH
+        RET     Z
+        XOR     A
+        RET
+TSGH1:  LD      A,E
         CP      6
         LD      A,(TERR)
         RET     Z

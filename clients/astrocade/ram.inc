@@ -171,6 +171,8 @@ XFV2    EQU     GTMP            ; XFILL
         VAR     INPHKD,1
         VAR     INPHKB,1
         VAR     INPHKK,1
+        VAR     SPAT,1          ; the SPECTATOR tag: bits 5-7 FRAMES' when
+                                ; drawn, bit 0 it is up (status.inc SPTICK)
 
 ; ---- sound ------------------------------------------------------------------
         VAR     SNDF,1          ; frames left of the tone playing

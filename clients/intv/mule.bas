@@ -77,7 +77,7 @@ boot_entry:
 ' the current phase.
 ' ---------------------------------------------------------------------------
 game_start:
-    POKE LV_GO, 0
+    POKE LV_GO, 0 : POKE SP_ON, 0
     last_phase = 255 : last_round = 255
     scr_now = SCR_NONE
     st_ok = 0
@@ -89,6 +89,7 @@ game_start:
 main_loop:
     WAIT
     GOSUB take_input
+    IF st_ok THEN GOSUB spec_tick
     IF ev_key = 10 AND st_ok <> 0 AND phase > 0 AND test_mode = 0 THEN GOSUB leave_ask
     IF PEEK(LV_GO) AND 255 THEN POKE LV_GO, 0 : IF test_mode = 0 THEN GOSUB leave_table : GOTO main_loop
     IF poll_wait > 0 THEN poll_wait = poll_wait - 1

@@ -381,13 +381,23 @@ GC11S:  ldx     #(SSTHAS)&$FF
         jmp     FNENDW
 GC11D:  cmp     #STGDECL
         bne     GC11E
+        ldx     HSEAT
+        cpx     #4
+        bcs     GC11E
         ldx     #(SDECL)&$FF
         ldy     #(SDECL)>>8
         jsr     FNSTRXY
 GC11E:  jmp     FNENDW
 GC12:   lda     #RFOOT          ; the footer, then done
         jsr     FNROWA
-        lda     GSTG
+        ldx     HSEAT           ; no seat: SPECTATOR
+        cpx     #4
+        bcc     GC12B
+        ldx     #(SSPECT)&$FF
+        ldy     #(SSPECT)>>8
+        jsr     FNSTRXY
+        jmp     GC12A
+GC12B:  lda     GSTG
         cmp     #STGDECL
         bne     GC12A
         ldx     #(SFOOT)&$FF
@@ -448,6 +458,7 @@ SNEED:  DB      "NEED",0
 SSTHAS: DB      "STORE HAS",0
 SDECL:  DB      "UP SELL DN BUY",0
 SFOOT:  DB      "FIRE:SIT OUT",0
+SSPECT: DB      " SPECTATOR",0
 ST0:    DB      "PREVIOUS",0
 ST1:    DB      "USAGE",0
 ST2:    DB      "SPOILAGE",0

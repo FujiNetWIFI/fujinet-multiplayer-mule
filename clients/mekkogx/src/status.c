@@ -365,6 +365,7 @@ void lobby_tick(void)
     if ((my_seat > 3) != lb_spec) {
         lb_spec = my_seat > 3;
         lb_lastcd = 0xFFFE;
+        gfx_clear_text(0, 0, 9);        /* the SPECTATOR tag (text.c) */
     }
     w = (uint16_t)st.h.countdown;
     if (!(w & 0x8000)) {

@@ -141,6 +141,18 @@ void title_show(uint8_t id, uint16_t v)
     text_center(1, buf, C_WHITE);
 }
 
+/* Watching (no seat): "SPECTATOR" in a corner each screen leaves free, by
+ * scr_now -- row 0, but under the big titles on the summaries and the
+ * auctions (a small character on a big row would spoil the
+ * Atari's). The lobby takes it off when a seat comes free. */
+static const uint8_t spec_rows[] = { 0, 0, 0, 0, 3, 1, 1 };
+
+void spec_tag(void)
+{
+    if (scr_now)
+        gfx_text(0, spec_rows[scr_now], "SPECTATOR", C_WHITE);
+}
+
 void msg_clear(void)
 {
     msg_scroll = 0;

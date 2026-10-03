@@ -151,11 +151,18 @@ MC0:    inc     MCOMP
         jsr     MDEC8
         jsr     FNENDW
         rts
-; the bottom row: my money
+; the bottom row: my money, or SPECTATOR (no seat)
 MC2:
         lda     #MBOTROW
         jsr     FNROWA
-        lda     #'$'
+        lda     HSEAT
+        cmp     #4
+        bcc     MC2A
+        ldx     #(SSPECT)&$FF
+        ldy     #(SSPECT)>>8
+        jsr     FNSTRXY
+        jmp     MC2B
+MC2A:   lda     #'$'
         jsr     FNCHR
         lda     HMONEY
         sta     MNUM
@@ -163,7 +170,7 @@ MC2:
         sta     MNUMH
         lda     #5
         jsr     MDEC
-        jsr     FNENDW
+MC2B:   jsr     FNENDW
         lda     #0
         sta     MCOMP
         lda     HFLAGS
@@ -307,6 +314,9 @@ APB1:   jsr     GPLACE
 APB2:   jsr     INSCAN          ; the button skips the wait
         and     #IN_FIRE
         beq     APB3
+        ldx     HSEAT           ; (not a spectator's)
+        cpx     #4
+        bcs     APB3
         lda     #RQREADY
         ldx     #0
         ldy     #0
@@ -329,6 +339,9 @@ APB:    jsr     INSCAN
 AP5:    lda     MINP
         and     #IN_FIRE
         beq     AP9
+        ldx     HSEAT           ; a spectator claims nothing
+        cpx     #4
+        bcs     AP9
         lda     GCLAIM
         bne     AP9
         ldx     GCUR
@@ -359,6 +372,7 @@ PHN5:   DB      "AUCTION",0
 PHN6:   DB      "AUCTION",0
 PHN7:   DB      "STATUS",0
 PHN8:   DB      "GAME OVER",0
+SSPECT: DB      " SPECTATOR",0
 
 MBGT:   DB      0
 

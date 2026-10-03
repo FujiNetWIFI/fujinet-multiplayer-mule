@@ -206,7 +206,7 @@ static void leave_ask(void)
 void main(void)
 {
     const char *err = bank_init();
-    uint8_t i;
+    uint8_t i, spec_at = 0;
     uint16_t done, n;
 
     if (!err)
@@ -250,6 +250,12 @@ void main(void)
         snd_tick();
         input_poll();
         input_take();
+        /* watching (no seat): only the leave key counts */
+        if (st_ok && my_seat > 3) {
+            inp_dir = inp_btn = ev_btn = 0;
+            if (ev_key != KEY_LEAVE)
+                ev_key = KEY_NONE;
+        }
 #ifdef MULE_AUTOPLAY
         autoplay();
 #endif
@@ -298,12 +304,21 @@ void main(void)
         }
         dbg_at = 7;
         if (st_ok && phase != PHASE_LOBBY && ev_key == KEY_LEAVE) {
-            leave_ask();
+            /* a spectator has no seat to lose: no question */
+            if (my_seat > 3 && !test_mode)
+                leave_table();
+            else
+                leave_ask();
             done = frame_count;
             continue;
         }
         if (st_ok)
             ticks[phase]();
+        /* the spectator's tag, every 32 frames (a repaint takes it off) */
+        if (st_ok && my_seat > 3 && (uint8_t)(frame_count >> 5) != spec_at) {
+            spec_at = (uint8_t)(frame_count >> 5);
+            spec_tag();
+        }
         /* background drawn this frame took sprites off: back before the
          * next frame shows */
         spr_flush();

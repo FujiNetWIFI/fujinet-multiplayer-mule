@@ -316,7 +316,7 @@ END
 ' Row 11 messages.
 au_message: PROCEDURE
     k = 255
-    IF au_stage = STAGE_DECLARE THEN k = M_DECLARE
+    IF au_stage = STAGE_DECLARE AND my_seat < 4 THEN k = M_DECLARE
     IF au_stage = STAGE_DONE THEN k = M_AUCOVER
     IF au_kind = 1 AND au_stage = STAGE_DONE AND st8(ST_AUCTION_WINNER) < 4 THEN k = M_SOLD
     IF au_kind = 1 AND au_stage = STAGE_DONE AND st8(ST_AUCTION_WINNER) > 3 THEN k = M_NOBIDS
@@ -451,8 +451,10 @@ auction_tick: PROCEDURE
             END IF
         END IF
         GOSUB msg_tick_run
-        IF ev_btn THEN act = ACT_READY : poll_wait = 0
-        IF my_seat < 4 THEN GOSUB au_stick
+        IF my_seat < 4 THEN
+            IF ev_btn THEN act = ACT_READY : poll_wait = 0
+            GOSUB au_stick
+        END IF
         RETURN
     END IF
     IF scr_now <> SCR_AUCTION THEN RETURN

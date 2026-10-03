@@ -176,7 +176,12 @@ LC6:    lda     #18
         beq     LC7
         ldx     #(SUNRDY)&$FF
         ldy     #(SUNRDY)>>8
-LC7:    jsr     FNSTRXY
+LC7:    lda     HSEAT           ; no seat: we only watch
+        cmp     #4
+        bcc     LC7A
+        ldx     #(SSPECT)&$FF
+        ldy     #(SSPECT)>>8
+LC7A:   jsr     FNSTRXY
         jsr     FNENDW
         lda     #14
         jsr     FNROWA
@@ -280,6 +285,7 @@ SREADY: DB      "FIRE: READY",0
 SUNRDY: DB      "FIRE: WAIT",0
 SSTART: DB      "STARTS IN ",0
 SWAIT:  DB      "  WAITING",0
+SSPECT: DB      " SPECTATOR",0
 
 ; The rows: the seats' pairs in their colours.
 MBGT:   DB      CBLACK,CBLACK

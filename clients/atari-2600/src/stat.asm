@@ -129,7 +129,8 @@ SLC2:   rts
 ; ---------------------------------------------------------------------------
 ; SCOMPOSE -- one row of the redraw a frame, from the vblank (a row and a
 ; number are most of the vblank's 2800 cycles): steps 1-16 are the seats'
-; four rows each, then the title, the colony, the footer. HFNEW is cleared
+; four rows each, then the title, the colony, row 18 (SPECTATOR when we
+; have no seat), the footer. HFNEW is cleared
 ; at the end.
 SCOMPOSE: lda   MCOMP
         bne     SC0
@@ -142,7 +143,18 @@ SC0:    inc     MCOMP
 SC0A:   cmp     #18
         bne     SC0B
         jmp     SCCOL
-SC0B:   jmp     SCLAST
+SC0B:   cmp     #19
+        bne     SC0C
+        lda     #18             ; SPECTATOR (no seat), or a blank row
+        jsr     FNROWA
+        ldx     HSEAT
+        cpx     #4
+        bcc     SC0D
+        ldx     #(SSPECT)&$FF
+        ldy     #(SSPECT)>>8
+        jsr     FNSTRXY
+SC0D:   jmp     FNENDW
+SC0C:   jmp     SCLAST
 SC1:    sec
         sbc     #1
         tay
@@ -477,6 +489,7 @@ SLANDS: DB      "LAND  ",0
 STOTAL: DB      "TOTAL ",0
 SCOLS:  DB      "COLONY ",0
 SWAITD: DB      "  WAITING",0
+SSPECT: DB      " SPECTATOR",0
 SPRESSS: DB     "FIRE: READY",0
 SFOUND: DB      " FOUNDER",0
 RT0:    DB      "COLONY DIED",0
