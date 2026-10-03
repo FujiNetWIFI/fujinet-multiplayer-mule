@@ -33,6 +33,7 @@
 
     SEGMENT 1
     INCLUDE "map.bas"
+    INCLUDE "netstep.bas"
     INCLUDE "leave.bas"
     INCLUDE "grant.bas"
     INCLUDE "textlong.bas"
@@ -48,6 +49,7 @@
     SEGMENT 3
     INCLUDE "text.bas"
     INCLUDE "sound.bas"
+    INCLUDE "netpost.bas"
 
     ' $4810-$4FFF: clear of the ECS (RAM ends at $47FF), the FujiNet RAM and
     ' mailbox, and the GRAM mirrors.
@@ -66,6 +68,7 @@
 ' ---------------------------------------------------------------------------
 boot_entry:
     GOSUB fx_clear
+    POKE NX_ST, 0 : POKE NX_SK, 0   ' (cart RAM: a reset leaves it as it was)
     ON FRAME GOSUB frame_isr
     ' tools/intvsim.py can start an offline test (see test.bas).
     IF (PEEK(TEST_HOOK + 2) AND 255) = $5A THEN GOTO test_start
@@ -73,8 +76,8 @@ boot_entry:
     GOTO boot_start
 
 ' ---------------------------------------------------------------------------
-' The game loop: poll (or send the queued action), then per-frame work for
-' the current phase.
+' The game loop: a step of the request going on (or the next one begun:
+' a poll, or the queued action), then per-frame work for the current phase.
 ' ---------------------------------------------------------------------------
 game_start:
     POKE LV_GO, 0 : POKE SP_ON, 0
@@ -93,13 +96,19 @@ main_loop:
     IF ev_key = 10 AND st_ok <> 0 AND phase > 0 AND test_mode = 0 THEN GOSUB leave_ask
     IF PEEK(LV_GO) AND 255 THEN POKE LV_GO, 0 : IF test_mode = 0 THEN GOSUB leave_table : GOTO main_loop
     IF poll_wait > 0 THEN poll_wait = poll_wait - 1
-    IF poll_wait = 0 OR act <> ACT_NONE THEN GOSUB net_poll
+    IF test_mode THEN
+        IF poll_wait = 0 OR act <> ACT_NONE THEN GOSUB net_poll
+    ELSE
+        GOSUB net_tick
+    END IF
     IF st_ok THEN
         ON phase GOSUB lobby_tick, grant_tick, auction_tick, develop_tick, production_tick, auction_tick, auction_tick, summary_tick, gameover_tick
     END IF
     GOTO main_loop
 
-' net_poll: one exchange with the server, then react to what came back.
+' net_poll: one exchange with the server, waited on, then react to what
+' came back. (The main loop's go a step a frame: net_tick, netstep.bas,
+' and net_react there is this one's ending: keep the two the same.)
 net_poll: PROCEDURE
     IF test_mode THEN GOSUB test_poll : GOSUB poll_rate : RETURN
     GOSUB net_exchange

@@ -124,6 +124,7 @@ END
 ' header is updated but the body is left alone.
 ' ---------------------------------------------------------------------------
 net_exchange: PROCEDURE
+    GOSUB net_finish            ' (the main loop's, netstep.bas)
     net_have = 0
     IF act = ACT_NONE THEN act = ACT_STATE
     GOSUB compose

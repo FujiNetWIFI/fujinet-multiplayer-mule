@@ -21,6 +21,10 @@
     CONST TK_G = $8816          ' 1: the next tick is the low one
     CONST TK_F = $8817          ' FRAME AND 255 when last run
     CONST TK_U = $8818          ' the bar's units left (the caller's)
+    ' the request going on (netstep.bas): 0 none, 1 OPEN, 2 STATUS, 3 and
+    ' 4 the two READs, 5 CLOSE posted
+    CONST NX_ST = $8819
+    CONST NX_SK = $881A         ' 1: net_finish's: the reply isn't copied
 
     ' ---- Intellivision colours ----------------------------------------------
     CONST C_BLACK = 0
@@ -62,6 +66,9 @@
     ' #rx_pe + (#jiffy - #rx_jiffy).
     DIM #rx_jiffy, #rx_pe
     DIM #ph_t0                  ' a frame count a phase's animation started at
+    ' Read by map.bas's bar_tick (segment 1) before their own files come:
+    ' IntyBASIC is single-pass, so they are declared here.
+    DIM dv_flags, #dv_left, dv_ptu, au_stage, snd_t, snd_t2
     DIM phase, round, my_seat, last_phase, last_round
     DIM scr_now                 ' SCR_* currently on the TV
     DIM anim                    ' AN_*, read by the frame handler

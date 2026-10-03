@@ -9,7 +9,7 @@
 ' bar's tick as time runs out (bar_tick).
 ' ===========================================================================
 
-    DIM snd_t, snd_t2, #snd_f2
+    DIM #snd_f2                 ' (snd_t, snd_t2: memory.bas)
 
 ' Frame handler side.
 snd_isr: PROCEDURE

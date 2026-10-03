@@ -32,7 +32,7 @@ au_col_x: DATA 47, 71, 95, 119
     CONST AU_SB = $8800         ' land: "bids start at" price shown on row 11
     CONST AU_HELD = $880E       ' FRAME AND 255 when our goods line was let go
                                 ' (2 bytes of cart RAM: 16-bit RAM is full)
-    DIM au_good, au_stage, au_new   ' au_kind, au_role(4), #au_base are in isr.bas
+    DIM au_good, au_new   ' au_kind, au_role(4), #au_base are in isr.bas; au_stage in memory.bas
     DIM au_push                 ' our stick: 0 released, 1 up, 2 down (as sent)
     DIM au_ln1                  ' pixel row of the sellers' line (255 none)
     DIM au_sp_col(4)            ' sprite colour words (low bits)

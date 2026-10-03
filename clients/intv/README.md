@@ -79,6 +79,7 @@ If you join a table whose game has already started (or you leave a game), you wa
 | `mule.bas` | main program: includes, poll loop, phase dispatch |
 | `memory.bas` | RAM map, colours, globals, helper functions |
 | `net.bas` | URLs and actions; reads the 550-byte state in two pieces (the mailbox window is 512 bytes) |
+| `netstep.bas`, `netpost.bas` | the main loop's requests, a mailbox transaction at a time: each is posted (`fn_post`) and its answer looked for on the next frames (`fn_check`), so the main loop never waits on the cart. `net_exchange` still waits, for the door in develop, leaving and boot |
 | `fujinet.bas`, `input.bas` | the shared FujiNet transport and controller decoding. `input.bas` adds latching and a test hook |
 | `isr.bas` | the per-frame handler: walking, grant cursor, auction sprites, sound |
 | `fx.bas` | the sprite script engine for the set pieces |

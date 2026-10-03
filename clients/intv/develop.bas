@@ -7,7 +7,7 @@
 ' A turn starts in the middle of town, as on the Atari.
 ' ===========================================================================
 
-    DIM dv_seat, dv_flags, dv_mine, dv_state
+    DIM dv_seat, dv_mine, dv_state   ' (dv_flags: memory.bas)
     DIM dv_sample               ' plot we took an assay sample from (255 none)
     DIM dv_office               ' 1 = the land office is waiting for a plot
     DIM dv_msg_seat, dv_msg_kind ' the turn message showing: whose, and what
@@ -15,9 +15,9 @@
                                 ' 2 shown (since DV_AIT), 0 done
     CONST DV_AIT = $8803        ' FRAME AND 255 when its land was outlined
     CONST DV_AIP = $8804        ' the plot it works on
-    DIM #dv_left                ' turn time left at the last poll (jiffies)
+    ' #dv_left (memory.bas): turn time left at the last poll (jiffies)
     DIM #dv_el                  ' turn elapsed at the last poll
-    DIM dv_ptu
+    ' dv_ptu: memory.bas
     DIM dv_evshown              ' player event shown this turn
     DIM dv_wp                   ' wampus index showing (255 none)
     DIM wp_x, wp_y, wp_on       ' where it is, and whether it's drawn
