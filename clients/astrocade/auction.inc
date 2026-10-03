@@ -615,18 +615,30 @@ AUL10:  LD      A,(AULN1)
         LD      A,(AUK)
         CP      B
         RET     Z
-AUL11:  CALL    SPRLIFT
-        LD      A,(AULN1)       ; the old lines off (unless kept)
+; The lines are XORed on and off (XHDOTS), as the walkers are: no lifting
+; them, which blinked all four whenever a line moved. A line already on
+; stays; two on one row are one.
+AUL11:  LD      A,(AULN1)       ; the old lines off (unless kept)
         CALL    AUL1OFF
         LD      A,(AULN2)
-        CALL    AUL1OFF
-        LD      A,(AUJ)
-        LD      (AULN1),A
+        LD      B,A
+        LD      A,(AULN1)
+        CP      B
+        LD      A,B
+        CALL    NZ,AUL1OFF
+        LD      A,(AUJ)         ; the new on (unless there)
         CALL    AUL1ON
         LD      A,(AUK)
+        LD      B,A
+        LD      A,(AUJ)
+        CP      B
+        LD      A,B
+        CALL    NZ,AUL1ON
+        LD      A,(AUJ)
+        LD      (AULN1),A
+        LD      A,(AUK)
         LD      (AULN2),A
-        CALL    AUL1ON
-        JP      SPRDROP
+        RET
 AUL1OFF: CP     255
         RET     Z
         LD      B,A
@@ -636,15 +648,20 @@ AUL1OFF: CP     255
         LD      A,(AUK)
         CP      B
         RET     Z
-        LD      C,B
-        LD      A,CK
         JR      AUL1D
 AUL1ON: CP      255
         RET     Z
-        LD      C,A
+        LD      B,A
+        LD      A,(AULN1)
+        CP      B
+        RET     Z
+        LD      A,(AULN2)
+        CP      B
+        RET     Z
+AUL1D:  LD      C,B
         LD      A,CW
-AUL1D:  LD      B,AULINX
-        LD      D,AULINW
+        LD      B,AULINX
+        LD      D,AULINW+80H
         JP      HDOTS
 
 ; AULBLTICK: row 9, over each player's money: BUY / SELL while the player

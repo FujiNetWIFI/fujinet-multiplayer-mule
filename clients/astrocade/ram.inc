@@ -131,17 +131,10 @@ HOTUSZ  EQU     58              ;   (58), turn (its first 14; develop
         VAR     PLK_ICON,1
         VAR     PLK_DOTS,1
         VAR     PLK_COL,1
-        VAR     GTMP,21         ; one drawing at a time: shared by
-BWB     EQU     GTMP            ; BLIT
-BH      EQU     GTMP+1
-BSRC    EQU     GTMP+2
-BSH     EQU     GTMP+4
-BCOL    EQU     GTMP+5
-BXP1    EQU     GTMP+6
-BXP2    EQU     GTMP+7
-BMAG    EQU     GTMP+8
-BY      EQU     GTMP+9
-BROW    EQU     GTMP+10
+        VAR     GTMP,22         ; one drawing at a time: shared by
+PBA     EQU     GTMP            ; BLIT: a sprite's old place (sprpg.inc PB_*)
+PBB     EQU     GTMP+10         ;   and its new one
+BROW    EQU     GTMP+20         ;   the line being written
 PLADR   EQU     GTMP            ; XPLOT
 PLOWN   EQU     GTMP+2
 PLICN   EQU     GTMP+4

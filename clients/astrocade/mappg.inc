@@ -600,6 +600,35 @@ MA1:    PUSH    AF
         JR      C,MA1
         RET
 
+; XMAPCHG: A nonzero if XMAPUPD would draw a plot (MAPUPD lifts the sprites
+; only then: a lift and drop on every state blinked them).
+XMAPCHG: LD     E,0
+MC1:    LD      C,3
+        PUSH    DE
+MC2:    LD      D,0
+        LD      HL,W_TERR
+        ADD     HL,DE
+        CALL    RXGETB
+        LD      HL,HMAP
+        ADD     HL,DE
+        CP      (HL)
+        JR      NZ,MC9
+        LD      A,E
+        ADD     A,45
+        LD      E,A
+        DEC     C
+        JR      NZ,MC2
+        POP     DE
+        INC     E
+        LD      A,E
+        CP      NPLOTS
+        JR      C,MC1
+        XOR     A
+        RET
+MC9:    POP     DE
+        LD      A,1
+        RET
+
 ; XMAPUPD: the plots whose terrain, owner, M.U.L.E. or production changed
 ; (window against HOT).
 XMAPUPD: XOR    A
@@ -728,7 +757,9 @@ YCONV:  SUB     16
 
 ; XHDOTS: a dotted line (every other pixel) at byte column B, Atari line C
 ; (squeezed), D bytes wide, colour A (black erases). Opaque: it sets the
-; line's bytes, so draw it on the black (gfx.h gfx_hdots).
+; line's bytes, so draw it on the black (gfx.h gfx_hdots). D + 80H: XORed
+; on instead (the same again takes it off), so the XOR sprites over it need
+; not be lifted.
 XHDOTS: PUSH    AF
         PUSH    DE              ; (YCONV takes DE)
         LD      A,C
@@ -771,10 +802,20 @@ XHD2:   LD      A,H
         LD      A,C
         CP      LINES
         RET     NC
+        BIT     7,D
+        JR      NZ,XHD4
 XHD3:   LD      (HL),E
         INC     HL
         DEC     D
         JR      NZ,XHD3
+        RET
+XHD4:   RES     7,D
+XHD5:   LD      A,(HL)
+        XOR     E
+        LD      (HL),A
+        INC     HL
+        DEC     D
+        JR      NZ,XHD5
         RET
 
 ; XAFILL: GFILL in Atari terms: x B (colour clocks, /4), Atari lines C

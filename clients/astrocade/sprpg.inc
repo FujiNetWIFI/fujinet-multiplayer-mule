@@ -88,8 +88,10 @@ SS2:    LD      C,L             ; C = the line
         AND     SF_FLIP
         RET     Z
 SS3:    PUSH    BC
+        LD      IY,PBA          ; the old place (nothing if not drawn)
+        LD      (IY+PB_H),0
         BIT     7,(IX+SR_FL)
-        CALL    NZ,BLIT         ; off with the old
+        CALL    NZ,BSET
         POP     BC
         LD      A,(SPA_SH)
         LD      (IX+SR_SH),A
@@ -106,7 +108,31 @@ SS3:    PUSH    BC
         AND     SF_FLIP
         OR      SF_ON
         LD      (IX+SR_FL),A
-        JP      BLIT            ; on with the new
+        LD      IY,PBB          ; the new
+        CALL    BSET
+        ; the rows in screen order, the old first on a line both have
+BMV:    LD      A,(PBB+PB_H)
+        OR      A
+        JR      Z,BMA
+        LD      A,(PBA+PB_H)
+        OR      A
+        JR      Z,BMB
+        LD      A,(PBA+PB_Y)    ; (signed lines)
+        XOR     80H
+        LD      B,A
+        LD      A,(PBB+PB_Y)
+        XOR     80H
+        CP      B
+        JR      C,BMB
+BMA:    LD      A,(PBA+PB_H)
+        OR      A
+        RET     Z
+        LD      IY,PBA
+        CALL    BROWI
+        JR      BMV
+BMB:    LD      IY,PBB
+        CALL    BROWI
+        JR      BMV
 
 ; XSPRHIDE: slot A off the screen.
 XSPRHIDE: CALL  SLOTAD
@@ -171,8 +197,28 @@ SLOTAD: LD      E,A
         ADD     IX,DE
         RET
 
+; A drawing block (PBA, PBB in ram.inc): what BROWI needs for each row.
+PB_WB   EQU     0               ; shape bytes a row
+PB_H    EQU     1               ; rows left (0: done, or nothing to draw)
+PB_SRC  EQU     2               ; the next row's bytes (2)
+PB_SH   EQU     4               ; x shift 0-3
+PB_COL  EQU     5               ; first column (signed)
+PB_XP1  EQU     6               ; XPAND on even lines
+PB_XP2  EQU     7               ;   and odd (stripes)
+PB_Y    EQU     8               ; the next row's line (signed)
+PB_FL   EQU     9               ; the slot's flags (bit 0 flip)
+
 ; BLIT: XOR the slot at IX onto the screen. Preserves IX.
-BLIT:   LD      A,(IX+SR_SH)    ; the shape: bytes a row, rows, frame size
+BLIT:   LD      IY,PBA
+        CALL    BSET
+BLT1:   LD      A,(IY+PB_H)
+        OR      A
+        RET     Z
+        CALL    BROWI
+        JR      BLT1
+
+; BSET: the block at IY for the slot at IX. Preserves IX, IY.
+BSET:   LD      A,(IX+SR_SH)    ; the shape: bytes a row, rows, frame size
         LD      L,A
         ADD     A,A
         ADD     A,A
@@ -182,10 +228,10 @@ BLIT:   LD      A,(IX+SR_SH)    ; the shape: bytes a row, rows, frame size
         LD      DE,SHTAB
         ADD     HL,DE
         LD      A,(HL)
-        LD      (BWB),A
+        LD      (IY+PB_WB),A
         INC     HL
         LD      A,(HL)
-        LD      (BH),A
+        LD      (IY+PB_H),A
         INC     HL
         LD      C,(HL)          ; frame size
         INC     HL
@@ -195,66 +241,71 @@ BLIT:   LD      A,(IX+SR_SH)    ; the shape: bytes a row, rows, frame size
         LD      B,(IX+SR_FR)
         LD      A,B
         OR      A
-        JR      Z,BL2
+        JR      Z,BS2
         LD      H,0
         LD      L,C
-BL1:    EX      DE,HL
+BS1:    EX      DE,HL
         ADD     HL,DE           ; (DE = size, HL = data: swapped each time)
         EX      DE,HL
-        DJNZ    BL1
-BL2:    LD      (BSRC),DE
+        DJNZ    BS1
+BS2:    LD      (IY+PB_SRC),E
+        LD      (IY+PB_SRC+1),D
         ; x: the first column (signed) and the shift
         LD      L,(IX+SR_XL)
         LD      H,(IX+SR_XH)
         LD      A,L
         AND     3
-        LD      (BSH),A
+        LD      (IY+PB_SH),A
         SRA     H
         RR      L
         SRA     H
         RR      L
         LD      A,H             ; columns -128..127 are enough
         OR      A
-        JR      Z,BL3
+        JR      Z,BS3
         INC     A
-        RET     NZ
-BL3:    LD      A,L
-        LD      (BCOL),A
+        JR      Z,BS3
+        LD      (IY+PB_H),0     ; far off: nothing
+        RET
+BS3:    LD      (IY+PB_COL),L
         ; the colours: fg*4, stripes alternate by line
         LD      A,(IX+SR_COL)
         CP      CS
-        JR      NZ,BL4
+        JR      NZ,BS4
         LD      A,CB*4
-        LD      (BXP1),A
+        LD      (IY+PB_XP1),A
         LD      A,CO*4
-        JR      BL5
-BL4:    ADD     A,A
+        JR      BS5
+BS4:    ADD     A,A
         ADD     A,A
-        LD      (BXP1),A
-BL5:    LD      (BXP2),A
-        ; zero the shifter's carry
-        LD      A,MAGXOR
-        OUT     (MAGIC),A
-        XOR     A
-        LD      (SCRATCH-4000H),A
-        LD      A,(BSH)
-        OR      MAGXOR+MAGEXP
-        LD      (BMAG),A
+        LD      (IY+PB_XP1),A
+BS5:    LD      (IY+PB_XP2),A
         LD      A,(IX+SR_Y)
-        LD      (BY),A
-        LD      A,(BH)
-        LD      B,A
-BLROW:  PUSH    BC
-        LD      A,(BY)          ; on the screen?
+        LD      (IY+PB_Y),A
+        LD      A,(IX+SR_FL)
+        LD      (IY+PB_FL),A
+        RET
+
+; BROWI: the next row of the block at IY onto the screen (if its line is
+; on it), and on to the one after. Preserves IX, IY.
+BROWI:  LD      A,(IY+PB_Y)     ; on the screen?
         CP      LINES
-        JR      NC,BLNEXT       ; (negative lines too: unsigned)
+        JR      NC,BRNX         ; (negative lines too: unsigned)
         LD      C,A
         AND     1               ; stripes: odd lines the other colour
-        LD      A,(BXP1)
-        JR      Z,BLR1
-        LD      A,(BXP2)
-BLR1:   OUT     (XPAND),A
-        LD      A,(BMAG)
+        LD      A,(IY+PB_XP1)
+        JR      Z,BR1
+        LD      A,(IY+PB_XP2)
+BR1:    OUT     (XPAND),A
+        LD      A,(IY+PB_SH)
+        OR      A
+        JR      Z,BR2
+        LD      A,MAGXOR        ; zero the shifter's carry (another sprite's
+        OUT     (MAGIC),A       ; row may have left some)
+        XOR     A
+        LD      (SCRATCH-4000H),A
+        LD      A,(IY+PB_SH)
+BR2:    OR      MAGXOR+MAGEXP
         OUT     (MAGIC),A
         LD      L,C             ; HL = line * 40 (a magic address)
         LD      H,0
@@ -267,51 +318,46 @@ BLR1:   OUT     (XPAND),A
         ADD     HL,HL           ; *32
         ADD     HL,DE           ; *40
         LD      (BROW),HL
-        LD      A,(BCOL)
-        LD      C,A             ; C = the column being written
-        LD      A,(BWB)
-        LD      B,A
-        LD      DE,(BSRC)
-        BIT     0,(IX+SR_FL)
-        JR      Z,BLB1
+        LD      C,(IY+PB_COL)   ; C = the column being written
+        LD      B,(IY+PB_WB)
+        LD      E,(IY+PB_SRC)
+        LD      D,(IY+PB_SRC+1)
+        BIT     0,(IY+PB_FL)
+        JR      Z,BRB1
         LD      A,E             ; flipped: the row's last byte first
         ADD     A,B
         LD      E,A
-        JR      NC,BLB0
+        JR      NC,BRB0
         INC     D
-BLB0:   DEC     DE
-BLB1:   LD      A,(DE)
-        BIT     0,(IX+SR_FL)
-        JR      Z,BLB2
+BRB0:   DEC     DE
+BRB1:   LD      A,(DE)
+        BIT     0,(IY+PB_FL)
+        JR      Z,BRB2
         PUSH    HL
         LD      HL,REV8
         ADD     A,L
         LD      L,A
-        JR      NC,BLB1A
+        JR      NC,BRB1A
         INC     H
-BLB1A:  LD      A,(HL)
+BRB1A:  LD      A,(HL)
         POP     HL
         DEC     DE
-        JR      BLB3
-BLB2:   INC     DE
-BLB3:   CALL    BPUT            ; high nibble
+        JR      BRB3
+BRB2:   INC     DE
+BRB3:   CALL    BPUT            ; high nibble
         CALL    BPUT            ; low nibble
-        DJNZ    BLB1
-        LD      A,(BSH)
+        DJNZ    BRB1
+        LD      A,(IY+PB_SH)
         OR      A
         LD      A,0
         CALL    NZ,BPUT         ; flush the carry
-BLNEXT: LD      HL,(BSRC)       ; the next row of the shape
-        LD      A,(BWB)
-        ADD     A,L
-        LD      L,A
-        JR      NC,BLN1
-        INC     H
-BLN1:   LD      (BSRC),HL
-        LD      HL,BY
-        INC     (HL)
-        POP     BC
-        DJNZ    BLROW
+BRNX:   LD      A,(IY+PB_SRC)   ; the next row of the shape
+        ADD     A,(IY+PB_WB)
+        LD      (IY+PB_SRC),A
+        JR      NC,BRN1
+        INC     (IY+PB_SRC+1)
+BRN1:   INC     (IY+PB_Y)
+        DEC     (IY+PB_H)
         RET
 
 ; BPUT: write A through magic memory at column C of line BROW (SCRATCH if

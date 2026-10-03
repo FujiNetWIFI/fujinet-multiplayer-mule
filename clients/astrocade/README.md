@@ -137,10 +137,17 @@ screen through magic memory with XOR, expanded from one bit a pixel, and
 shifted to its pixel. Drawing it again takes it off. MAME's funcgen
 (`astrocde_v.cpp`) is the reference: the shifter's carry is the previous
 write's data whatever its address. So columns off the screen are written to
-a scratch byte rather than skipped, and the carry is zeroed first.
+a scratch byte rather than skipped, and the carry is zeroed before each
+shifted row.
+
+A move goes a line at a time down the screen: on each line the old row
+comes off and at once the new one goes on, so a sprite is never off the
+screen while the beam goes by (no flicker; at worst one frame torn between
+the old place and the new).
 
 A background drawn under a sprite must lift the sprites first
-(`SPRLIFT`/`SPRDROP`); the auction's price lines do.
+(`SPRLIFT`/`SPRDROP`): plots do, but only when one changed. The auction's
+price lines are XORed on and off like the sprites, so they need no lifting.
 
 ## Testing
 

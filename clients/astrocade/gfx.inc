@@ -119,7 +119,12 @@ MAPALL: CALL    SPRLIFT
         DB      PGMAP
         DW      XMAPALL
         JP      SPRDROP
-MAPUPD: CALL    SPRLIFT
+MAPUPD: CALL    FARCALL
+        DB      PGMAP
+        DW      XMAPCHG
+        OR      A
+        RET     Z
+        CALL    SPRLIFT
         CALL    FARCALL
         DB      PGMAP
         DW      XMAPUPD
