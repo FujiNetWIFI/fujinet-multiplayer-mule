@@ -5,8 +5,9 @@
 ; and every call, action or poll, returns the whole 550-byte MuleState.
 ; One request at a time; an action (ACTSEND) takes the place of the next
 ; poll. A request is spread over frames so the game keeps moving: CLOSE the
-; last one and OPEN (one frame), then a STATUS a frame until the reply has
-; settled, then one READ of all of it into the cart's window.
+; last one, OPEN, then a STATUS a frame until the reply has settled, then
+; one READ of all of it into the cart's window, each posted to the cart and
+; its answer taken on a later frame (nothing waits on the cart).
 ;
 ; The family's rules (battleship net.inc), carried forward:
 ;  * CLOSE at the START of the next request, never after the READ: every
@@ -18,19 +19,62 @@
 ;  * The window is never cleared: check 'M' and the message type.
 
 ; ---- the request engine -------------------------------------------------------
+; Each transaction is posted (NPOST: the cart takes it, the game goes on) and
+; its answer looked at later (NCHK): the request steps below post one and
+; return, and NETSTEP takes the answer on a later frame, so the main loop
+; (and the sound it clocks) never waits on the cart. xxxP posts, xxxR reads
+; the answer; the blocking forms (boot's table list) wait in between.
 NCMD:   XOR     A               ; the reply comes back in slice 0
         LD      (CURSLC),A
         LD      A,NETDEV
         JP      FNBEGIN
 
-NCLOSE: LD      E,NCCLOSE
+; NPOST: FNCOMMIT without the wait: the sequence number the cart will echo
+; is kept in NSEQ.
+NPOST:  LD      A,(FNACKSQ)
+        INC     A
+        JR      NZ,NPS1
+        INC     A               ; 255 wraps past the reserved 0
+NPS1:   LD      (NSEQ),A
+        LD      C,FRSEQ
+        JP      FNREGWR
+
+; NCHK: carry while the cart hasn't answered; else A = FNERR (Z: ok), as
+; FNCOMMIT returns. Clobbers H.
+NCHK:   LD      A,(NSEQ)
+        LD      H,A
+        LD      A,(FNACKSQ)
+        CP      H
+        SCF
+        RET     NZ
+        LD      A,(FNERR)
+        OR      A               ; clears carry
+        RET
+
+; NWAITB: wait for the posted transaction (blocking, some seconds). Carry
+; on a timeout; else as NCHK.
+NWAITB: LD      B,4
+NWB1:   LD      DE,0
+NWB2:   CALL    NCHK
+        RET     NC
+        DEC     DE
+        LD      A,D
+        OR      E
+        JR      NZ,NWB2
+        DJNZ    NWB1
+        SCF
+        RET
+
+NCLOSEP: LD     E,NCCLOSE
         LD      L,0
         CALL    NCMD
-        LD      B,3
-        JP      FNCOMMIT
+        JP      NPOST
+
+NCLOSE: CALL    NCLOSEP
+        JP      NWAITB
 
 ; NOPEN: OPEN the devicespec for URLREQ as HTTP GET. Carry on failure.
-NOPEN:  LD      E,NCOPEN
+NOPENP: LD      E,NCOPEN
         LD      L,2
         CALL    NCMD
         LD      A,NMHTTPG
@@ -38,10 +82,12 @@ NOPEN:  LD      E,NCOPEN
         LD      A,NTRNONE
         CALL    FNPARB
         CALL    BLDURL
-        LD      B,8
-        CALL    FNCOMMIT
+        JP      NPOST
+
+NOPEN:  CALL    NOPENP
+        CALL    NWAITB
         RET     C
-        JR      NZ,NOBAD
+NOPENR: JR      NZ,NOBAD
         LD      A,(FNREPLY)
         CP      FCACK
         RET     Z
@@ -49,17 +95,19 @@ NOBAD:  SCF
         RET
 
 ; NSTATUS: one STATUS. Carry on failure; else AVAIL, and A = devstatus.
-NSTATUS: LD     E,NCSTAT
+NSTATP: LD      E,NCSTAT
         LD      L,2
         CALL    NCMD
         XOR     A
         CALL    FNPARB
         XOR     A
         CALL    FNPARB
-        LD      B,4
-        CALL    FNCOMMIT
+        JP      NPOST
+
+NSTATUS: CALL   NSTATP
+        CALL    NWAITB
         RET     C
-        JR      NZ,NOBAD
+NSTATR: JR      NZ,NOBAD
         LD      A,(FNREPLY)
         CP      FCACK
         JR      NZ,NOBAD
@@ -74,7 +122,7 @@ NSTATUS: LD     E,NCSTAT
         RET
 
 ; NREAD: READ min(AVAIL, 1024) into the window; RXLEN. Carry on failure.
-NREAD:  LD      HL,(AVAIL)
+NREADP: LD      HL,(AVAIL)
         LD      DE,1024
         OR      A
         SBC     HL,DE
@@ -95,10 +143,12 @@ NRD2:   PUSH    HL
         POP     HL
         LD      A,H
         CALL    FNTXBYT
-        LD      B,8
-        CALL    FNCOMMIT
+        JP      NPOST
+
+NREAD:  CALL    NREADP
+        CALL    NWAITB
         RET     C
-        JR      NZ,NOBAD
+NREADR: JR      NZ,NOBAD
         LD      A,(FNREPLY)
         CP      FCACK
         JR      NZ,NOBAD
@@ -110,7 +160,8 @@ NRD2:   PUSH    HL
         LD      (CURSLC),A
         RET
 
-; NETBEGIN: start the queued action (or a poll).
+; NETBEGIN: start the queued action (or a poll): the last request's
+; connection is CLOSEd first (posted; NETSTEP goes on from there).
 NETBEGIN: LD    A,(NSTATE)
         OR      A
         RET     NZ
@@ -124,14 +175,9 @@ NB1:    LD      (URLREQ),A
         LD      (ACTSNT),A
         XOR     A
         LD      (ACT),A
-        CALL    NCLOSE          ; the last request's connection
-        CALL    NOPEN
-        JR      C,NFIN0
-        LD      HL,0
-        LD      (PRVAVL),HL
-        XOR     A
         LD      (NWAIT),A
-        INC     A
+        CALL    NCLOSEP
+        LD      A,1
         LD      (NSTATE),A
         RET
 
@@ -143,7 +189,9 @@ NFIN:   LD      (NETHAVE),A
         RET
 
 ; NETSTEP: one step. Carry set when the request is over (NETHAVE: 1 a
-; state, 2 an error header only, 0 failed).
+; state, 2 an error header only, 0 failed). NSTATE says what was posted:
+; 1 the CLOSE, 2 the OPEN, 3 a STATUS, 4 the READ. Its answer, once the cart
+; has given it, decides the next.
 NETSTEP: LD     A,(NSTATE)
         OR      A
         RET     Z
@@ -152,35 +200,18 @@ NETSTEP: LD     A,(NSTATE)
         LD      A,(HL)
         CP      NTMOUT
         JR      NC,NFIN0
-        CALL    NSTATUS
-        JR      C,NFIN0
-        LD      C,A             ; devstatus
-        LD      HL,(AVAIL)
-        LD      A,H
-        OR      L
-        JR      NZ,NS1
-        LD      A,C             ; nothing, and not OK: failed
-        CP      NDSOK
-        JR      Z,NS9
-        CP      NDSEOF
-        JR      Z,NS9
-        JR      NFIN0
-NS1:    LD      DE,(PRVAVL)
-        LD      (PRVAVL),HL
-        OR      A
-        SBC     HL,DE
-        JR      NZ,NS9          ; still arriving
-        LD      HL,(AVAIL)      ; settled: all of it, or the server is done
-        LD      DE,STSIZE
-        OR      A
-        SBC     HL,DE
-        JR      NC,NS2
-        LD      A,C
-        CP      NDSEOF
-        JR      NZ,NS9
-NS2:    XOR     A
-        LD      (NWAIT),A
-        CALL    NREAD
+        CALL    NCHK
+        JR      C,NS9           ; not answered yet
+        PUSH    AF
+        LD      A,(NSTATE)
+        DEC     A
+        JR      Z,NSCL
+        DEC     A
+        JR      Z,NSOP
+        DEC     A
+        JR      Z,NSST
+        POP     AF              ; 4: the READ
+        CALL    NREADR
         JR      C,NFIN0
         LD      HL,(RXLEN)
         LD      DE,16
@@ -205,8 +236,52 @@ NS3:    LD      HL,(RXLEN)
         LD      A,1
         LD      (STVALID),A
         JP      NFIN
+NSCL:   POP     AF              ; 1: closed (or not: it was the last one)
+        CALL    NOPENP
+        LD      A,2
+        JR      NSPOST
+NSOP:   POP     AF              ; 2: opened
+        CALL    NOPENR
+        JR      C,NFIN0
+        LD      HL,0
+        LD      (PRVAVL),HL
+NSAGN:  CALL    NSTATP          ; a STATUS (again)
+        LD      A,3
+NSPOST: LD      (NSTATE),A
 NS9:    OR      A               ; not over yet
         RET
+NSST:   POP     AF              ; 3: a STATUS
+        CALL    NSTATR
+        JP      C,NFIN0
+        LD      C,A             ; devstatus
+        LD      HL,(AVAIL)
+        LD      A,H
+        OR      L
+        JR      NZ,NS1
+        LD      A,C             ; nothing, and not OK: failed
+        CP      NDSOK
+        JR      Z,NSAGN
+        CP      NDSEOF
+        JR      Z,NSAGN
+        JP      NFIN0
+NS1:    LD      DE,(PRVAVL)
+        LD      (PRVAVL),HL
+        OR      A
+        SBC     HL,DE
+        JR      NZ,NSAGN        ; still arriving
+        LD      HL,(AVAIL)      ; settled: all of it, or the server is done
+        LD      DE,STSIZE
+        OR      A
+        SBC     HL,DE
+        JR      NC,NS2
+        LD      A,C
+        CP      NDSEOF
+        JR      NZ,NSAGN
+NS2:    XOR     A
+        LD      (NWAIT),A
+        CALL    NREADP
+        LD      A,4
+        JR      NSPOST
 
 ; XNETSYNC: send the queued action now and wait for its answer (finishing
 ; any poll on its way first). A = NETHAVE.

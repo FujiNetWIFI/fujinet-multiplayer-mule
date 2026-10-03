@@ -103,6 +103,16 @@ pages. This client needs a steady 60 Hz clock, so it runs IM 2 with I = 4FH:
 Checked in MAME: `FRAMES` advances 60 a second, and mailbox transactions
 complete with interrupts on.
 
+**Nothing waits on the cart.** A request (CLOSE, OPEN, a STATUS a frame
+until the reply settles, READ) is posted a transaction at a time: `NPOST`
+writes the sequence number and returns, and `NETSTEP` looks for the cart's
+echo (`NCHK`) on the next frames before it posts the next one. The main
+loop, and the sound it clocks, keep going while the cart talks to the
+FujiNet, which on real hardware takes the network's round trip (the GET is
+made inside the first STATUS). Only boot's table list waits (`NWAITB`).
+MAME's cart answers each transaction within the emulator's own step, so
+it shows the order of things, not the time they take.
+
 **RAM.** The screen is 78 lines of 40 bytes (4000H-4C2FH). That leaves
 830 bytes for everything else, the stack and the vector included. The C
 client keeps three copies of the 550-byte state. Here:

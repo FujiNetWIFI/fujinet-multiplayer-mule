@@ -66,8 +66,9 @@ RAMP    DEFL    RAMP+sz
         VAR     AVAIL,2         ; NET_STATUS bytes waiting
         VAR     PRVAVL,2        ; the settle loop's previous reading
         VAR     RXLEN,2         ; reply length, captured after a READ
-        VAR     NSTATE,1        ; request: 0 idle, 1 status, 2 read
+        VAR     NSTATE,1        ; request: 0 idle, else what is posted (netpg.inc)
         VAR     NWAIT,1         ; frames without progress
+        VAR     NSEQ,1          ; the posted transaction's sequence number
         VAR     NETHAVE,1       ; 1 a state, 2 an error header, 0 failed
         VAR     NETFAIL,1
         VAR     POLLW,1         ; frames to the next poll
