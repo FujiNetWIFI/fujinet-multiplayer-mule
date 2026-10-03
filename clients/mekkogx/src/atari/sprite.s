@@ -1,8 +1,8 @@
 ;
 ; sprite.s -- gfx.c's sprites on the players, and the row flags.
 ;
-; spr_flush puts each shown sprite on the first player that is free in the
-; rows (of 8 scanlines) it covers; the DLI moves and colours the players row
+; spr_flush puts each shown sprite (in the order of order:) on the first
+; player that is free in the rows (of 8 scanlines) it covers; the DLI moves and colours the players row
 ; by row (gfxa.s). A player remembers what it drew (up to 4 pieces) so the
 ; next flush can clear just that.
 ;
@@ -38,6 +38,7 @@ seg_y:       .res 4 * MAXSEG
 seg_h:       .res 4 * MAXSEG
 own:         .res 4 * ROWS
 slot:        .res 1
+ord:         .res 1             ; place in order
 sh:          .res 1             ; height (clipped)
 ssize:       .res 1
 sy:          .res 1             ; first scanline
@@ -53,6 +54,9 @@ rowoff:      .res 4             ; p * ROWS
 
         .rodata
 p_rows: .byte 0, ROWS, ROWS*2, ROWS*3
+; the order slots get players in: the ship's nose (5) last, so on the map
+; (two players) the hull's two halves get them rather than nose and top
+order:  .byte 0, 1, 2, 3, 4, 6, 7, 8, 9, 5
 
 
         .segment "ONCE"
@@ -124,10 +128,13 @@ _spr_flush:
         bne     @clr
 @cleared:
         ldx     #0
-@slot:  stx     slot
+@slot:  stx     ord
+        lda     order,x
+        tax
+        stx     slot
         lda     _spr_on,x
         bne     @on
-@next:  ldx     slot
+@next:  ldx     ord
         inx
         cpx     #SLOTS
         bcc     @slot
