@@ -12,9 +12,17 @@
  * it is asked at most once every NT_POLL_EVERY frames, and the socket is
  * read only when the status says bytes wait. The server keeps no
  * more than STREAM_WINDOW bytes unacknowledged, so a read brings all that
- * waits. With NT_BUS_READ (MS-DOS, fujinet-lib-experimental) the read is
- * the bus call itself: fujinet-lib's network_read_nb would ask the status
- * again first, and at 9600 bps (a PCjr) a call is 25 ms.
+ * waits.
+ *
+ * The bus calls hold the machine (a SmartPort call, a DriveWire exchange
+ * with the IRQ masked), so there are as few as can be:
+ *  - the Apple II reads with sp_read itself: fujinet-lib's network_read_nb
+ *    would ask the status again first (two SmartPort calls, not one);
+ *  - the CoCo talks DriveWire itself (dw_call): the FujiNet answers its
+ *    commands in order and keeps a reply until it is asked for, so a
+ *    command and the fetch of its reply go in one write and one read takes
+ *    the answer. fujinet-lib asks "ready?" before each part: three round
+ *    trips for a status, five for a read, two for a write; here one each.
  */
 #if defined(PLAT_NETSTREAM) && !defined(__ATARI__) && !defined(__LYNX__) && !defined(__ADAM__) \
     && !defined(PLAT_FUJIBUS)
@@ -33,8 +41,21 @@ static char dev[72];
 static uint8_t rbuf[NT_RBUF], obuf[32];     /* our frames are 27 bytes at most */
 static uint16_t rlen, rpos, polled;
 static uint8_t olen, oover, more;
-#ifdef NT_BUS_READ
-static uint8_t unit;            /* the N: unit, for the bus read */
+#ifdef _CMOC_VERSION_
+/* fujinet-lib's DriveWire (through the Disk ROM's vectors) */
+unsigned char dwread(unsigned char *s, int l);
+unsigned char dwwrite(unsigned char *s, int l);
+void bus_ready(void);
+#define OP_NET          0xE3
+#define DW_GET_RESPONSE 0x01
+#define DW_SEND_ERROR   0x02
+static uint8_t unit;            /* the N: unit */
+static uint8_t dwq[10];
+#endif
+#ifdef __APPLE2__
+extern uint8_t sp_network;      /* fujinet-lib's SmartPort side */
+extern uint8_t sp_payload[];
+int8_t sp_read(uint8_t dest, uint16_t len);
 #endif
 #ifdef PLAT_NET_GUARD
 uint16_t nt_fail;               /* calls that failed (tools/dossim peeks it) */
@@ -80,7 +101,7 @@ uint8_t nt_open(const char *host, uint16_t port)
     rlen = rpos = 0;
     olen = oover = more = 0;
     polled = frame_count - NT_POLL_EVERY;
-#ifdef NT_BUS_READ
+#ifdef _CMOC_VERSION_
     unit = network_unit(dev);
 #endif
     if (network_open(dev, OPEN_MODE_RW, OPEN_TRANS_NONE) != FN_ERR_OK)
@@ -98,6 +119,31 @@ void nt_quiesce(void)
 {
 }                               /* (every call here is over when it returns) */
 
+#ifdef _CMOC_VERSION_
+/* An N: command (its aux, big-endian as the CoCo is; a write's data after
+ * it), then the fetch of its answer (GET_RESPONSE, len bytes, or
+ * SEND_ERROR, one), all written at once; the answer in one read. 0: it
+ * didn't come (the FujiNet is asked "ready?" until it is: in step again). */
+static uint8_t dw_call(uint8_t cmd, uint16_t aux, uint8_t *data, uint8_t fetch,
+                       uint8_t *reply, uint16_t len)
+{
+    dwq[0] = dwq[5] = OP_NET;
+    dwq[1] = dwq[6] = unit;
+    dwq[2] = cmd;
+    *(uint16_t *)(dwq + 3) = aux;
+    dwq[7] = fetch;
+    *(uint16_t *)(dwq + 8) = len;
+    dwwrite(dwq, 5);
+    if (data)
+        dwwrite(data, (int)aux);
+    dwwrite(dwq + 5, 5);
+    if (dwread(reply, (int)len))
+        return 1;
+    bus_ready();
+    return 0;
+}
+#endif
+
 uint8_t nt_get(char *c)
 {
     uint16_t bw;
@@ -113,7 +159,16 @@ uint8_t nt_get(char *c)
     polled = frame_count;
     more = 0;
     NET_GUARD(1);
+#ifdef _CMOC_VERSION_
+    {
+        uint8_t sr[4];          /* bytes waiting (big-endian), connected, error */
+        bad = !dw_call('S', 0, 0, DW_GET_RESPONSE, sr, 4);
+        bw = *(uint16_t *)sr;
+        conn = sr[2];
+    }
+#else
     bad = network_status(dev, &bw, &conn, &err) != FN_ERR_OK;
+#endif
     NET_GUARD(0);
     if (bad) {
         NT_FAILED();
@@ -126,8 +181,14 @@ uint8_t nt_get(char *c)
         more = 1;                   /* the rest straight after */
     }
     NET_GUARD(1);
-#ifdef NT_BUS_READ                  /* fujinet-lib-experimental: the read itself */
-    n = (int16_t)network_bus_read(FUJI_DEVICEID_NETWORK + unit - 1, rbuf, bw);
+#if defined(_CMOC_VERSION_)
+    n = dw_call('R', bw, 0, DW_GET_RESPONSE, rbuf, bw) ? (int16_t)bw : 0;
+#elif defined(__APPLE2__)
+    n = 0;
+    if (sp_read(sp_network, bw) == 0) {
+        memcpy(rbuf, sp_payload, bw);
+        n = (int16_t)bw;
+    }
 #else
     n = network_read_nb(dev, rbuf, bw);
 #endif
@@ -161,10 +222,18 @@ uint8_t nt_flush(void)
     uint8_t ok = 1;
     if (olen && !oover) {
         NET_GUARD(1);
+#ifdef _CMOC_VERSION_
+        {
+            uint8_t e = 0;          /* how it went: 1, the FujiNet's SUCCESS */
+            if (!dw_call('W', olen, obuf, DW_SEND_ERROR, &e, 1) || e != 1)
+                ok = 0;
+        }
+#else
         if (network_write(dev, obuf, olen) != FN_ERR_OK) {
             NT_FAILED();
             ok = 0;
         }
+#endif
         NET_GUARD(0);
     }
     olen = oover = 0;

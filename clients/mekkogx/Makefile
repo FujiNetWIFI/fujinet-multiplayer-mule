@@ -102,9 +102,13 @@ $(COOBJ)/src/grant.o $(COOBJ)/src/events.o:   export MULE_SECT = ov3
 $(COOBJ)/src/auction.o:                       export MULE_SECT = ov4
 $(COOBJ)/src/develop.o:                       export MULE_SECT = ov5
 $(COOBJ)/src/text.o $(COOBJ)/src/map.o $(COOBJ)/src/fx.o $(COOBJ)/src/test.o \
-  $(COOBJ)/src/nstrans_fn.o \
+  $(COOBJ)/src/nstrans_fn.o $(COOBJ)/src/autoplay.o \
   $(COOBJ)/src/coco/gfx.o $(COOBJ)/src/coco/input.o \
-  $(COOBJ)/src/coco/sound.o $(COOBJ)/gen/coco/gfx.o:   export MULE_SECT = hi
+  $(COOBJ)/gen/coco/gfx.o:                      export MULE_SECT = hi
+# (sound.o is in the low core: nstrans_fn.c's own DriveWire calls took the
+# high core's last bytes, and fujinet-lib's status, read and write, which
+# they replace, left the low core room; autoplay.o, empty unless AUTOPLAY=1,
+# is in the high core so that build fits too)
 
 # The loader: HDB-DOS runs AUTOEXEC.BAS, which LOADMs the low core. BASIC
 # programs start at $2601, where MULE.BIN goes: PCLEAR1 moves this one down

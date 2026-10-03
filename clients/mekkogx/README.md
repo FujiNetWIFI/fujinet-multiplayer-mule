@@ -98,7 +98,7 @@ A joystick works too if one is centred when the game starts.
 **Timing.**
 - **Counting frames.** The clock is the vertical blank ($C019, or the //c's VBL flag). The drawing routines check it every few milliseconds, so a busy frame still counts every blank.
 - **Catching up.** The game logic (walking, the grant cursor, auction lines, the scripts) runs once for every frame that passed. The game keeps the Atari's speeds even when drawing can't keep up.
-- **The network: stream mode over N:TCP** (`src/nsnet.c`, `src/nstrans_fn.c`), as on the Adam. An HTTP poll held the machine for the whole request (FujiNet makes the GET inside the first status call). A status call a frame is quick; the socket is read only when bytes wait. The server clock resynchronises the phase timers on every state.
+- **The network: stream mode over N:TCP** (`src/nsnet.c`, `src/nstrans_fn.c`), as on the Adam. An HTTP poll held the machine for the whole request (FujiNet makes the GET inside the first status call). A status call a frame is quick; the socket is read only when bytes wait, with `sp_read` itself (fujinet-lib's `network_read_nb` would ask the status again first: two SmartPort calls where one does). The server clock resynchronises the phase timers on every state.
 
 ## Testing
 
@@ -162,6 +162,7 @@ How it gets there:
 **Timing.**
 - **The clock:** the VDG's field-sync interrupt counts the frames and scans the keyboard, so a quick key press isn't lost while the game is busy.
 - **Network calls:** stream mode over N:TCP (`src/nsnet.c`, `src/nstrans_fn.c`, in the high core), with a status call every other frame (`NT_POLL_EVERY=2`): the DriveWire ROM masks interrupts while it talks to the FujiNet, and the frames lost are put back from the server's clock. The HELLO asks for big-endian states.
+  - **One round trip a call** (`dw_call`): the FujiNet answers DriveWire commands in order and keeps a reply until it is asked for, so the command and the fetch of its reply (or of its error, for a write) go out in one go and one read takes the answer. fujinet-lib asks "ready?" before each part: three round trips for a status, five for a read (which asked the status again), two for a write.
 
 **Testing.**
 - **Offline:** `tools/cocosim/cocosim.py` is `a2sim.py` for MAME's CoCo 2 (`coco2b`, Disk BASIC), with the same scenario language and test hooks:
