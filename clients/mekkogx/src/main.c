@@ -245,7 +245,7 @@ void main(void)
         dbg_at = 1;
         frame_wait();
         dbg_at = 2;
-        spr_flush();
+        spr_flush();                /* what moved last time round */
         dbg_at = 3;
         snd_tick();
         input_poll();
@@ -319,8 +319,8 @@ void main(void)
             spec_at = (uint8_t)(frame_count >> 5);
             spec_tag();
         }
-        /* background drawn this frame took sprites off: back before the
-         * next frame shows */
-        spr_flush();
+        /* (what moved is drawn by the flush after the next frame_wait,
+         * in the blank: background drawing puts back any sprites it took
+         * off itself) */
     }
 }

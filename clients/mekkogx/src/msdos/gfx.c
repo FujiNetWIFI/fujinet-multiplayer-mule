@@ -632,23 +632,23 @@ void spr_hide_all(void)
         spr_hide(i);
 }
 
-static void rect(uint8_t i, uint8_t to_screen)
+/* The save buffers are rings of rows: line y's bytes are row y % rows
+ * (rows = SAVE_MAX / the shape's widest row, st), so a sprite that moves a
+ * little finds its old row for a line just where its new one goes. A
+ * flush then does each line at once, top to bottom -- put the old rows
+ * back (last drawn first), save the new ones, draw -- and no sprite is
+ * ever off the screen while the beam goes by. */
+static uint16_t s_st[SPR_SLOTS];        /* the ring's row length when drawn */
+static uint8_t lift_y0, lift_y1;        /* lines spr_bg took sprites off */
+
+static uint16_t ring(uint16_t st, uint8_t y)
 {
-    uint8_t r, n = s_n[i], y = s_sy[i];
-    uint8_t *s = save[i];
-    for (r = s_sh[i]; r; --r, ++y, s += n) {
-        uint8_t __far *p = VRAM + rowoff[y] + s_bx[i];
-        if (to_screen)
-            _fmemcpy(p, s, n);
-        else
-            _fmemcpy(s, p, n);
-    }
+    return (y % (SAVE_MAX / st)) * st;
 }
 
-static void erase(uint8_t i)
+static void put_row(uint8_t i, uint8_t y, uint16_t off)
 {
-    rect(i, 1);
-    s_drawn[i] = 0;
+    _fmemcpy(VRAM + rowoff[y] + s_bx[i], save[i] + off, s_n[i]);
 }
 
 /* Does drawn sprite j's rectangle meet clocks c0.. (n of them), lines y..? */
@@ -663,42 +663,49 @@ static uint8_t meets(uint8_t j, uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
     return a < e && y < ae;
 }
 
-/* Take off every drawn sprite in hit[], and any drawn after one of them
- * that overlaps it (their saved backgrounds hold its pixels); mark them to
- * be drawn again. */
-static uint8_t hit[SPR_SLOTS];
-static void take_off(void)
+/* Mark every drawn slot after i that meets the rectangle. */
+static uint8_t hit[SPR_SLOTS];          /* (bit 1: taken off by spr_bg) */
+static void close_over(uint8_t i, uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
 {
-    uint8_t i, j;
-    for (i = 0; i < SPR_SLOTS; ++i)
-        if (hit[i] && s_drawn[i])
-            for (j = i + 1; j < SPR_SLOTS; ++j)
-                if (!hit[j] && s_drawn[j] && meets(j, s_c0[i], s_cn[i], s_sy[i], s_sh[i]))
-                    hit[j] = 1;
-    for (i = SPR_SLOTS; i-- > 0;)
-        if (hit[i]) {
-            if (s_drawn[i])
-                erase(i);
-            s_dirty[i] = 1;
-            any_dirty = 1;
-        }
+    while (++i < SPR_SLOTS)
+        if (!hit[i] && s_drawn[i] && meets(i, c0, n, y, h))
+            hit[i] = 1;
 }
 
 /* Background drawing is about to change a rectangle (in colour clocks):
- * take the sprites off it; bg_done puts them back over the new background. */
+ * the sprites on it, and any drawn after one of them over it (their saved
+ * backgrounds hold its pixels), come off -- only its lines; bg_done puts
+ * them back over the new background. */
 static uint8_t bg_took;
 
 static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
 {
-    uint8_t i, any = 0;
-    for (i = 0; i < SPR_SLOTS; ++i) {
+    uint8_t i, l, e;
+    uint16_t y1 = (uint16_t)y + h, off;
+    for (i = 0; i < SPR_SLOTS; ++i)
         hit[i] = s_drawn[i] && meets(i, c0, n, y, h);
-        any |= hit[i];
-    }
-    if (any) {
-        take_off();
-        bg_took = 1;
-    }
+    for (i = 0; i < SPR_SLOTS; ++i)
+        if (hit[i])
+            close_over(i, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
+    for (i = SPR_SLOTS; i-- > 0;)
+        if (hit[i]) {
+            l = s_sy[i] > y ? s_sy[i] : y;
+            e = s_sy[i] + s_sh[i];
+            if (e > y1)
+                e = (uint8_t)y1;
+            if (l < e) {
+                off = ring(s_st[i], l);
+                for (; l < e; ++l) {
+                    put_row(i, l, off);
+                    if ((off += s_st[i]) >= SAVE_MAX / s_st[i] * s_st[i])
+                        off = 0;
+                }
+            }
+            s_dirty[i] |= 2;
+            bg_took = any_dirty = 1;
+        }
+    lift_y0 = y;
+    lift_y1 = y1 > 255 ? 255 : (uint8_t)y1;
 }
 
 static void bg_done(void)
@@ -709,9 +716,17 @@ static void bg_done(void)
     }
 }
 
-/* Where slot i would be drawn: its save rectangle, and the (clipped)
- * source. Returns 0 if nothing shows. */
-static const uint8_t *src_of(uint8_t i, uint8_t *y, uint8_t *h, uint8_t *wb)
+/* A sprite being drawn by spr_flush: where (as s_bx.. will say once it
+ * is), the picture's next row, and where its rows are in the rings. */
+typedef struct {
+    const uint8_t *src;
+    int16_t x;
+    uint8_t bx, n, sy, sh, c0, cn, wb, pt0, pt1, show;
+    uint16_t st, rows, no, oo;
+} Draw;
+
+/* Where slot i would be drawn now, into t. */
+static void src_of(uint8_t i, Draw *t)
 {
     const ShapeDef *d = &dos_shapes[s_shape[i]];
     uint8_t frame = s_frame[i];
@@ -719,6 +734,9 @@ static const uint8_t *src_of(uint8_t i, uint8_t *y, uint8_t *h, uint8_t *wb)
     const uint8_t *src;
     int16_t yy = s_y[i], hh = d->h, left, right;
 
+    t->show = 0;
+    if (!s_on[i])
+        return;
     if (s_flags[i] & SPR_FLIPX) {
         if (s_shape[i] == SH_MULE)
             frame += 4;
@@ -736,65 +754,125 @@ static const uint8_t *src_of(uint8_t i, uint8_t *y, uint8_t *h, uint8_t *wb)
     left = s_x[i];
     right = left + d->w - 1;
     if (hh <= 0 || right < 0 || left > 159)
-        return 0;
+        return;
+    t->show = 1;
+    t->src = src;
+    t->x = left;
     if (left < 0)
         left = 0;
     if (right > 159)
         right = 159;
     if (plat_jr) {
-        s_bx[i] = (uint8_t)left;
-        s_n[i] = (uint8_t)(right - left + 1);
+        t->bx = (uint8_t)left;
+        t->n = (uint8_t)(right - left + 1);
+        t->st = d->w;
     } else {
-        s_bx[i] = (uint8_t)(left >> 1);
-        s_n[i] = (uint8_t)(right >> 1) - s_bx[i] + 1;
+        t->bx = (uint8_t)(left >> 1);
+        t->n = (uint8_t)(right >> 1) - t->bx + 1;
+        t->st = (d->w >> 1) + 1;
     }
-    s_sy[i] = (uint8_t)yy;
-    s_sh[i] = (uint8_t)hh;
-    if ((uint16_t)s_n[i] * s_sh[i] > SAVE_MAX)
-        s_sh[i] = SAVE_MAX / s_n[i];
-    s_c0[i] = (uint8_t)left;
-    s_cn[i] = (uint8_t)(right - left + 1);
-    *y = (uint8_t)yy;
-    *h = s_sh[i];
-    *wb = d->wb;
-    return src;
+    t->rows = SAVE_MAX / t->st;
+    if (hh > (int16_t)t->rows)
+        hh = t->rows;
+    t->sy = (uint8_t)yy;
+    t->sh = (uint8_t)hh;
+    t->c0 = (uint8_t)left;
+    t->cn = (uint8_t)(right - left + 1);
+    t->wb = d->wb;
+    t->pt0 = pat(s_col[i], 0);
+    t->pt1 = pat(s_col[i], 1);
+    t->no = ring(t->st, t->sy);
 }
 
 void spr_flush(void)
 {
-    uint8_t i, j, y, h, wb, r;
-    const uint8_t *src;
+    uint8_t i, k, l, y0, y1, pass, e, nc;
+    uint8_t cl[SPR_SLOTS];      /* the sprites redrawn, in order */
+    Draw dr[SPR_SLOTS], *t;
 
     if (!any_dirty)
         return;
     any_dirty = 0;
-    /* the changing sprites come off, with anything drawn after them over them */
     for (i = 0; i < SPR_SLOTS; ++i)
         hit[i] = s_dirty[i];
-    take_off();
-    any_dirty = 0;
+    /* the changing sprites, and anything drawn after one of them over its
+     * old place or its new one (drawn again: its saved background would be
+     * wrong otherwise). s_bx.. are still the old places. */
+    y0 = 255;
+    y1 = 0;
+    nc = 0;
+    pass = 2;                   /* each line at once */
     for (i = 0; i < SPR_SLOTS; ++i) {
-        if (!s_dirty[i])
+        if (!hit[i])
             continue;
-        s_dirty[i] = 0;
-        if (!s_on[i])
-            continue;
-        src = src_of(i, &y, &h, &wb);
-        if (!src)
-            continue;
-        /* anything drawn later that is still up over the new place comes
-         * off first (it is drawn again after this one) */
-        for (j = i + 1; j < SPR_SLOTS; ++j)
-            hit[j] = s_drawn[j] && meets(j, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
-        for (j = 0; j <= i; ++j)
-            hit[j] = 0;
-        take_off();
-        rect(i, 0);
-        s_drawn[i] = 1;
-        for (r = 0; r < h; ++r, src += wb)
-            clk_row(y + r, s_x[i], src, wb, pat(s_col[i], y + r));
+        cl[nc++] = i;
+        t = &dr[i];
+        src_of(i, t);
+        if (t->show) {
+            if (t->sy < y0)
+                y0 = t->sy;
+            if ((e = t->sy + t->sh) > y1)
+                y1 = e;
+        }
+        if (s_drawn[i]) {
+            t->oo = ring(s_st[i], s_sy[i]);
+            if (s_sy[i] < y0)
+                y0 = s_sy[i];
+            if ((e = s_sy[i] + s_sh[i]) > y1)
+                y1 = e;
+            /* a line's new row must not land where an old row not put back
+             * yet is: if it could, the old all come off first */
+            if (t->show && (t->st != s_st[i] || e > (uint16_t)t->sy + t->rows))
+                pass = 0;
+            close_over(i, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
+        }
+        if (t->show)
+            close_over(i, t->c0, t->cn, t->sy, t->sh);
     }
-    any_dirty = 0;
-    for (i = 0; i < SPR_SLOTS; ++i)
-        any_dirty |= s_dirty[i];
+    for (;;) {                  /* pass 2: both; 0: put back, then 1: draw */
+        for (l = y0; l < y1; ++l) {
+            if (pass != 1)
+                for (k = nc; k-- > 0;) {
+                    i = cl[k];
+                    t = &dr[i];
+                    if (s_drawn[i] && (uint8_t)(l - s_sy[i]) < s_sh[i]) {
+                        if (!((hit[i] & 2) && l >= lift_y0 && l < lift_y1))
+                            put_row(i, l, t->oo);
+                        if ((t->oo += s_st[i]) >= SAVE_MAX / s_st[i] * s_st[i])
+                            t->oo = 0;
+                    }
+                }
+            if (pass != 0)
+                for (k = 0; k < nc; ++k) {
+                    i = cl[k];
+                    t = &dr[i];
+                    if (t->show && (uint8_t)(l - t->sy) < t->sh) {
+                        _fmemcpy(save[i] + t->no, VRAM + rowoff[l] + t->bx, t->n);
+                        if ((t->no += t->st) >= t->rows * t->st)
+                            t->no = 0;
+                        clk_row(l, t->x, t->src, t->wb, (l & 1) ? t->pt1 : t->pt0);
+                        t->src += t->wb;
+                    }
+                }
+        }
+        if (pass)
+            break;
+        pass = 1;
+    }
+    for (k = 0; k < nc; ++k) {
+        i = cl[k];
+        t = &dr[i];
+        s_dirty[i] = 0;
+        if ((s_drawn[i] = t->show) != 0) {
+            s_bx[i] = t->bx;
+            s_n[i] = t->n;
+            s_sy[i] = t->sy;
+            s_sh[i] = t->sh;
+            s_c0[i] = t->c0;
+            s_cn[i] = t->cn;
+            s_st[i] = t->st;
+        }
+    }
+    lift_y1 = 0;
 }
+

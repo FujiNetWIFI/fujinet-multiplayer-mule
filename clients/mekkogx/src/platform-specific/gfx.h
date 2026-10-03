@@ -130,6 +130,6 @@ void spr_set(uint8_t slot, uint8_t shape, uint8_t frame, int16_t x, int16_t y,
              uint8_t col, uint8_t flags);
 void spr_hide(uint8_t slot);
 void spr_hide_all(void);
-void spr_flush(void);       /* draw what changed (once a frame) */
+void spr_flush(void);       /* draw what changed: once a frame, just after frame_wait */
 
 #endif

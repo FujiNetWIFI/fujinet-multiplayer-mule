@@ -671,70 +671,261 @@ void spr_hide_all(void)
         spr_hide(i);
 }
 
-static void rect(uint8_t i, uint8_t to_screen)
-{
-    uint8_t r, n = s_n[i];
-    uint8_t *p = ROW(s_sy[i]) + s_bx[i], *s = SAVE + (uint16_t)i * SAVE_MAX;
-    for (r = s_sh[i]; r; --r, p += 32, s += n)
-        if (to_screen)
-            memcpy(p, s, n);
-        else
-            memcpy(s, p, n);
-}
-
-static void erase(uint8_t i)
-{
-    rect(i, 1);
-    s_drawn[i] = 0;
-}
-
-/* Does drawn sprite j's rectangle meet cells c0.. (n of them), lines y..? */
-static uint8_t meets(uint8_t j, uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
-{
-    uint8_t a = s_c0[j], e = c0 + n, ae = a + s_cn[j];
-    if (a >= e || c0 >= ae)
-        return 0;
-    a = s_sy[j];
-    e = y + h;
-    ae = a + s_sh[j];
-    return a < e && y < ae;
-}
-
-/* Take off every drawn sprite in hit[], and any drawn after one of them
- * that overlaps it (their saved backgrounds hold its pixels); mark them to
- * be drawn again. */
-static uint8_t hit[SPR_SLOTS];
-static void take_off(void)
-{
-    uint8_t i, j;
-    for (i = 0; i < SPR_SLOTS; ++i)
-        if (hit[i] && s_drawn[i])
-            for (j = i + 1; j < SPR_SLOTS; ++j)
-                if (!hit[j] && s_drawn[j] && meets(j, s_c0[i], s_cn[i], s_sy[i], s_sh[i]))
-                    hit[j] = 1;
-    for (i = SPR_SLOTS; i-- > 0;)
-        if (hit[i]) {
-            if (s_drawn[i])
-                erase(i);
-            s_dirty[i] = 1;
-            any_dirty = 1;
-        }
-}
-
-/* Background drawing is about to change a rectangle (in text cells): take
- * the sprites off it; bg_done puts them back over the new background. */
+/* The save buffers are rings of rows: screen line y's bytes are row
+ * y % rows (rows = SAVE_MAX / the shape's widest row, st), so a sprite that
+ * moves a little finds its old row for a line just where its new one goes.
+ * A flush then does each line at once, top to bottom -- put the old rows
+ * back (last drawn first), save the new ones, draw -- and no sprite is
+ * ever off the screen while the beam goes by. (In assembly: CMOC's code
+ * for it would not fit.) */
+static uint8_t s_st[SPR_SLOTS];         /* the ring's row length when drawn */
+static uint8_t lift_y0, lift_y1;        /* lines spr_bg took sprites off */
+static uint8_t hit[SPR_SLOTS];          /* (bit 1: taken off by spr_bg) */
 static uint8_t bg_took;
 
-static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
+void spr_asm(void)
 {
-    uint8_t i, any = 0;
-    for (i = 0; i < SPR_SLOTS; ++i) {
-        hit[i] = s_drawn[i] && meets(i, c0, n, y, h);
-        any |= hit[i];
+    asm {
+        rts
+; does drawn slot B's rectangle meet the one at X (cells c0, n, lines y, h)?
+; A: 0 if not
+sprMeets
+        pshs    b,y
+        leay    _s_c0,pcr
+        lda     b,y
+        cmpa    ,x
+        bhs     @m1
+        leay    _s_cn,pcr
+        adda    b,y
+        cmpa    ,x
+        bls     @no
+        bra     @mv
+@m1
+        suba    ,x
+        cmpa    1,x
+        bhs     @no
+@mv
+        leay    _s_sy,pcr
+        lda     b,y
+        cmpa    2,x
+        bhs     @m2
+        leay    _s_sh,pcr
+        adda    b,y
+        cmpa    2,x
+        bls     @no
+        bra     @yes
+@m2
+        suba    2,x
+        cmpa    3,x
+        bhs     @no
+@yes
+        lda     #1
+        puls    b,y,pc
+@no
+        clra
+        puls    b,y,pc
+; mark every drawn slot after B that meets the rectangle at X
+sprClose
+        pshs    b,y
+@c
+        incb
+        cmpb    #10
+        bhs     @cx
+        leay    _hit,pcr
+        tst     b,y
+        bne     @c
+        leay    _s_drawn,pcr
+        tst     b,y
+        beq     @c
+        lbsr    sprMeets
+        tsta
+        beq     @c
+        leay    _hit,pcr
+        sta     b,y
+        bra     @c
+@cx
+        puls    b,y,pc
+; slot B's drawn rectangle -> X (c0, n, y, h)
+sprOld
+        pshs    y
+        leay    _s_c0,pcr
+        lda     b,y
+        sta     ,x
+        leay    _s_cn,pcr
+        lda     b,y
+        sta     1,x
+        leay    _s_sy,pcr
+        lda     b,y
+        sta     2,x
+        leay    _s_sh,pcr
+        lda     b,y
+        sta     3,x
+        puls    y,pc
+; A: row length st, B: line -> A: where the line's row is in the ring,
+; B: the ring's length (128 / st * st)
+sprRing
+        pshs    a
+        mul
+        pshs    d
+        lda     #128
+@r1
+        suba    2,s
+        bcc     @r1
+        adda    2,s
+        nega
+        adda    #128
+        sta     2,s
+        puls    d
+@r2
+        subb    ,s
+        sbca    #0
+        bcc     @r2
+        addb    ,s
+        tfr     b,a
+        puls    b,pc
+; put back slot B's saved row for line A; X: its place in the ring (then
+; the ring's length), moved on to the next line's
+sprPut
+        pshs    d,x,y,u
+        ldb     #32
+        mul
+        addd    #$0E00
+        tfr     d,u
+        ldb     1,s
+        leay    _s_bx,pcr
+        ldb     b,y
+        leau    b,u
+        ldb     1,s
+        lda     #128
+        mul
+        addd    #$FA00
+        ldy     2,s
+        addb    ,y
+        adca    #0
+        tfr     d,y
+        ldb     1,s
+        leax    _s_n,pcr
+        ldb     b,x
+@p
+        lda     ,y+
+        sta     ,u+
+        decb
+        bne     @p
+        puls    d,x,y,u
+sprAdv
+        pshs    d,y
+        leay    _s_st,pcr
+        lda     b,y
+        adda    ,x
+        cmpa    1,x
+        blo     @a
+        clra
+@a
+        sta     ,x
+        puls    d,y,pc
     }
-    if (any) {
-        take_off();
-        bg_took = 1;
+}
+
+/* Background drawing is about to change a rectangle (in text cells): the
+ * sprites on it, and any drawn after one of them over it (their saved
+ * backgrounds hold its pixels), come off -- only its lines; bg_done puts
+ * them back over the new background. */
+static void spr_bg(uint8_t bc0, uint8_t bn, uint8_t by, uint8_t bh)
+{
+    uint8_t ii, ll, le, rc[4], ol[2];
+    asm {
+        leax    rc
+        lda     bc0
+        sta     ,x
+        lda     bn
+        sta     1,x
+        lda     by
+        sta     2,x
+        lda     bh
+        sta     3,x
+        ldb     #9
+@b1
+        leay    _hit,pcr
+        clr     b,y
+        leay    _s_drawn,pcr
+        tst     b,y
+        beq     @b2
+        lbsr    sprMeets
+        leay    _hit,pcr
+        sta     b,y
+@b2
+        decb
+        bpl     @b1
+        clrb
+@b3
+        leay    _hit,pcr
+        tst     b,y
+        beq     @b4
+        leax    rc
+        lbsr    sprOld
+        lbsr    sprClose
+@b4
+        incb
+        cmpb    #10
+        blo     @b3
+; their lines in by.. go back, the last drawn first
+        ldb     #10
+        stb     ii
+@b5
+        dec     ii
+        lbmi    @b9
+        ldb     ii
+        leay    _hit,pcr
+        tst     b,y
+        beq     @b5
+        lda     #1
+        sta     _bg_took,pcr
+        sta     _any_dirty,pcr
+        leay    _s_dirty,pcr
+        lda     b,y
+        ora     #2
+        sta     b,y
+        leay    _s_sy,pcr
+        lda     b,y
+        cmpa    by
+        bhs     @b6
+        lda     by
+@b6
+        sta     ll
+        lda     b,y
+        leay    _s_sh,pcr
+        adda    b,y
+        pshs    a
+        lda     by
+        adda    bh
+        cmpa    ,s+
+        bls     @b7
+        lda     -1,s
+@b7
+        sta     le
+        lda     ll
+        cmpa    le
+        bhs     @b5
+        leay    _s_st,pcr
+        lda     b,y
+        ldb     ll
+        lbsr    sprRing
+        leax    ol
+        std     ,x
+        ldb     ii
+@b8
+        lda     ll
+        lbsr    sprPut
+        inc     ll
+        lda     ll
+        cmpa    le
+        blo     @b8
+        lbra    @b5
+@b9
+        lda     by
+        sta     _lift_y0,pcr
+        adda    bh
+        sta     _lift_y1,pcr
     }
 }
 
@@ -746,93 +937,529 @@ static void bg_done(void)
     }
 }
 
-/* Where slot i would be drawn: its save rectangle, and the (clipped)
- * source. Returns 0 if nothing shows. */
-static const uint8_t *src_of(uint8_t i, int16_t *cx, uint8_t *y, uint8_t *h, uint8_t *wb)
-{
-    const ShapeDef *d = &pm_shapes[s_shape[i]];
-    uint8_t frame = s_frame[i], sz = d->wb * d->h;
-    const uint8_t *src;
-    int16_t yy = s_y[i];
-    int16_t hh = d->h;
-    int16_t left, right;
+/* A sprite being drawn by spr_flush (whose assembly knows the offsets). */
+typedef struct {
+    const uint8_t *src;         /* 0: the picture's next row */
+    int16_t cx;                 /* 2: its left colour pixel */
+    uint8_t c0, cn, sy, sh;     /* 4: where (as s_c0.. will say) */
+    uint8_t bx, n, st, wb;      /* 8 */
+    uint8_t pt0, pt1;           /* 12: the pattern on even lines, odd */
+    uint8_t no, nlim, oo, olim; /* 14: new rows' place in the ring, old */
+    uint8_t show;               /* 18: 0: nothing (hidden, or off the screen) */
+    uint8_t rows;               /* 19: the ring's rows */
+} Draw;
 
-    if (s_flags[i] & SPR_FLIPX) {
-        if (s_shape[i] == SH_MULE)
-            frame += 4;
-        else if (s_shape[i] == SH_FIGURE && (frame % 10) < 2)
-            frame += 2;
+/* Where slot si would be drawn now, into t (ShapeDef: data, wb, w, h). */
+void coco_src_of(uint8_t si, Draw *t)
+{
+    asm {
+        ldb     si
+        ldy     t
+        pshs    u
+        leas    -12,s           ; 0 yy, 2 hh, 4 slot, 5 frame, 6 shape, 8 left, 10 right
+        stb     4,s
+        clr     18,y
+        leax    _s_on,pcr
+        tst     b,x
+        lbeq    @ret
+        leax    _s_shape,pcr
+        lda     b,x
+        sta     6,s
+        leax    _s_frame,pcr
+        lda     b,x
+        leax    _s_flags,pcr
+        ldb     b,x
+        andb    #1              ; SPR_FLIPX: the mirrored frames
+        beq     @nf
+        ldb     6,s
+        cmpb    #2              ; SH_MULE
+        bne     @f1
+        adda    #4
+        bra     @nf
+@f1
+        cmpb    #1              ; SH_FIGURE, frames 0-1 of 10
+        bne     @nf
+        tfr     a,b
+@f2
+        subb    #10
+        bcc     @f2
+        addb    #10
+        cmpb    #2
+        bhs     @nf
+        adda    #2
+@nf
+        sta     5,s
+        ldb     6,s
+        lda     #5
+        mul
+        leau    _pm_shapes,pcr
+        leau    d,u
+        lda     2,u
+        ldb     4,u
+        mul
+        lda     5,s
+        mul
+        addd    ,u
+        std     ,y
+        clra
+        ldb     4,u
+        std     2,s
+        ldb     4,s
+        lslb
+        leax    _s_y,pcr
+        ldd     b,x
+        std     ,s
+        bpl     @yp
+        addd    2,s             ; off the top: the rows below it
+        std     2,s
+        ldb     1,s
+        negb
+        lda     2,u
+        mul
+        addd    ,y
+        std     ,y
+        clr     ,s
+        clr     1,s
+@yp
+        ldd     ,s
+        addd    2,s
+        cmpd    #192
+        ble     @yh
+        ldd     #192
+        subd    ,s
+        std     2,s
+@yh
+        ldd     2,s
+        lble    @ret
+; a character's 8 colour pixels stand for the Atari's 8 clocks (6 here):
+; centred on them. cpx(x) = x - x / 4 + 2
+        ldb     4,s
+        lslb
+        leax    _s_x,pcr
+        ldd     b,x
+        std     8,s
+        asra
+        rorb
+        asra
+        rorb
+        std     10,s
+        ldd     8,s
+        subd    10,s
+        addd    #2
+        tfr     d,x
+        lda     3,u
+        cmpa    #8
+        bne     @w8
+        leax    -1,x
+@w8
+        stx     8,s
+        ldb     3,u
+        decb
+        clra
+        addd    8,s
+        std     10,s
+        lbmi    @ret
+        ldd     8,s
+        cmpd    #127
+        lbgt    @ret
+        lda     #1
+        sta     18,y
+        ldd     8,s
+        std     2,y
+        bpl     @l0
+        clra
+        clrb
+        std     8,s
+@l0
+        ldd     10,s
+        cmpd    #127
+        ble     @r0
+        ldd     #127
+        std     10,s
+@r0
+        ldb     9,s
+        lsrb
+        lsrb
+        stb     8,y
+        ldb     11,s
+        lsrb
+        lsrb
+        subb    8,y
+        incb
+        stb     9,y
+        ldb     1,s
+        stb     6,y
+        ldb     3,u
+        addb    #6
+        lsrb
+        lsrb
+        stb     10,y
+        lda     #128
+        clrb
+@dv
+        incb
+        suba    10,y
+        bcc     @dv
+        decb
+        stb     19,y
+        lda     3,s
+        cmpa    19,y
+        bls     @hs
+        lda     19,y
+@hs
+        sta     7,y
+        lda     2,u
+        sta     11,y
+        pshs    y
+        ldd     10,s
+        pshs    d
+        lbsr    _cell_of
+        leas    2,s
+        ldy     ,s
+        stb     4,y
+        ldd     12,s
+        pshs    d
+        lbsr    _cell_of
+        leas    2,s
+        ldy     ,s
+        subb    4,y
+        incb
+        stb     5,y
+        ldb     6,s
+        leax    _s_col,pcr
+        ldb     b,x
+        leax    _kind,pcr
+        ldb     b,x
+        clra
+        tfr     d,x
+        ldd     #1
+        pshs    d
+        pshs    x
+        lbsr    _pat
+        ldy     4,s
+        stb     13,y
+        ldx     ,s
+        leas    4,s
+        clra
+        clrb
+        pshs    d
+        pshs    x
+        lbsr    _pat
+        leas    4,s
+        puls    y
+        stb     12,y
+@ret
+        leas    12,s
+        puls    u
     }
-    src = d->data + (uint16_t)frame * sz;
-    if (yy < 0) {
-        src += (uint8_t)(-yy) * d->wb;
-        hh += yy;
-        yy = 0;
-    }
-    if (yy + hh > 192)
-        hh = 192 - yy;
-    /* a character's 8 colour pixels stand for the Atari's 8 clocks (6
-     * here): centred on them */
-    left = cpx(s_x[i]) - (d->w == 8 ? 1 : 0);
-    right = left + d->w - 1;
-    if (hh <= 0 || right < 0 || left > 127)
-        return 0;
-    *cx = left;
-    if (left < 0)
-        left = 0;
-    if (right > 127)
-        right = 127;
-    s_bx[i] = (uint8_t)(left >> 2);
-    s_n[i] = (uint8_t)(right >> 2) - s_bx[i] + 1;
-    s_sy[i] = (uint8_t)yy;
-    s_sh[i] = (uint8_t)hh;
-    if ((uint16_t)s_n[i] * s_sh[i] > SAVE_MAX)
-        s_sh[i] = SAVE_MAX / s_n[i];
-    s_c0[i] = cell_of(left);
-    s_cn[i] = cell_of(right) - s_c0[i] + 1;
-    *y = (uint8_t)yy;
-    *h = s_sh[i];
-    *wb = d->wb;
-    return src;
 }
 
 void spr_flush(void)
 {
-    uint8_t i, j, y, h, wb;
-    int16_t cx;
-    const uint8_t *src;
+    uint8_t y0, y1, pass, nc, ll, kk, ii;
+    uint8_t cl[SPR_SLOTS];      /* the sprites redrawn, in order */
+    uint8_t rc[4];
+    Draw dr[SPR_SLOTS];
 
     if (!any_dirty)
         return;
     any_dirty = 0;
-    /* the changing sprites come off, with anything drawn after them over them */
-    for (i = 0; i < SPR_SLOTS; ++i)
-        hit[i] = s_dirty[i];
-    take_off();
-    any_dirty = 0;
-    for (i = 0; i < SPR_SLOTS; ++i) {
-        if (!s_dirty[i])
-            continue;
-        s_dirty[i] = 0;
-        if (!s_on[i])
-            continue;
-        src = src_of(i, &cx, &y, &h, &wb);
-        if (!src)
-            continue;
-        /* anything drawn later that is still up over the new place comes
-         * off first (it is drawn again after this one) */
-        for (j = i + 1; j < SPR_SLOTS; ++j)
-            hit[j] = s_drawn[j] && meets(j, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
-        for (j = 0; j <= i; ++j)
-            hit[j] = 0;
-        take_off();
-        rect(i, 0);
-        s_drawn[i] = 1;
-        draw1(src, wb, h, 1, cx, y, kind[s_col[i]]);
+    asm {
+; the changing sprites, and anything drawn after one of them over its old
+; place or its new one (drawn again: its saved background would be wrong
+; otherwise); s_bx.. are still the old places
+        ldb     #9
+@h
+        leax    _s_dirty,pcr
+        lda     b,x
+        leax    _hit,pcr
+        sta     b,x
+        decb
+        bpl     @h
+        lda     #255
+        sta     y0
+        clr     y1
+        clr     nc
+        lda     #2              ; 2: each line at once
+        sta     pass
+        clr     ii
+@s
+        ldb     ii
+        cmpb    #10
+        lbhs    @pass
+        leax    _hit,pcr
+        tst     b,x
+        lbeq    @snext
+        leax    cl
+        lda     nc
+        stb     a,x
+        inc     nc
+        lda     #20
+        mul
+        leay    dr
+        leay    d,y
+        pshs    y
+        ldb     ii
+        clra
+        pshs    d
+        lbsr    _coco_src_of
+        leas    2,s
+        puls    y
+        tst     18,y
+        beq     @s2
+        lda     10,y
+        ldb     6,y
+        lbsr    sprRing
+        std     14,y
+        lda     6,y
+        cmpa    y0
+        bhs     @s1
+        sta     y0
+@s1
+        adda    7,y
+        cmpa    y1
+        bls     @s2
+        sta     y1
+@s2
+        ldb     ii
+        leax    _s_drawn,pcr
+        tst     b,x
+        beq     @s5
+        leax    _s_st,pcr
+        lda     b,x
+        leax    _s_sy,pcr
+        ldb     b,x
+        lbsr    sprRing
+        std     16,y
+        ldb     ii
+        lda     b,x
+        cmpa    y0
+        bhs     @s3
+        sta     y0
+@s3
+        leax    _s_sh,pcr
+        adda    b,x
+        cmpa    y1
+        bls     @s4
+        sta     y1
+@s4
+; a line's new row must not land where an old row not put back yet is: if
+; it could, the old all come off first
+        tst     18,y
+        beq     @s5
+        leax    _s_st,pcr
+        ldb     b,x
+        cmpb    10,y
+        bne     @s4u
+        suba    6,y
+        bcs     @s5
+        cmpa    19,y
+        bls     @s5
+@s4u
+        clr     pass
+@s5
+        ldb     ii
+        leax    _s_drawn,pcr
+        tst     b,x
+        beq     @s6
+        leax    rc
+        lbsr    sprOld
+        lbsr    sprClose
+@s6
+        tst     18,y
+        beq     @snext
+        leax    4,y
+        lbsr    sprClose
+@snext
+        inc     ii
+        lbra    @s
+; pass 2: each line at once; 0: put back, then 1: draw
+@pass
+        lda     y0
+        sta     ll
+@line
+        lda     ll
+        cmpa    y1
+        lbhs    @pdone
+        lda     pass
+        cmpa    #1
+        beq     @draw
+        ldb     nc
+        stb     kk
+@rl
+        dec     kk
+        bmi     @draw
+        ldb     kk
+        leax    cl
+        ldb     b,x
+        stb     ii
+        leax    _s_drawn,pcr
+        tst     b,x
+        beq     @rl
+        lda     ll
+        leax    _s_sy,pcr
+        suba    b,x
+        leax    _s_sh,pcr
+        cmpa    b,x
+        bhs     @rl
+        lda     #20
+        mul
+        leay    dr
+        leay    d,y
+        leax    16,y
+        ldb     ii
+        leay    _hit,pcr
+        lda     b,y
+        anda    #2              ; taken off by spr_bg: not these lines
+        beq     @put
+        lda     ll
+        cmpa    _lift_y0,pcr
+        blo     @put
+        cmpa    _lift_y1,pcr
+        blo     @adv
+@put
+        lda     ll
+        lbsr    sprPut
+        bra     @rl
+@adv
+        lbsr    sprAdv
+        bra     @rl
+@draw
+        lda     pass
+        lbeq    @next
+        clr     kk
+@dl
+        ldb     kk
+        cmpb    nc
+        lbhs    @next
+        inc     kk
+        leax    cl
+        ldb     b,x
+        stb     ii
+        lda     #20
+        mul
+        leay    dr
+        leay    d,y
+        tst     18,y
+        beq     @dl
+        lda     ll
+        suba    6,y
+        cmpa    7,y
+        bhs     @dl
+        ldb     ll
+        lda     #32
+        mul
+        addd    #$0E00
+        std     _sp_row,pcr
+        addb    8,y
+        adca    #0
+        tfr     d,x             ; the screen at bx
+        lda     9,y
+        pshs    a,y
+        ldb     ii
+        lda     #128
+        mul
+        addd    #$FA00
+        addb    14,y
+        adca    #0
+        tfr     d,y
+        ldb     ,s
+@c2
+        lda     ,x+
+        sta     ,y+
+        decb
+        bne     @c2
+        puls    a,y
+        lda     14,y
+        adda    10,y
+        cmpa    15,y
+        blo     @w2
+        clra
+@w2
+        sta     14,y
+        ldd     ,y
+        std     _sp_src,pcr
+        addb    11,y
+        adca    #0
+        std     ,y
+        lda     11,y
+        sta     _sp_wb,pcr
+        ldd     2,y
+        andb    #3
+        lslb
+        stb     _sp_sh,pcr
+        ldd     2,y
+        asra
+        rorb
+        asra
+        rorb
+        stb     _sp_bx0,pcr
+        lda     ll
+        lsra
+        bcs     @odd
+        lda     12,y
+        bra     @pt
+@odd
+        lda     13,y
+@pt
+        sta     _sp_pt,pcr
+        lbsr    _spr_row
+        lbra    @dl
+@next
+        inc     ll
+        lbra    @line
+@pdone
+        lda     pass
+        bne     @fin
+        inc     pass
+        lbra    @pass
+; what is drawn now
+@fin
+        ldb     nc
+        stb     kk
+@f
+        dec     kk
+        bmi     @end
+        ldb     kk
+        leax    cl
+        ldb     b,x
+        stb     ii
+        lda     #20
+        mul
+        leay    dr
+        leay    d,y
+        ldb     ii
+        leax    _s_dirty,pcr
+        clr     b,x
+        lda     18,y
+        leax    _s_drawn,pcr
+        sta     b,x
+        beq     @f
+        lda     4,y
+        leax    _s_c0,pcr
+        sta     b,x
+        lda     5,y
+        leax    _s_cn,pcr
+        sta     b,x
+        lda     6,y
+        leax    _s_sy,pcr
+        sta     b,x
+        lda     7,y
+        leax    _s_sh,pcr
+        sta     b,x
+        lda     8,y
+        leax    _s_bx,pcr
+        sta     b,x
+        lda     9,y
+        leax    _s_n,pcr
+        sta     b,x
+        lda     10,y
+        leax    _s_st,pcr
+        sta     b,x
+        bra     @f
+@end
+        clr     _lift_y1,pcr
     }
-    any_dirty = 0;
-    for (i = 0; i < SPR_SLOTS; ++i)
-        any_dirty |= s_dirty[i];
 }
 
 /* CLEAR: the artifact colours are the wrong way round on this machine. */
