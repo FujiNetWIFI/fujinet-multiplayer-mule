@@ -299,7 +299,7 @@ TSG:    LD      DE,16
         RET
 TCOLONY: DB     0,10,4,0,0,0,40H,0E2H,01H,00H   ; plot 10, rating 4, 123456
 
-; the players: 29 bytes each ("PL0".., species (1 + 2k) & 7, colour k,
+; the players: 29 bytes each ("PL0".., species (1 + 2k [+ the lobby offset]) & 7, colour k,
 ; the last a computer, $1000, food 1 + 2k, score 5000 - 700k, rank k + 1,
 ; food produced 3 + k, spoiled k)
 TSGP:   ADD     HL,DE           ; (back to 0..115)
@@ -326,8 +326,13 @@ TSP2:   LD      A,L
         RET
 TSP3:   CP      9
         JR      NZ,TSP4
-        LD      A,C
-        ADD     A,A
+        LD      A,(TPH)         ; the lobby takes TESTHK+2 as a species offset
+        CP      PH_LOBBY
+        LD      A,0
+        JR      NZ,TSP3A
+        LD      A,(TARG)
+TSP3A:  ADD     A,C
+        ADD     A,C
         INC     A
         AND     7
         RET
@@ -470,7 +475,7 @@ TSM2:   LD      B,L             ; B = plot
         LD      A,3
         RET     Z
         LD      A,B
-        CP      31
+        CP      20
         LD      A,8
         RET     Z
         XOR     A
@@ -494,8 +499,8 @@ TSMDEF: LD      A,(HL)          ; {plot, value} ..., 255
         INC     HL
         RET     Z
         JR      TSMDEF
-TOWNDEF: DB     10,0,12,1,30,3,31,0,14,2,255
-TMULEDEF: DB    10,0,12,1,30,1,31,2,255
+TOWNDEF: DB     10,0,12,1,30,3,20,0,14,2,34,2,255
+TMULEDEF: DB    10,0,12,1,30,1,20,2,34,3,255
 
 ; TSMPAT: Z and HL at the {owner, mule} of plot B if an action changed it.
 TSMPAT: LD      A,(TNP)

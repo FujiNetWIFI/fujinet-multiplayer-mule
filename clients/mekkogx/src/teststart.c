@@ -24,7 +24,8 @@ void test_start(uint8_t ph, uint8_t arg, uint8_t pev)
         p->name[0] = 'P';
         p->name[1] = 'L';
         p->name[2] = '0' + i;
-        p->species = (1 + i * 2) & 7;
+        /* the lobby and summary take arg as a species offset: 1 shows the other four */
+        p->species = (1 + i * 2 + (ph == PHASE_LOBBY + 1 || ph == PHASE_SUMMARY + 1 ? arg : 0)) & 7;
         p->color = i;
         p->money = 1000;
         p->rank = i + 1;
@@ -53,8 +54,9 @@ void test_start(uint8_t ph, uint8_t arg, uint8_t pev)
     st.map.owner[10] = 0; st.map.mule[10] = GOOD_FOOD; st.map.prod[10] = 5;
     st.map.owner[12] = 1; st.map.mule[12] = GOOD_ENERGY; st.map.prod[12] = 3;
     st.map.owner[30] = 3; st.map.mule[30] = GOOD_ENERGY;
-    st.map.owner[31] = 0; st.map.mule[31] = GOOD_SMITHORE; st.map.prod[31] = 8;
+    st.map.owner[20] = 0; st.map.mule[20] = GOOD_SMITHORE; st.map.prod[20] = 8;
     st.map.owner[14] = 2;
+    st.map.owner[34] = 2; st.map.mule[34] = GOOD_CRYSTITE; st.map.prod[34] = 2;
     st.store.mules = 14;
     st.store.mulePrice = 100;
     for (i = 0; i < 4; ++i) {

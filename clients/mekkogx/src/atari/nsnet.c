@@ -41,6 +41,9 @@ extern uint8_t ns_fbuf[];
 #define DEAD_AFTER 300          /* frames without a frame: the link is gone (the
                                  * server's clock alone comes every 30) */
 #define SETTLE     3            /* jiffies between the motor off and SIO */
+#define ASK_AGAIN  60           /* frames unanswered before HELLO or TABLES goes
+                                 * again: the first after the link opens can be
+                                 * lost while FujiNet still dials the server */
 #define RESYNC_GAP 30           /* frames between RESYNCs: the whole state is
                                  * 18 frames of the line, and one bad frame in
                                  * a burst mustn't ask for it again and again */
@@ -59,6 +62,7 @@ static uint8_t stage[sizeof(MuleState)];
 static uint8_t link, joined;    /* connected; HELLO sent for sc_table */
 static uint8_t seq, wait_seq, wait_act, credited, paused, resync_hold;
 static uint8_t resync_owed;     /* a bad frame came during the hold: ask after it */
+static uint8_t heard;           /* a frame since HELLO: it got there */
 static uint16_t quiet;
 
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
@@ -116,8 +120,7 @@ static void send_credit(void)
     send(SC_CREDIT, &credited, 1);
 }
 
-/* (Re)join. An action the old link never answered goes again. */
-static void send_hello(void)
+static void hello_frame(void)
 {
     static uint8_t h[18];
     memset(h, 0, sizeof(h));
@@ -125,7 +128,14 @@ static void send_hello(void)
     strncpy((char *)h + 2, sc_table, 8);
     strncpy((char *)h + 10, sc_name, 8);
     send(SC_HELLO, h, sizeof(h));
+}
+
+/* (Re)join. An action the old link never answered goes again. */
+static void send_hello(void)
+{
+    hello_frame();
     joined = 1;
+    heard = 0;
     resync_owed = 0;            /* HELLO brings the whole state */
     if (wait_seq && act == ACT_NONE && wait_act != ACT_LEAVE)
         act = wait_act;
@@ -190,6 +200,8 @@ static uint8_t connect(void)
     if (!ns_enable(endpoint_host()))
         return 0;
     ns_begin();
+    ns_put(0);                  /* ends whatever the switch-over left at the
+                                 * server, so our first frame comes clean */
     link = 1;
     joined = 0;
     return 1;
@@ -250,6 +262,7 @@ static uint8_t take(void)
             resync();                   /* lost: the whole state again */
             continue;
         }
+        heard = 1;
         switch (ns_fbuf[0]) {
         case CS_PATCH:
             off = ns_fbuf[1] | ns_fbuf[2] << 8;
@@ -342,6 +355,8 @@ uint8_t net_step(void)
         send_credit();          /* a keepalive, and credit it may have lost */
         send(SC_PING, 0, 0);
     }
+    if (!heard && quiet % ASK_AGAIN == 0)
+        hello_frame();          /* HELLO lost on the way: no state yet */
     if (quiet > DEAD_AFTER) {
         drop();
         net_have = 0;
@@ -379,23 +394,30 @@ uint8_t net_detect(void)
     return 1;                   /* as fujinet-lib's network_init says on the Atari */
 }
 
-/* The table list: count, then MuleTables. Blocking (boot). */
+/* The table list: count, then MuleTables. Blocking (boot). Asked again
+ * until something answers; each table is counted once (by its place), as
+ * two answered asks bring it twice. max is at most 16. */
 uint8_t net_tables(uint8_t *buf, uint8_t max)
 {
-    uint16_t t;
-    uint8_t n, got = 0, count = 255;
+    uint16_t t, have = 0;
+    uint8_t n, i, got = 0, count = 255;
     if (!connect())
         return 0;
-    send(SC_TABLES, 0, 0);
-    for (t = 0; t < 300 && got < count; ++t) {
+    for (t = 0; t < 600 && got < count; ++t) {
+        if (count == 255 && t % ASK_AGAIN == 0)
+            send(SC_TABLES, 0, 0);
         frame_wait();
         while ((n = ns_frame()) != 0) {
             if (n == 255 || ns_fbuf[0] != CS_TABLE)
                 continue;               /* a state for the old table: skip */
-            count = ns_fbuf[2];
-            if (ns_fbuf[1] < max && n >= 3 + sizeof(MuleTable))
-                memcpy(buf + 1 + ns_fbuf[1] * sizeof(MuleTable), ns_fbuf + 3, sizeof(MuleTable));
-            if (++got >= count)
+            count = ns_fbuf[2] > max ? max : ns_fbuf[2];
+            i = ns_fbuf[1];
+            if (i < max && !(have & (1 << i)) && n >= 3 + sizeof(MuleTable)) {
+                have |= 1 << i;
+                ++got;
+                memcpy(buf + 1 + i * sizeof(MuleTable), ns_fbuf + 3, sizeof(MuleTable));
+            }
+            if (got >= count)
                 break;
         }
         if ((uint8_t)(ns_taken - credited) >= 48)

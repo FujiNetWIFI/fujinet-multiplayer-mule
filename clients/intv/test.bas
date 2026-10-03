@@ -25,7 +25,9 @@ test_start:
     FOR i = 0 TO 3
         #addr = STATE + ST_PLAYERS + i * SZ_PLAYER
         POKE #addr, 80 + i : POKE #addr + 1, 76 : POKE #addr + 2, 48 + i   ' "PL0".. names
-        POKE #addr + S_PLAYER_SPECIES, (1 + i * 2) AND 7
+        ' the summary takes TEST_HOOK + 4 as a species offset: 1 shows the other four
+        IF k = PHASE_SUMMARY THEN j = PEEK(TEST_HOOK + 4) ELSE j = 0
+        POKE #addr + S_PLAYER_SPECIES, (1 + i * 2 + j) AND 7
         POKE #addr + S_PLAYER_COLOR, i
         POKE #addr + S_PLAYER_MONEY, 232 : POKE #addr + S_PLAYER_MONEY + 1, 3   ' 1000
         POKE #addr + S_PLAYER_RANK, i + 1
@@ -33,7 +35,7 @@ test_start:
     NEXT i
     POKE STATE + ST_PLAYERS + 3 * SZ_PLAYER + S_PLAYER_FLAGS, PF_AI
     ' The map: the river down column 4, the store in the middle, a mountain
-    ' plot either side in each row, plots 10, 12, 30 owned.
+    ' plot either side in each row, plots 10, 12, 14, 20, 30, 34 owned.
     FOR mp = 0 TO 44
         c = TERRAIN_PLAIN
         IF mp % 9 = 4 THEN c = TERRAIN_RIVER
@@ -50,8 +52,10 @@ test_start:
     POKE STATE + ST_MAP_OWNER + 12, 1 : POKE STATE + ST_MAP_MULE + 12, GOOD_ENERGY
     POKE STATE + ST_MAP_PROD + 12, 3
     POKE STATE + ST_MAP_OWNER + 30, 3 : POKE STATE + ST_MAP_MULE + 30, GOOD_ENERGY
-    POKE STATE + ST_MAP_OWNER + 31, 0 : POKE STATE + ST_MAP_MULE + 31, GOOD_SMITHORE
-    POKE STATE + ST_MAP_PROD + 31, 8
+    POKE STATE + ST_MAP_OWNER + 20, 0 : POKE STATE + ST_MAP_MULE + 20, GOOD_SMITHORE
+    POKE STATE + ST_MAP_PROD + 20, 8
+    POKE STATE + ST_MAP_OWNER + 34, 2 : POKE STATE + ST_MAP_MULE + 34, GOOD_CRYSTITE
+    POKE STATE + ST_MAP_PROD + 34, 2
     POKE STATE + ST_STORE_MULES, 14 : POKE STATE + ST_STORE_MULE_PRICE, 100
     FOR i = 0 TO 3 : POKE STATE + ST_STORE_PRICE + i * 2, 20 + i * 20 : NEXT i
     ' Our turn (or seat TEST_HOOK + 4's), started, 2828 jiffies long, a
