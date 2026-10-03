@@ -10,8 +10,7 @@
  *
  * Each step is one of: a WRITE of what nsnet has flushed (it goes first),
  * else a STATUS, whose reply says how many bytes wait and whether the socket
- * is up, and a READ only when some do. The server keeps under 256 bytes
- * unacknowledged, so one read takes all.
+ * is up, and a READ only when some do (FB_RBUF at most).
  *
  * A packet: device, command, length (16 bits, the header's 6 bytes
  * included), a checksum of it all (taken with itself 0), a field
@@ -20,6 +19,11 @@
  *
  * The open and the close are fujinet-lib's (a wait, once). Before anything
  * else uses the bus (appkeys), nt_quiesce lets the call going finish.
+ *
+ * With FB_PROBE (MS-DOS) the wire is found at the first open: a STATUS on
+ * each candidate (fb_try), and the first to answer is kept. If none does,
+ * the same calls go through fujinet-lib instead, each one waited on (lib),
+ * and the socket is asked only every LIB_EVERY frames.
  */
 #if defined(PLAT_NETSTREAM) && defined(PLAT_FUJIBUS)
 
@@ -33,7 +37,8 @@
 #define C_STATUS  0x53
 #define C_READ    0x52
 #define C_WRITE   0x57
-#define C_RESEND  0x05          /* fujinet-pc-rs232: the last reply again */
+#define C_RESEND  0x05          /* fujinet-pc-rs232: the last reply again
+                                 * (elsewhere a NAK, at once) */
 #define F_REPLY   0x10          /* (fujinet-lib sends its descriptor bits) */
 #define F_B12_D   0x0D          /* a 16-bit field, then data */
 #define F_B12_R   0x15          /* a 16-bit field; data back */
@@ -50,17 +55,23 @@
 #ifndef FB_RESENDS
 #define FB_RESENDS 0            /* asks for a garbled reply again */
 #endif
+#ifndef FB_RBUF
+#define FB_RBUF 256             /* the most a read takes */
+#endif
+#ifndef FB_QBUF
+#define FB_QBUF 96              /* flushed frames waiting (27 bytes at most each) */
+#endif
 
 enum { T_IDLE, T_STATUS, T_READ, T_WRITE };
 
 static char dev[72];
 static uint8_t state, down, wtries, resends, dropped, hold;
-static uint8_t rbuf[256];
+static uint8_t rbuf[FB_RBUF];
 static uint16_t rlen, rpos, polled, started, want;
-static uint8_t fbuf[32];        /* the frame being put (27 bytes at most) */
+static uint8_t fbuf[32];        /* the frame being put */
 static uint8_t flen, fover;
-static uint8_t qbuf[96], qlen;  /* flushed frames, not yet written */
-static uint8_t tbuf[2 + 96];    /* the write going: its length, the frames */
+static uint8_t qbuf[FB_QBUF], qlen;     /* flushed frames, not yet written */
+static uint8_t tbuf[2 + FB_QBUF];       /* the write going: its length, the frames */
 static uint8_t tlen;
 
 /* the reply coming in */
@@ -69,9 +80,19 @@ static uint8_t *dst;
 static uint16_t dmax, got, sum;
 static uint8_t inframe, esc;
 
+#ifdef FB_PROBE
+#define PROBE_WAIT 30           /* frames for a candidate's answer */
+#define LIB_EVERY  6            /* frames between statuses through the lib */
+static uint8_t found, lib, libr;
+#endif
+
 uint8_t nt_detect(void)
 {
-    return 1;                   /* plat_net_probe found the FujiNet */
+#ifdef PLAT_NET_PROBE
+    if (!plat_net_probe())      /* (fujinet-lib-experimental's init says yes) */
+        return 0;
+#endif
+    return network_init() == FN_ERR_OK;
 }
 
 static uint16_t fold(uint16_t chk, const uint8_t *p, uint8_t n)
@@ -95,11 +116,47 @@ static void out(uint8_t c)
     fb_putc(c);
 }
 
+#ifdef FB_PROBE
+/* No wire of our own: the call through fujinet-lib (FUJINET.SYS), done
+ * when it returns. */
+static void lib_call(uint8_t cmd, const uint8_t *data, uint8_t n, uint8_t *to)
+{
+    uint16_t k;
+    libr = 2;
+    got = 6;
+    NET_GUARD(1);
+    if (cmd == C_STATUS) {
+        if (network_status(dev, (uint16_t *)to, to + 2, to + 3) == FN_ERR_OK)
+            libr = 1;
+    } else if (cmd == C_READ) {
+        k = network_bus_read(DEV_NET, to, want);
+        if (k) {
+            got = 6 + k;
+            libr = 1;
+        }
+    } else if (cmd == C_WRITE && network_bus_write(DEV_NET, data + 2, n - 2)) {
+        libr = 1;
+    }
+    NET_GUARD(0);
+}
+#endif
+
 /* A request goes, whole; its reply's data will land in to[0..max). */
 static void request(uint8_t cmd, uint8_t fields, const uint8_t *data, uint8_t n,
                     uint8_t *to, uint16_t max)
 {
     uint8_t h[6], i;
+    dst = to;
+    dmax = max;
+    got = sum = 0;
+    inframe = esc = 0;
+    started = frame_count;
+#ifdef FB_PROBE
+    if (lib) {
+        lib_call(cmd, data, n, to);
+        return;
+    }
+#endif
     h[0] = DEV_NET;
     h[1] = cmd;
     h[2] = 6 + n;
@@ -116,11 +173,6 @@ static void request(uint8_t cmd, uint8_t fields, const uint8_t *data, uint8_t n,
         out(data[i]);
     fb_putc(SL_END);
     fb_sent();
-    dst = to;
-    dmax = max;
-    got = sum = 0;
-    inframe = esc = 0;
-    started = frame_count;
 }
 
 /* The reply's bytes, as many as wait: 0 not all here yet, 1 an ACK, 2 bad
@@ -128,6 +180,10 @@ static void request(uint8_t cmd, uint8_t fields, const uint8_t *data, uint8_t n,
 static uint8_t collect(void)
 {
     uint8_t c, n = 0;
+#ifdef FB_PROBE
+    if (lib)
+        return libr;
+#endif
     while (fb_ready()) {
         c = fb_getc();
         if (c == SL_END) {
@@ -257,6 +313,10 @@ static void step(void)
         start_write();
         return;
     }
+#ifdef FB_PROBE
+    if (lib && (uint16_t)(frame_count - polled) < LIB_EVERY)
+        return;
+#endif
     if (polled != frame_count) {            /* once a frame at most */
         polled = frame_count;
         start_status();
@@ -270,6 +330,7 @@ void nt_quiesce(void)
     while (state != T_IDLE)
         step();
     hold = 0;
+    fb_release();
 }
 
 /* "N:TCP://host:port/": the connection is made here (a wait, once). */
@@ -291,7 +352,26 @@ uint8_t nt_open(const char *host, uint16_t port)
     flen = fover = qlen = tlen = 0;
     down = resends = dropped = 0;
     polled = frame_count - 1;
-    return network_open(dev, OPEN_MODE_RW, OPEN_TRANS_NONE) == FN_ERR_OK;
+    if (network_open(dev, OPEN_MODE_RW, OPEN_TRANS_NONE) != FN_ERR_OK)
+        return 0;
+#ifdef FB_PROBE
+    if (!found && !lib) {
+        uint8_t i, r = 0;
+        for (i = 0; r != 1 && fb_try(i); ++i) {
+            start_status();
+            while (!(r = collect()) && (uint16_t)(frame_count - started) < PROBE_WAIT)
+                ;
+        }
+        state = T_IDLE;
+        found = r == 1;
+        if (found)
+            fb_keep();
+        else
+            lib = 1;                        /* no wire answered: the lib's */
+        fb_release();
+    }
+#endif
+    return 1;
 }
 
 uint8_t nt_close(void)

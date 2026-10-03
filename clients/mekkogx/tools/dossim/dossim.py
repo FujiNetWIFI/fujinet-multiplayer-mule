@@ -33,6 +33,7 @@ Symbols are DGROUP offsets from the wlink map (build/mule-msdos.map); DGROUP
 is wherever DOS loaded the game, so it is taken from the CPU's DS once the
 title has written 3C C3 into test_hook. DOSSIM_NOFN=1 boots without
 CONFIG.SYS (no FUJINET.SYS: the game answers INT F5h itself).
+DOSSIM_AUTOEXEC replaces the AUTOEXEC.BAT's MULE line ("\\n" between lines).
 
 Against a FujiNet: DOSSIM_FUJINET=127.0.0.1:PORT connects the serial port
 (a null modem) to a fujinet-pc (RS232 build) listening for BoIP there; the
@@ -68,7 +69,10 @@ def make_disk(exe, out):
     if os.environ.get("DOSSIM_NOFN"):
         subprocess.run(["mdel", "-i", disk, "::CONFIG.SYS"], capture_output=True)
     bat = os.path.join(out, "autoexec.bat")
-    open(bat, "wb").write(b"@ECHO OFF\r\nMULE\r\n")
+    # DOSSIM_AUTOEXEC: other lines (\n between them), e.g. "C:\nMULE" to run
+    # the game from a FujiNet drive, its overlays read through FUJINET.SYS
+    lines = os.environ.get("DOSSIM_AUTOEXEC", "MULE").split("\\n")
+    open(bat, "wb").write(("@ECHO OFF\r\n" + "".join(l + "\r\n" for l in lines)).encode())
     subprocess.run(["mcopy", "-o", "-i", disk, bat, "::AUTOEXEC.BAT"], check=True)
     subprocess.run(["mcopy", "-o", "-i", disk, exe, "::MULE.EXE"], check=True)
     return disk

@@ -121,9 +121,12 @@ coco/disk-post::
 # (tools/dos/wlink-mule.py) so the game fits a 128K PCjr in its 16-colour
 # mode. Watcom runs from defoogi unless installed (tools/dos/ow). fujinet-lib
 # is fujinet-lib-experimental, rebuilt medium model (tools/dos/mkfnlib.sh).
-# FUJINET.SYS may run at 9600 bps (a PCjr): a status call is 25 ms there, so
-# the socket is asked every 6th frame, and the server is told the link is
-# slow (PLAT_NS_SLOW: a push at most every 300 ms).
+# The stream's packets go over the serial port FUJINET.SYS uses, driven by
+# its interrupt (src/msdos/fbport.c, uartisr.asm; PLAT_FUJIBUS), so no call
+# is waited on; FB_RESENDS asks the FujiNet for a garbled reply again. If no
+# port answers, FUJINET.SYS carries them, each call waited on (at 9600 bps,
+# a PCjr, a status is 25 ms: asked every 6th frame). The server is told
+# the link may be slow (PLAT_NS_SLOW: a push at most every 300 ms).
 FNLIB_EXP ?= $(HOME)/Workspace/fujinet-lib-experimental
 DOS_TOOLS = $(CURDIR)/tools/dos
 ifeq ($(PLATFORM),msdos)
@@ -134,7 +137,8 @@ ifeq ($(PLATFORM),msdos)
   LD_OW2 = $(DOS_TOOLS)/wlink-mule.py OPTION quiet
 endif
 CFLAGS_EXTRA_MSDOS += -zq -mm -os -s -of -zp1 -DKEY_END_NAME='"ENTER"' -DPLAT_NET_PROBE -DPLAT_NETSTREAM \
-                      -DPLAT_NET_GUARD -DQUIT_HINT='"ESC: LOBBY"' -DNT_POLL_EVERY=6 -DPLAT_NS_SLOW -DNT_BUS_READ
+                      -DPLAT_NET_GUARD -DQUIT_HINT='"ESC: LOBBY"' -DPLAT_NS_SLOW \
+                      -DPLAT_FUJIBUS -DFB_PROBE -DFB_RESENDS=2 -DFB_RBUF=128 -DFB_QBUF=64
 EXTRA_INCLUDE_MSDOS += build/fnlib-msdos/include
 # (-ad names the object in the .d without its directory: -adt names it)
 CFLAGS_EXTRA_MSDOS += -adt=$@

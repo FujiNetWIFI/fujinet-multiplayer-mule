@@ -10,6 +10,9 @@ medium-model fujinet-lib, the map, the stack, and runs the real wlink
 
 The overlay groups mirror the Apple's (Makefile, A2OBJ):
   1 boot, teststart   2 status   3 grant, events   4 auction   5 develop
+with two more that only the PC has, for room on a 128K PCjr: net.c's
+appkeys (only boot.c calls them) go with boot, and lobby.c (LEAVE's way
+back to the lobby, once) is an overlay of its own.
 """
 import os
 import re
@@ -18,8 +21,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OW = os.path.join(HERE, "ow")
-OVERLAYS = [["boot", "teststart"], ["status"], ["grant", "events"],
-            ["auction"], ["develop"]]
+OVERLAYS = [["boot", "teststart", "net"], ["status"], ["grant", "events"],
+            ["auction"], ["develop"], ["lobby"]]
 FNLIB = os.environ.get("MULE_FNLIB", "build/fnlib-msdos/fujinet-msdos.lib")
 MAP = "build/mule-msdos.map"
 STACK = 1024                    # ~300 bytes used, FUJINET.SYS calls included
@@ -46,8 +49,11 @@ def main():
     def base(o):
         return os.path.splitext(os.path.basename(o))[0]
 
-    ov_objs = [[o for o in objs if base(o) in grp and "/src/" + base(o) + ".o"
-                in o.replace("\\", "/")] for grp in OVERLAYS]
+    def ours(o):                # src/X.o or src/msdos/X.o, not a library's
+        p = o.replace("\\", "/")
+        return "/src/" + base(o) + ".o" in p or "/src/msdos/" + base(o) + ".o" in p
+
+    ov_objs = [[o for o in objs if base(o) in grp and ours(o)] for grp in OVERLAYS]
     flat = {o for g in ov_objs for o in g}
     root = [o for o in objs if o not in flat]
 

@@ -6,6 +6,10 @@
  *   fb_ready()   non-zero when a reply byte waits
  *   fb_getc()    that byte
  *   fb_sent()    the request is all put: let it go
+ *   fb_release() the bus is fujinet-lib's again (between our calls)
+ *
+ * With FB_PROBE (MS-DOS) the wire must be found first: fb_try(i) sets up
+ * the i-th candidate (0: no more), fb_keep() keeps the one that answered.
  */
 #ifndef FBPORT_H
 #define FBPORT_H
@@ -22,6 +26,7 @@
 #define fb_ready() (FB_STATUS & 0x80)
 #define fb_getc()  (FB_GETC)
 #define fb_sent()
+#define fb_release()
 #else
 /* MS-DOS: the UART, through rings its interrupt fills and empties
  * (src/msdos/fbport.c) */
@@ -29,6 +34,10 @@ void fb_putc(uint8_t c);
 uint8_t fb_ready(void);
 uint8_t fb_getc(void);
 void fb_sent(void);
+void fb_release(void);
+uint8_t fb_try(uint8_t i);
+void fb_keep(void);
+void fb_off(void);
 #endif
 
 #endif

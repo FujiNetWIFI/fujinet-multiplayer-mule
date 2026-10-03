@@ -278,7 +278,9 @@ void plat_restore(void)
     union REGS r;
     extern void input_restore(void);    /* input.c */
     extern void snd_off(void);          /* sound.c */
+    extern void fb_off(void);           /* fbport.c */
     snd_off();
+    fb_off();
     input_restore();
     pit(0);
     _dos_setvect(0x08, old_int8);
