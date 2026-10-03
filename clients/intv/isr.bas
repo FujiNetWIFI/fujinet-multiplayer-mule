@@ -77,6 +77,11 @@
 
 frame_isr: PROCEDURE
     GOSUB read_input
+    IF anim = AN_WALK THEN GOSUB isr_walk
+    IF anim = AN_GRANT THEN GOSUB isr_grant
+    IF anim = AN_AUCTION THEN GOSUB isr_auction
+    ' The walk frame after the step: the picture and the MOBs both land at
+    ' the next vertical blank.
     IF #w_gram THEN
         IF #w_gram AND $8000 THEN
             DEFINE ALTERNATE G_PL, 1, VARPTR gfx_mapsp((#w_gram AND $7FFF) - 1)
@@ -85,9 +90,6 @@ frame_isr: PROCEDURE
         END IF
         #w_gram = 0
     END IF
-    IF anim = AN_WALK THEN GOSUB isr_walk
-    IF anim = AN_GRANT THEN GOSUB isr_grant
-    IF anim = AN_AUCTION THEN GOSUB isr_auction
     IF fx_on THEN GOSUB fx_run
     GOSUB snd_isr
 END
@@ -262,7 +264,11 @@ town_door_hi: DATA 120, 96, 72, 48, 48, 68, 88, 124
                                 ' later, so a press seen in the frame after a
                                 ' step was made with the plot before on screen
 isr_grant: PROCEDURE
-    IF g_cur >= 45 OR g_show = 0 THEN SPRITE MOB_WAMPUS, 0, 0, 0 : RETURN
+    IF g_cur >= 45 OR g_show = 0 THEN
+        ' (while the ship leaves, actor 0, MOB 3 is a quarter of it: fx.bas)
+        IF (PEEK(FXB + AF_ST) AND 255) = 0 THEN SPRITE MOB_WAMPUS, 0, 0, 0
+        RETURN
+    END IF
     IF btn_latch <> 0 AND (PEEK(GR_PRESS) AND 255) = 255 THEN
         POKE GR_PRESS, g_cur
         IF g_next = g_step AND (PEEK(GR_WAS) AND 255) < 45 THEN POKE GR_PRESS, PEEK(GR_WAS)
