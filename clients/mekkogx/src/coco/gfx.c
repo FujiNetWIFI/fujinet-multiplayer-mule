@@ -371,7 +371,7 @@ void gfx_map_frame(void)
  * screen byte, and the owner's pattern on this line and the next. */
 const uint8_t *pl_o1, *pl_o2, *pl_o3, *pl_wh, *pl_rv;
 uint8_t *pl_dst;
-uint8_t pl_po0, pl_po1, pl_pb;
+uint8_t pl_po0, pl_po1, pl_rc;
 uint16_t pl_own, pl_nown, pl_riv, pl_wv;
 uint8_t pl_t;
 static const uint8_t zeros[64];
@@ -426,8 +426,8 @@ static void plot_rows(void)
         lslb
         rola
         ldd     d,y
-        anda    _pl_pb
-        andb    _pl_pb
+        anda    _pl_rc
+        andb    _pl_rc
         ora     ,u
         orb     1,u
         std     ,u
@@ -452,7 +452,7 @@ static void plot_rows(void)
         lslb
         rola
         lda     d,y
-        anda    _pl_pb
+        anda    _pl_rc
         ora     _pl_t
         sta     _pl_t
         ldb     _pl_wv+1
@@ -508,7 +508,7 @@ void gfx_plot(uint8_t p, const PlotLook *look)
     pl_dst = ROW(y0) + bx;
     pl_po0 = pat(k, y0);
     pl_po1 = pat(k, y0 + 1);
-    pl_pb = pb;
+    pl_rc = pa;                 /* the river: blue, A */
     plot_rows();
     bg_done();
 }

@@ -16,7 +16,7 @@
 ' ===========================================================================
 
     CONST MOUNT_COL = C_BLACK
-    CONST RIVER_COL = C_CYAN       ' (the Atari's is yellow)
+    CONST RIVER_COL = C_BLUE       ' blue, as player 0's (C_LTBLUE is lost on the grey)
 
     DIM map_dots                ' 1 = draw production dots
     DIM map_blink               ' plot for sale (blinks), 255 = none

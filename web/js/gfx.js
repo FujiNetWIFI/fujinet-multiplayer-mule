@@ -6,7 +6,7 @@ export const W = 320, H = 208;
 // Fallback palette entries (Atari NTSC) for when no manifest exists.
 const FALLBACK = { 0x00: '#000000', 0x04: '#4f4f4f', 0x08: '#7a7a7a', 0x0c: '#b0b0b0', 0x0e: '#ffffff', 0x84: '#4a4ae0',
   0x54: '#c040a0', 0xc4: '#40a040', 0x34: '#d06030', 0xf4: '#a0a040', 0x24: '#806020', 0xb4: '#207860', 0x44: '#b04040',
-  0xd4: '#408030', 0xc6: '#50b050', 0x1a: '#e0c040', 0x06: '#909090', 0x86: '#6060ff' };
+  0xd4: '#408030', 0xc6: '#50b050', 0x1a: '#e0c040', 0x06: '#909090', 0x86: '#6060ff', 0x96: '#314f9e' };
 
 export class Gfx {
   constructor(canvas) {

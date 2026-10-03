@@ -17,7 +17,7 @@
 ;   hgr_plot       a map plot, 4 bytes x 32 lines at hg_bx, hg_y, built from
 ;                  128-byte layers: pl_own1|2|3 in the owner's colour
 ;                  (pl_om: its bits in each of the 4 bytes, palette pl_hi),
-;                  pl_white as it is, pl_river in orange where the owner's
+;                  pl_white as it is, pl_river in blue where the owner's
 ;                  layer leaves the byte free (point unused layers at zeros)
 ;   hgr_spr        a 1-bit sprite (hg_src, hg_wb bytes a row, hg_h lines)
 ;                  with its left colour pixel at hg_x - 64 (0..139 shows),
@@ -449,7 +449,7 @@ noown:  sta     ownv
         and     rivmask,y
         ldx     ownv
         bne     noriv                   ; the owner's palette bit wins the byte
-        ora     #$80                    ; orange
+        ora     #$80                    ; blue
 noriv:  ora     ownv
         ora     (_pl_white),y
         sta     (dst),y
@@ -470,5 +470,5 @@ next:   lda     _pl_own1,x
         dec     cnt
         bne     row
         rts
-rivmask: .byte  $2A, $55, $2A, $55      ; the odd colour pixels (orange) of each byte
+rivmask: .byte  $55, $2A, $55, $2A      ; the even colour pixels (blue) of each byte
 .endproc

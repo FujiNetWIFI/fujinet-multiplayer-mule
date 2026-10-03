@@ -44,7 +44,7 @@ ATARI_TO_TMS = {0x00: 1, 0x04: 1, 0x08: 14, 0x0C: 14, 0x0E: 15, 0x1A: 11,
                 0x84: 5, 0x86: 5, 0xB4: 2, 0xC4: 2, 0xD4: 3, 0xF4: 3}
 
 # Colours the game draws with (src/tms9918/gfx.c tms_of), for the preview.
-T_BLACK, T_WHITE, T_PLAINS, T_RIVER = 1, 15, 14, 3
+T_BLACK, T_WHITE, T_PLAINS, T_RIVER = 1, 15, 14, 4
 
 
 def px_of(c):

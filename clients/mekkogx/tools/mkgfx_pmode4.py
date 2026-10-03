@@ -330,7 +330,7 @@ def main():
                     elif owner is None and n != "river" and sq[n][y][x]:
                         row.append(W)
                     elif n == "river" and sq[n][y][x]:
-                        row.append(B)
+                        row.append(A)
                     else:
                         row.append(K)
                 for b in range(3):

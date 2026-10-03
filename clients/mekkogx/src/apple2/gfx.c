@@ -243,7 +243,7 @@ void gfx_pic(uint8_t x, uint8_t y, uint8_t pic, uint8_t col)
 /* ---- the map ----------------------------------------------------------
  * A plot is built by hires.s hgr_plot from 128-byte layers (gfxdata.h
  * plot_parts): the owner's border, icon and production dots in the owner's
- * colour, mountains (or the store) in white, the river in orange. */
+ * colour, mountains (or the store) in white, the river in blue. */
 extern const uint8_t *pl_own1, *pl_own2, *pl_own3, *pl_white, *pl_river;
 #pragma zpsym ("pl_own1")
 #pragma zpsym ("pl_own2")

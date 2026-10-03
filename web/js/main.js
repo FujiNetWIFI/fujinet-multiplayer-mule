@@ -326,7 +326,7 @@ function drawMap(v, opts = {}) {
   const m = v.map;
   for (let y = MAP_Y; y < MAP_Y + ROWS * PS; y += 2) {
     const rx = riverX(y);
-    for (let i = 0; i < 4; i++) if (hash(y * 5 + i) % 3) gfx.rect(rx + i * 2, y, 1, 1, 0xf4);
+    for (let i = 0; i < 4; i++) if (hash(y * 5 + i) % 3) gfx.rect(rx + i * 2, y, 1, 1, gfx.m ? gfx.m.colors.river : 0x96);
   }
   for (let p = 0; p < 45; p++) {
     const [x, y] = plotXY(p);

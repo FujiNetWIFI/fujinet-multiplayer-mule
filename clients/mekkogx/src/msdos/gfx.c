@@ -91,7 +91,7 @@ static const uint8_t rgbi_of[16] = {
     13,         /* C_PINK */
     12,         /* C_P3: player 3, orange (light red) */
 };
-#define JR_RIVER  10            /* the river: light green (the Atari's $F4) */
+#define JR_RIVER  1             /* the river: blue (player 0 is light blue) */
 #define JR_PLAINS 8             /* the map's grey ($08) */
 
 /* The byte pattern of colour col on Atari line y. */
@@ -502,7 +502,7 @@ void gfx_plot(uint8_t p, const PlotLook *look)
         pl_r = JR_RIVER * 0x1111u;
         pl_w = (look->mountains && !look->store) ? 0x0000 : 0xFFFF;   /* black mountains */
     } else {
-        pl_r = 0x5555;          /* cyan */
+        pl_r = 0x5555;          /* cyan (light blue on EGA/VGA), the nearest to blue */
         pl_w = 0xFFFF;
     }
     pl_bg = bgpat * 0x101u;

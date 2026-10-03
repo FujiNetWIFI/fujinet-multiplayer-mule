@@ -50,7 +50,7 @@ static const uint8_t tms_of[16] = {
 #define T_BLACK  1
 #define T_WHITE  15
 #define T_PLAINS 14             /* the map's grey */
-#define T_RIVER  3              /* light green (the Atari's $F4) */
+#define T_RIVER  4              /* dark blue (player 0 is light blue) */
 
 static uint8_t bgc = T_BLACK;   /* what "black" is: the background */
 uint8_t vdp_seen;

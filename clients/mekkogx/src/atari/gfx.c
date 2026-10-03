@@ -123,7 +123,7 @@ static void map_river(void)
         if (x > PLOT_X(4) + 48 + 8)
             x = PLOT_X(4) + 48 + 8;
         P3HP[r] = x;
-        P3CM[r] = 0x16;
+        P3CM[r] = 0x96;         /* blue (player 0 is $84) */
     }
     sp_dirty = 1;
 }

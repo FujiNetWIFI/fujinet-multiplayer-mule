@@ -17,7 +17,7 @@
         EXTERN  _pl_trip, _pl_out, _popc
         EXTERN  _pl_c0, _pl_c1, _pl_c1b, _pl_bg, _pl_bgbg, _pl_rbg
 
-        defc    T_RIVER = 3
+        defc    T_RIVER = 4
 
 _plot_cells:
         push    ix

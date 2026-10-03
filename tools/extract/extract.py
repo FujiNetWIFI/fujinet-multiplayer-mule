@@ -156,7 +156,7 @@ def main():
         "source": "M.U.L.E. (1983)(Electronic Arts)(US).atr",
         "palette": hexpal,
         "colors": {  # Atari colour values used by the game
-            "mapBackground": 0x08, "river": 0xF4, "mountain": 0x04, "text": 0x0C,
+            "mapBackground": 0x08, "river": 0x96, "mountain": 0x04, "text": 0x0C,
             "players": [0x84, 0x54, 0xC4, 0x34], "cursor": 0x0E, "town": 0x08,
             "goods": [0xC6, 0x1A, 0x06, 0x86],
         },

@@ -48,7 +48,7 @@ G_FOOD, G_ENERGY, G_SMITHORE, G_CRYSTITE = 0, 1, 2, 3
 
 # NTSC colours
 C_BLACK, C_WHITE, C_LIGHT = 0x00, 0x0E, 0x0A
-C_DARK = 0x02
+C_DARK = 0x96        # the river (and, sharing its colour, mountains and the store's ground): blue
 C_GROUND = 0x08
 C_SEAT = (0x84, 0x54, 0xC4, 0x34)       # the Atari's player colours
 
