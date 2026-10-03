@@ -45,7 +45,7 @@ static uint16_t au_pos[4], au_tgt[4], au_base;
 static uint8_t au_on, au_tick;
 static uint8_t au_money_all;    /* the money fields were cleared: all again */
 static uint8_t au_push;         /* our stick as sent: 0 released, 1 up, 2 down */
-static uint8_t au_held;         /* frame (low byte) our goods line was let go */
+static uint8_t au_held;         /* frame (low byte) our line was let go */
 static uint8_t au_ln1, au_ln2;  /* lines of the sellers' / buyers' price lines (255 none) */
 static uint16_t au_lbl[4];      /* what row 18 shows per player: 0 label, 1 none, else a price */
 static uint16_t au_hb, au_sb;   /* land: price line / "bids start at" shown */
@@ -683,11 +683,11 @@ void auction_state(void)
     } else {
         au_base = st.auction.storeBuy;
     }
-    /* our released goods line: the server's is behind what we showed and
+    /* our released line: the server's is behind what we showed and
      * carries on to where we let go (ACT_HOLD), so ours stays put rather
      * than jumping back until the server's comes to rest (or a second) */
     k = 255;
-    if (au_kind == 2 && au_stage == STAGE_ACTIVE && au_push == 0 &&
+    if (au_stage == STAGE_ACTIVE && au_push == 0 &&
         (uint8_t)((uint8_t)frame_count - au_held) < 60)
         k = my_seat;
     /* The server steps the lines on every 8th jiffy of its clock: ours
@@ -740,7 +740,7 @@ static void au_stick(void)
     if (k == au_push || act != ACT_NONE)
         return;
     au_push = k;
-    if (k == 0 && au_kind == 2 && au_stage == STAGE_ACTIVE) {
+    if (k == 0 && au_stage == STAGE_ACTIVE) {
         act_send(ACT_HOLD, au_pos[my_seat]);
         au_held = (uint8_t)frame_count;
     } else
@@ -757,9 +757,8 @@ static void au_stick(void)
             au_tgt[my_seat] = st.auction.hi;
         }
     }
-    /* down, or (a land buyer) letting go: the bid drifts back down, as on
-     * the Atari (the server's applyPush) */
-    if (k == 2 || (k == 0 && au_kind == 1 && au_role[my_seat] == ROLE_BUYER))
+    /* down; let go, a line (a land bid too) stays where it is */
+    if (k == 2)
         au_tgt[my_seat] = st.auction.lo;
     else if (k == 0)
         au_tgt[my_seat] = au_pos[my_seat];

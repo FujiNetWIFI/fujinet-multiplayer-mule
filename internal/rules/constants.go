@@ -153,7 +153,7 @@ const (
 	TradeMinBTU       = 2   // fastest unit rate [code $912E]
 	ColludeTicks      = 10  // [IMPL] not measured
 	TradeUndoWindow   = 60  // [IMPL] network allowance: a trader backing off gives back units traded this recently that they had not yet seen
-	HoldLead          = 6   // [IMPL] network allowance: a released goods line may stop this many steps past the server's position, where the player saw it stop
+	HoldLead          = 6   // [IMPL] network allowance: a released line may stop this many steps past the server's position, where the player saw it stop
 	CritPause         = 60  // [IMPL] "seller at critical level": the line waits this long, then goes back to its edge
 	CritShow          = 120 // [IMPL] how long "seller at critical level" is shown
 

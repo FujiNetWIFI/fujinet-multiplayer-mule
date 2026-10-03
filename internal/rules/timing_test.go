@@ -110,7 +110,7 @@ func TestActiveAuctionAndLineSpeed(t *testing.T) {
 	if d := g.T - start; d < 65*ATU || d > 70*ATU+1 {
 		t.Fatalf("active land auction %d, want ~%d", d, 70*ATU)
 	}
-	// Releasing a land bid drifts it back down.
+	// A released land bid stays where it was let go.
 	g2 := landAuction(t)
 	g2.Continue(0)
 	g2.Advance(g2.T + 1)
@@ -119,8 +119,21 @@ func TestActiveAuctionAndLineSpeed(t *testing.T) {
 	high := g2.Auction.Lines[0].Pos
 	must(t, g2.Push(0, 0))
 	g2.Advance(g2.T + 5*LineStep)
-	if g2.Auction.Lines[0].Pos >= high {
-		t.Fatal("released land bid did not drift down")
+	if p := g2.Auction.Lines[0].Pos; p < high || p > high+g2.Auction.Step {
+		t.Fatalf("released land bid at %d, let go at %d", p, high)
+	}
+	// So does one let go where the player saw it, ahead of the server.
+	g3 := landAuction(t)
+	g3.Continue(0)
+	g3.Advance(g3.T + 1)
+	must(t, g3.Push(0, 1))
+	g3.Advance(g3.T + 10*LineStep)
+	l := &g3.Auction.Lines[0]
+	at := l.Pos + 2*g3.Auction.Step
+	must(t, g3.HoldAt(0, at, -1))
+	g3.Advance(g3.T + 20*LineStep)
+	if l.Pos != at {
+		t.Fatalf("held land bid at %d, want %d", l.Pos, at)
 	}
 }
 

@@ -30,7 +30,7 @@ au_col_x: DATA 47, 71, 95, 119
 
     DIM #au_hb                  ' land price line shown
     CONST AU_SB = $8800         ' land: "bids start at" price shown on row 11
-    CONST AU_HELD = $880E       ' FRAME AND 255 when our goods line was let go
+    CONST AU_HELD = $880E       ' FRAME AND 255 when our line was let go
                                 ' (2 bytes of cart RAM: 16-bit RAM is full)
     DIM au_good, au_new   ' au_kind, au_role(4), #au_base are in isr.bas; au_stage in memory.bas
     DIM au_push                 ' our stick: 0 released, 1 up, 2 down (as sent)
@@ -491,8 +491,8 @@ au_stick: PROCEDURE
     IF inp_dir AND 1 THEN k = 2
     IF k = au_push OR act <> ACT_NONE THEN RETURN
     au_push = k : act = ACT_PUSH : #act_arg = k : poll_wait = 0
-    ' A goods line let go stays where we saw it stop (the server's is behind).
-    IF k = 0 AND au_kind = 2 AND au_stage = STAGE_ACTIVE THEN act = ACT_HOLD : #act_arg = #au_pos(my_seat) : POKE AU_HELD, FRAME AND 255
+    ' A line let go (a land bid too) stays where we saw it stop (the server's is behind).
+    IF k = 0 AND au_stage = STAGE_ACTIVE THEN act = ACT_HOLD : #act_arg = #au_pos(my_seat) : POKE AU_HELD, FRAME AND 255
     IF au_stage <> STAGE_ACTIVE THEN RETURN
     ' Move our own line straight away; the server confirms.
     IF k = 1 THEN

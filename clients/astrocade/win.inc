@@ -86,7 +86,7 @@ A_PUB   EQU     18
 A_END   EQU     19
 A_LEAVE EQU     20
 A_TABLES EQU    21              ; not an action: the table list (boot)
-A_HOLD  EQU     22              ; our goods line let go: ACTARG = its price
+A_HOLD  EQU     22              ; our line let go: ACTARG = its price
 
 NTMOUT  EQU     240             ; frames without progress: give up
 

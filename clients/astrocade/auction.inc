@@ -23,7 +23,7 @@ PVP     DEFL    PHRAM
         PV      AUON,1
         PV      AUTCK,1
         PV      AUPUSH,1        ; our stick as sent: 0 released, 1 up, 2 down
-        PV      AUHELD,1        ; FRAMES (low byte) our goods line was let go
+        PV      AUHELD,1        ; FRAMES (low byte) our line was let go
         PV      AULN1,1         ; the sellers' / buyers' lines (255 none)
         PV      AULN2,1
         PV      AULBL,8         ; row 9 per player: 0 label, 1 none, a price
@@ -207,14 +207,11 @@ AUP1:   ADD     A,A
         RET     NC
         INC     H
         RET
-; AUKEEP: our released goods line (A_HOLD). The server's is behind what we
+; AUKEEP: our released line (A_HOLD). The server's is behind what we
 ; showed and carries on to where we let go, so ours stays put rather than
 ; jump back, until the server's comes to rest (or a second passes).
 ; BC, DE = our pos and target before the snap.
-AUKEEP: LD      A,(AUKIND)
-        CP      2
-        RET     NZ
-        LD      A,(AUSTAGE)
+AUKEEP: LD      A,(AUSTAGE)
         CP      ST_ACTIVE
         RET     NZ
         LD      A,(AUPUSH)
@@ -1915,12 +1912,9 @@ AK2:    LD      A,(AUPUSH)
         LD      (AUPUSH),A
         LD      L,C
         LD      H,0
-        LD      A,C             ; released ...
-        OR      A
-        JR      NZ,AK0A
-        LD      A,(AUKIND)      ; ... in a goods auction under way: the line
-        CP      2               ; stays where we saw it stop (A_HOLD, with
-        JR      NZ,AK0A         ; our price; the server's line is behind)
+        LD      A,C             ; released in an auction under way: the line
+        OR      A               ; (a land bid too) stays where we saw it stop
+        JR      NZ,AK0A         ; (A_HOLD, with our price; the server's is behind)
         LD      A,(AUSTAGE)
         CP      ST_ACTIVE
         JR      NZ,AK0A
@@ -1956,16 +1950,9 @@ AK0:    CALL    ACTSEND
 AK3:    LD      E,AO_HI
         CALL    AGW
         JR      AK7
-AK4:    CP      2               ; down, or (a land buyer) letting go
-        JR      Z,AK5
-        LD      A,(AUKIND)
-        CP      1
+AK4:    CP      2               ; down
         JR      NZ,AK6
-        LD      A,(MYSEAT)
-        CALL    ROLEOF
-        CP      RL_BUYER
-        JR      NZ,AK6
-AK5:    LD      E,AO_LO
+        LD      E,AO_LO
         CALL    AGW
         JR      AK7
 AK6:    LD      A,(MYSEAT)      ; released: stay

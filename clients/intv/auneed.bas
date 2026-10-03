@@ -34,11 +34,11 @@ END
 
 ' au_snap: the lines from a new state. The frame handler walks them on.
 au_snap: PROCEDURE
-    ' Our released goods line: the server's is behind what we showed and
+    ' Our released line: the server's is behind what we showed and
     ' carries on to where we let go (ACT_HOLD), so ours stays put rather
     ' than jumping back until the server's comes to rest (or a second).
     k = 255
-    IF au_kind = 2 AND au_stage = STAGE_ACTIVE AND au_push = 0 AND ((FRAME - PEEK(AU_HELD)) AND 255) < 60 THEN k = my_seat
+    IF au_stage = STAGE_ACTIVE AND au_push = 0 AND ((FRAME - PEEK(AU_HELD)) AND 255) < 60 THEN k = my_seat
     FOR i = 0 TO 3
         IF i = k THEN
             IF st8(ST_AUCTION_PUSH + i) <> 0 OR st16(ST_AUCTION_POS + i * 2) <> st16(ST_AUCTION_TARGET + i * 2) THEN GOTO au_snap_next

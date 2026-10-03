@@ -884,7 +884,8 @@ func (g *Game) lineTop(seat int) int {
 }
 
 // Push is a joystick push up (+1), down (-1) or release (0) in an auction.
-// Releasing in a land auction lets a bid drift back down. [measured]
+// A released line stays where it is, a land bid too (on the Atari it
+// drifted back down, so everyone had to keep pushing to hold a price). [IMPL]
 func (g *Game) Push(seat, dir int) error { return g.PushSeen(seat, dir, -1) }
 
 // PushSeen is Push with the Traded count the player last saw (-1 unknown).
@@ -924,24 +925,26 @@ func (g *Game) PushSeen(seat, dir, seen int) error {
 // stop at. The client walks its line ahead of the server between polls, so
 // the server's line is behind it: a released goods line carries on to where
 // the player let go, up to HoldLead steps past the server's position in the
-// way it was pushed, rather than jumping back. A land bid still drifts
-// down. [IMPL]
+// way it was pushed, rather than jumping back. [IMPL]
 func (g *Game) HoldAt(seat, price, seen int) error {
 	if err := g.PushSeen(seat, 0, seen); err != nil {
 		return err
 	}
 	a := g.Auction
 	l := &a.Lines[seat]
-	if a.Land || a.Stage != StageActive || a.Crit == seat || l.Dir == 0 {
+	if a.Stage != StageActive || a.Crit == seat || l.Dir == 0 {
 		return nil
 	}
 	lead := l.Pos + l.Dir*HoldLead*a.Step
 	price = clamp(price, min(l.Pos, lead), max(l.Pos, lead))
 	// Not past where the line can go, so it comes to rest there (the
-	// client keeps its own line until the server's is at rest).
-	if l.Role == RoleBuyer {
+	// client keeps its own line until the server's is at rest). A land
+	// line is held by SetTarget (money) and moveLines (the start price).
+	switch {
+	case a.Land:
+	case l.Role == RoleBuyer:
 		price = min(price, max(l.Pos, g.buyerCeiling(seat)))
-	} else {
+	default:
 		price = max(price, min(l.Pos, g.sellerFloor(seat)))
 	}
 	return g.SetTarget(seat, price)
@@ -977,7 +980,7 @@ func (g *Game) applyPush(seat int) error {
 	switch {
 	case l.Push > 0:
 		return g.SetTarget(seat, g.lineTop(seat))
-	case l.Push < 0, a.Land && l.Role == RoleBuyer:
+	case l.Push < 0:
 		return g.SetTarget(seat, a.Lo)
 	}
 	return g.SetTarget(seat, l.Pos)

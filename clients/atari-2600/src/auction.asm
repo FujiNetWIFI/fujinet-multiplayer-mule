@@ -222,14 +222,11 @@ PE7:    txa
         clc
         adc     #EBASE
         rts
-; AKEEP -- C set if seat X's line is mine, let go in a goods auction, and
+; AKEEP -- C set if seat X's line is mine, let go in an auction, and
 ; the server's is still on its way to where I let go (or it hasn't my
 ; release yet): mine stays put rather than jump back, a second at most.
 ; Keeps X.
 AKEEP:  cpx     HSEAT
-        bne     AKP0
-        lda     AKIND
-        cmp     #2
         bne     AKP0
         lda     ASTG
         cmp     #STGACT
@@ -428,10 +425,9 @@ AV5B:   cpy     #0
         bne     AV6
         lda     APOSE,x
         sta     ATGTE,x
-        lda     AKIND           ; a goods line let go stays where I saw it
-        cmp     #2              ; stop: RQHOLD with its price (the server's
-        bne     AV6             ; line is behind mine)
-        lda     ASTG
+        lda     ASTG            ; a line let go (a land bid too) stays where
+                                ; I saw it stop: RQHOLD with its price (the
+                                ; server's line is behind mine)
         cmp     #STGACT
         bne     AV6
         lda     MFRAME

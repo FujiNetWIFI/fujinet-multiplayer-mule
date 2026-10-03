@@ -130,7 +130,7 @@ RQPUB   EQU     18              ; /turn/pub
 RQEND   EQU     19              ; /turn/end
 RQLEAVE EQU     20              ; /leave
 RQTABLE EQU     21              ; /tables?bin=1 (not 0: NACT 0 = none)
-RQHOLD  EQU     22              ; /auction/push/hold/0/PRICE: a goods line let go
+RQHOLD  EQU     22              ; /auction/push/hold/0/PRICE: a line let go
 
 ; Request machine states.
 NSIDLE  EQU     0               ; nothing in flight
