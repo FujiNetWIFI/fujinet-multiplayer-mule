@@ -1,7 +1,8 @@
 /*
  * nstrans_fn.c -- stream mode's bytes (src/nsnet.c) through fujinet-lib:
- * an N:TCP socket to the server's stream port. The CoCo, the Apple II and
- * MS-DOS use it (the Adam drives its DCB itself: src/adam/nstrans.c).
+ * an N:TCP socket to the server's stream port. The CoCo and the Apple II
+ * use it (the Adam drives its DCB itself: src/adam/nstrans.c; the MSX and
+ * MS-DOS put their packets together: src/nstrans_fb.c).
  *
  * It replaced HTTP polls (net.c), which held the machine for the whole
  * request: FujiNet makes the GET inside the first status call after the
@@ -15,7 +16,8 @@
  * the bus call itself: fujinet-lib's network_read_nb would ask the status
  * again first, and at 9600 bps (a PCjr) a call is 25 ms.
  */
-#if defined(PLAT_NETSTREAM) && !defined(__ATARI__) && !defined(__LYNX__) && !defined(__ADAM__)
+#if defined(PLAT_NETSTREAM) && !defined(__ATARI__) && !defined(__LYNX__) && !defined(__ADAM__) \
+    && !defined(PLAT_FUJIBUS)
 
 #include <string.h>
 #include "mule.h"
@@ -91,6 +93,10 @@ uint8_t nt_close(void)
     network_close(dev);
     return 1;
 }
+
+void nt_quiesce(void)
+{
+}                               /* (every call here is over when it returns) */
 
 uint8_t nt_get(char *c)
 {

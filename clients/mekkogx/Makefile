@@ -194,7 +194,7 @@ adam/r2r-post::
 # ---- MSX: a ROM the FujiNet cartridge runs --------------------------------
 # An ASCII8 megaROM (src/msx/mule.asm): the program fixed at 4000h-9FFFh,
 # the phases, the art and the strings taking turns at A000h.
-CFLAGS_EXTRA_MSXROM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DKEY_END_NAME='"\"RETURN\""'
+CFLAGS_EXTRA_MSXROM += -compiler=sdcc -SO3 -DPLAT_NET_PROBE -DPLAT_NETSTREAM -DPLAT_FUJIBUS -DKEY_END_NAME='"\"RETURN\""'
 EXTRA_INCLUDE_MSXROM += src/tms9918 build/fnlib-msx/include
 LDFLAGS_EXTRA_MSXROM += -compiler=sdcc -m -pragma-define:CRT_MSX_CUSTOM_HEADER=1 -Ca-I$(CURDIR)/src/msx/crt
 ifeq ($(PLATFORM),msxrom)

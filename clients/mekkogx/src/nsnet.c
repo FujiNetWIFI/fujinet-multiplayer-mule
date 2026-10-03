@@ -279,8 +279,10 @@ static void link_down(void)
 }
 
 /* Nothing else on the bus needs the stream stopped. */
+/* Before plain bus calls (appkeys, net.c): the stream's call going ends. */
 void ns_pause(void)
 {
+    nt_quiesce();
 }
 
 void ns_resume(void)

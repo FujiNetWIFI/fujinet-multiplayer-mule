@@ -1,6 +1,7 @@
 /*
  * nstrans.h -- the bytes under stream mode (src/nsnet.c): src/nstrans_fn.c
- * (an N:TCP socket through fujinet-lib) or a platform's own nstrans.c.
+ * (an N:TCP socket through fujinet-lib), src/nstrans_fb.c (FujiBus packets,
+ * never waited on) or a platform's own nstrans.c.
  */
 #ifndef NSTRANS_H
 #define NSTRANS_H
@@ -19,5 +20,6 @@ uint8_t nt_close(void);                         /* 1: closed (it can open again)
 uint8_t nt_get(char *c);                        /* 1: a byte; 0: none yet; NT_LOST, NT_DROP */
 uint8_t nt_put(uint8_t c);                      /* 0: it can't go (the frame is lost) */
 uint8_t nt_flush(void);                         /* a frame is complete: send it; 0: it didn't go */
+void nt_quiesce(void);                          /* the call going, finished: the bus is free */
 
 #endif

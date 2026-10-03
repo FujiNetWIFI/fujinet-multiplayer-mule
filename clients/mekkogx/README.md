@@ -1,7 +1,7 @@
 # M.U.L.E. for FujiNet 8-bit computers (MekkoGX)
 
 A C client for the M.U.L.E. Tournament server in this repository, built with the [MekkoGX](https://github.com/fozzTexx/MekkoGX) template and [fujinet-lib](https://github.com/FujiNetWIFI/fujinet-lib). It is a port of the Intellivision client (`../intv`), and plays the same way:
-- it holds a stream-mode connection to the server (`docs/PROTOCOL.md`; the MSX polls `/state?bin=1` instead) and draws what comes back the way the Atari 800 original does;
+- it holds a stream-mode connection to the server (`docs/PROTOCOL.md`) and draws what comes back the way the Atari 800 original does;
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
@@ -298,6 +298,8 @@ How it gets there:
   | BFFCh-BFFFh | the FujiNet's registers, in every bank |
   | C000h | RAM: the variables, and the stack below HIMEM |
 
+- **The network: stream mode, never waited on** (`src/nstrans_fb.c`, `src/fbport.h`). fujinet-lib's `fuji_bus_call` writes a FujiBus packet to the cartridge and then spins until the whole reply is in, and an HTTP poll put the GET inside that wait: half the Z80's time went to the bus, in stalls of up to 4 s. Now the game writes a request (a few register writes) and picks up the reply bytes on the frames after, as the Adam does with its DCB: a WRITE of what nsnet flushed, else a STATUS, and a READ only when bytes wait. The open, the close and the appkeys stay fujinet-lib's (`ns_pause` lets the call going finish first). With 50 ms of network delay the bus code takes 8% of the Z80.
+
   Drawing and `bank_get` switch the window themselves and put the phase's bank back. The header (`src/msx/crt/msx_rom_header.asm`) maps banks 1-3 before anything outside 4000h-5FFFh runs.
 - **The FujiNet runs it.** Mount `mule[ASCII8].rom` in a device slot and boot: the firmware sends the ROM into the cartridge and starts it, choosing the mapper by that end of the name. This needs firmware with user ROMs (the `feat/msx-mapper-types` work; the master build of fujinet-pc-msx here mounts it as a disk instead).
 - **The clock** is the BIOS's interrupt, through the H.TIMI hook. The BIOS reads the VDP's status, so VRAM bursts run with interrupts off.
@@ -338,7 +340,7 @@ The Atari is the machine M.U.L.E. was written for, so this version draws and sou
 - **The immediate VBI starts with `CLI`**, so the serial IRQ is not held off while the VBI and the sound run.
 - **Quitting** sends a goodbye, then turns FujiNet's netstream off (`$F0` with host `STOP`).
 - **Only the latest state is drawn.** Of the states waiting in the ring, the last is kept (the one answering an action goes at once): drawing each in turn put the game ever further behind.
-- **Only the MSX still polls.** `PLAT_NETSTREAM` compiles out `net.c`'s HTTP half and keeps its appkeys.
+- **Every version talks stream mode.** `PLAT_NETSTREAM` compiles out `net.c`'s HTTP half and keeps its appkeys.
 
 **Memory** (a 48K 400/800; `src/atari/mule-atari.cfg`, `src/atari/atari.h`):
 

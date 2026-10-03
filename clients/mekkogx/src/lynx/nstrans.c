@@ -36,6 +36,10 @@ uint8_t nt_close(void)
     return 0;
 }
 
+void nt_quiesce(void)
+{
+}
+
 uint8_t nt_get(char *c)
 {
     return ser_get(c) == SER_ERR_OK;
