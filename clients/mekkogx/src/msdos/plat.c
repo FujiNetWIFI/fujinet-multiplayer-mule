@@ -107,11 +107,21 @@ uint8_t plat_net_probe(void)    /* net.c: is FUJINET.SYS there? */
 
 static uint8_t have_fujinet(void)
 {
+    /* FUJINET.SYS's header is at the start of INT F5's segment: a block
+     * device with a FAT BPB (attribute 2002h before fujinet-msdos 1.6.0,
+     * 6020h in it, 6002h after), its own entry points and up to 26 units.
+     * Loaded high, the segment can be past A000h. */
     void __far *v = _dos_getvect(0xF5);
     uint16_t seg = FP_SEG(v);
-    if (!v || seg < 0x60 || seg >= 0xA000)
+    uint16_t attr;
+    uint8_t units;
+    if (!v || seg < 0x60)
         return 0;
-    return *(uint16_t __far *)MK_FP(seg, 4) == 0x6002;
+    attr = *(uint16_t __far *)MK_FP(seg, 4);
+    units = *(uint8_t __far *)MK_FP(seg, 10);
+    return (attr & 0xA000) == 0x2000
+        && *(uint16_t __far *)MK_FP(seg, 6) && *(uint16_t __far *)MK_FP(seg, 8)
+        && units && units <= 26;
 }
 static void __interrupt __far no_fujinet(union INTPACK r)
 {
