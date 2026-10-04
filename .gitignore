@@ -4,3 +4,6 @@
 /tools/extract/__pycache__/
 *.atr
 /dist/
+/videos/build/
+/videos/*.mp4
+/tools/video/__pycache__/
