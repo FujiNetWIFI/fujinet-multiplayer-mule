@@ -109,6 +109,7 @@ static uint8_t pat(uint8_t col, uint8_t y)
 
 static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h);
 static void bg_done(void);
+static uint8_t spr_under(uint8_t y);
 
 /* ---- the palette -------------------------------------------------------- */
 /* An RGBI colour as a palette register value: the PCjr takes it as it is,
@@ -323,26 +324,53 @@ void gfx_fill(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t col)
 
 /* A dot every other colour clock (gfxa.asm's gx_hdots: gx_n of them from
  * byte gx_off of line gx_y, in gx_fg0): on the PCjr every other byte, on
- * CGA the same half (gx_lm) of each byte. */
+ * CGA the same half (gx_lm) of each byte. gx_hdclip draws the line hd_n
+ * dots from byte hd_off on only where it falls in bytes a .. b - 1.
+ *
+ * Between the sprites on its line it is drawn at once; under them it
+ * waits for the next flush (hq_*), which draws it there between their old
+ * rows going back and their new ones (gx_sprlines): the auction's price
+ * lines step with the players, and a slow PC planned the sprites again
+ * for each of the four lines. */
 void __near gx_hdots(void);
 #pragma aux gx_hdots "*_" parm [] modify [ax bx cx dx di es]
+uint16_t hd_off;
+uint8_t hd_n;
+void __near gx_hdclip(uint8_t a, uint8_t b);
+#pragma aux gx_hdclip "*_" parm [ax] [dx] modify [ax bx cx dx di es]
+
+#define HQ_MAX 6
+uint8_t hq_n, hq_lo = 255, hq_hi;       /* (gfxa.asm too) */
+uint8_t hq_y[HQ_MAX], hq_c[HQ_MAX], hq_fg[HQ_MAX], hq_lm[HQ_MAX];
+uint16_t hq_off[HQ_MAX];
 
 void gfx_hdots(uint8_t x, uint8_t y, uint8_t w, uint8_t col)
 {
-    uint8_t n;
+    uint8_t n, k;
     if (y >= 192 || x >= 160)
         return;
-    spr_bg(x, w, y, 1);
+    if (hq_n == HQ_MAX)
+        spr_flush();
     n = (w + 1) >> 1;
     if (n > (uint8_t)((161 - x) >> 1))
         n = (161 - x) >> 1;
     gx_y = y;
-    gx_n = n;
+    hd_n = n;
     gx_fg0 = pat(col, y);
-    gx_off = plat_jr ? x : x >> 1;
+    hd_off = plat_jr ? x : x >> 1;
     gx_lm = (x & 1) ? 0x0F : 0xF0;
-    gx_hdots();
-    bg_done();
+    if (spr_under(y)) {
+        k = hq_n++;
+        hq_y[k] = y;
+        hq_c[k] = n;
+        hq_fg[k] = gx_fg0;
+        hq_lm[k] = gx_lm;
+        hq_off[k] = hd_off;
+        if (y < hq_lo)
+            hq_lo = y;
+        if (y > hq_hi)
+            hq_hi = y;
+    }
 }
 
 void gfx_pic(uint8_t x, uint8_t y, uint8_t pic, uint8_t col)
@@ -537,9 +565,12 @@ typedef struct {
     uint16_t no, nst, nend;     /* 6  the new rows' ring: offset, row, end */
     uint16_t oo, ost, oend;     /* 12 the old rows' */
     uint8_t show, sy, sh, bx, n, wb, pt0, pt1;  /* 18 where it goes */
-    uint8_t drawn, osy, osh, obx, on, lifted;   /* 26 where it was */
-    uint8_t same, put;          /* 32 alone, in the same bytes: a line put
-                                 * back (put: the last) is already saved */
+    uint8_t drawn, osy, osh, obx, on, lifted;   /* 26 where it was; lifted
+                                                 * 2: by spr_bg, 4: only the
+                                                 * waiting lines change */
+    uint8_t same, put;          /* 32 same 1: alone, in the same bytes: a
+                                 * line put back (put: the last) is already
+                                 * saved; 2: as lifted 4 */
     uint8_t c0, cn, slot;       /* 34 (C's) */
 } SprJob;
 typedef char sprjob_is_37_bytes[sizeof(SprJob) == 37 ? 1 : -1];
@@ -589,12 +620,13 @@ static uint8_t meets(uint8_t j, uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
 }
 
 /* Mark every drawn slot after i that meets the rectangle. */
-static uint8_t hit[SPR_SLOTS];          /* (bit 1: taken off by spr_bg) */
+static uint8_t hit[SPR_SLOTS];          /* (bit 1: taken off by spr_bg; bit 2:
+                                         * under a waiting line) */
 static void close_over(uint8_t i, uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
 {
     while (++i < SPR_SLOTS)
-        if (!hit[i] && s_drawn[i] && meets(i, c0, n, y, h))
-            hit[i] = 1;
+        if (!(hit[i] & 3) && s_drawn[i] && meets(i, c0, n, y, h))
+            hit[i] |= 1;
 }
 
 /* Background drawing is about to change a rectangle (in colour clocks):
@@ -612,6 +644,8 @@ static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
     SprJob jb[SPR_SLOTS];
     if (y >= d_hi || y1 <= d_lo)
         return;                 /* (most text: nowhere near one) */
+    if (hq_n && y <= hq_hi && y1 > hq_lo)
+        spr_flush();            /* the lines that wait go first */
     for (i = 0; i < SPR_SLOTS; ++i)
         hit[i] = s_drawn[i] && meets(i, c0, n, y, h);
     for (i = 0; i < SPR_SLOTS; ++i)
@@ -636,6 +670,39 @@ static void bg_done(void)
     }
 }
 
+/* gfx_hdots' line (hd_*, on line y) between the sprites' rows on it, now;
+ * does it cross any? Those are drawn again at the flush, with it under
+ * them: only on the waiting lines, if nothing else changes them. */
+static uint8_t spr_under(uint8_t y)
+{
+    uint8_t i, a, e, b, c = 0, r = 0;
+    if (y >= d_lo && y < d_hi) {
+        b = plat_jr ? hd_off + 2 * hd_n - 1 : hd_off + hd_n;
+        for (i = 0; i < SPR_SLOTS; ++i)
+            if (s_drawn[i] && (uint8_t)(y - s_sy[i]) < s_sh[i] &&
+                s_bx[i] < b && (uint8_t)(s_bx[i] + s_n[i]) > (uint8_t)hd_off) {
+                s_dirty[i] |= 4;
+                r = any_dirty = 1;
+            }
+        /* the gaps, left to right */
+        while (r) {
+            a = 255;
+            for (i = 0; i < SPR_SLOTS; ++i)
+                if (s_drawn[i] && (uint8_t)(y - s_sy[i]) < s_sh[i] &&
+                    (b = s_bx[i] + s_n[i]) > c && s_bx[i] < a) {
+                    a = s_bx[i];
+                    e = b;
+                }
+            if (a == 255)
+                break;
+            gx_hdclip(c, a);
+            c = e;
+        }
+    }
+    gx_hdclip(c, 255);
+    return r;
+}
+
 /* Where slot i would be drawn now, into t. */
 static void src_of(uint8_t i, SprJob *t)
 {
@@ -649,6 +716,7 @@ static void src_of(uint8_t i, SprJob *t)
     t->slot = i;
     t->show = 0;
     t->drawn = 0;
+    t->lifted = 0;
     t->same = 0;
     t->put = 255;
     if (!s_on[i])
@@ -764,6 +832,10 @@ void spr_flush(void)
         if (s_drawn[i]) {
             old_job(i, 0, t);
             t->lifted = hit[i] & 2;
+            if (hit[i] == 4) {          /* only under waiting lines */
+                t->lifted = 4;
+                t->same = 2;
+            }
             if (s_sy[i] < y0)
                 y0 = s_sy[i];
             if ((e = s_sy[i] + s_sh[i]) > y1)
@@ -823,8 +895,9 @@ void spr_flush(void)
             }
         if (n) {
             t = gx_jp[0];
-            t->same = n == 1 && t->show && t->drawn && t->bx == t->obx && t->n == t->on &&
-                      t->nst == t->ost;
+            if (n == 1 && !hq_n)
+                t->same = t->show && t->drawn && t->bx == t->obx && t->n == t->on &&
+                          t->nst == t->ost;
             lines(n, y0, y1, pass);
             if (!pass)
                 lines(n, y0, y1, 1);
@@ -845,6 +918,9 @@ void spr_flush(void)
         }
     }
     lift_y1 = 0;
+    hq_n = 0;
+    hq_lo = 255;
+    hq_hi = 0;
     d_lo = 255;
     d_hi = 0;
     for (i = 0; i < SPR_SLOTS; ++i)

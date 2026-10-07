@@ -23,10 +23,14 @@ _BSS            SEGMENT WORD PUBLIC 'BSS'
                 EXTRN   _pl_y0:BYTE, _pl_p0:BYTE, _pl_p1:BYTE
                 EXTRN   _gx_tsrc:DWORD, _gx_cx0:BYTE, _gx_cy0:BYTE
                 EXTRN   _gx_cx1:BYTE, _gx_cy1:BYTE, _cga2:BYTE
+                EXTRN   _hq_n:BYTE, _hq_lo:BYTE, _hq_hi:BYTE, _hq_y:BYTE
+                EXTRN   _hq_c:BYTE, _hq_fg:BYTE, _hq_lm:BYTE, _hq_off:WORD
+                EXTRN   _hd_off:WORD, _hd_n:BYTE
 row             DW      ?               ; the line's first byte on the screen
 jend            DW      ?               ; past the last job's pointer
 jpi             DW      ?               ; the job's pointer
 cur             DB      ?               ; the line
+hql             DB      ?               ; a dotted line waits on it
 cnt             DB      ?               ; clkrow: source bytes
 sbuf            DB      6 DUP (?)       ; clkrow: a row shifted a clock right
 rofs            DW      ?               ; gx_cells: the row in cell 0's picture
@@ -72,10 +76,12 @@ gfx_TEXT        SEGMENT BYTE PUBLIC 'CODE'
 
 ; void gx_sprlines(void): the gx_nc sprites at gx_jp[], lines gx_y0 ..
 ; gx_y1 - 1, a line at a time: (gx_pass 0 or 2) each one's old row back,
-; the last drawn first, unless spr_bg put it back already (lifted, and
-; the line in lift_y0 .. lift_y1 - 1); then (1 or 2) each one's new row
-; saved and drawn, in order. The rings' offsets and the pictures' rows
-; move on in the jobs.
+; the last drawn first, unless spr_bg put it back already (lifted 2, and
+; the line in lift_y0 .. lift_y1 - 1); then (1 or 2) the dotted lines
+; waiting on the line (gfx_hdots), and each one's new row saved and
+; drawn, in order. A sprite only under waiting lines (lifted 4) stays as
+; it is on the others. The rings' offsets and the pictures' rows move on
+; in the jobs.
                 PUBLIC  gx_sprlines_
 gx_sprlines_    PROC    NEAR
                 push    bp
@@ -85,6 +91,7 @@ gx_sprlines_    PROC    NEAR
                 shl     ax, 1
                 add     ax, offset DGROUP:_gx_jp
                 mov     jend, ax
+                mov     hql, 0
                 mov     al, _gx_y0
                 mov     cur, al
 sl_line:        mov     al, cur
@@ -92,11 +99,32 @@ sl_line:        mov     al, cur
                 jb      sl_go
                 pop     bp
                 ret
+                ; (out of the loop, in a short jump's reach: hql for line
+                ; AL)
+sl_hq:          xor     bx, bx
+                cmp     al, _hq_hi
+                ja      sl_hql
+sl_hqk:         cmp     bl, _hq_n
+                jae     sl_hqn
+                cmp     al, _hq_y[bx]
+                je      sl_hqy
+                inc     bx
+                jmp     sl_hqk
+sl_hqy:         mov     bl, 1
+                jmp     short sl_hql
+sl_hqn:         xor     bl, bl
+sl_hql:         mov     hql, bl
+                jmp     short sl_hq0
 sl_go:          xor     ah, ah
                 mov     bx, ax
                 shl     bx, 1
-                mov     ax, _rowoff[bx]
-                mov     row, ax
+                mov     dx, _rowoff[bx]
+                mov     row, dx
+                ; is a dotted line waiting on it? (none before hq_lo: hql
+                ; is still 0 there)
+                cmp     al, _hq_lo
+                jae     sl_hq
+sl_hq0:
                 cmp     _gx_pass, 1
                 je      sl_draws
                 mov     ax, jend
@@ -115,12 +143,7 @@ sl_put:         mov     si, jpi
                 cmp     al, [bx+J_OSH]
                 jae     sl_put
                 cmp     byte ptr [bx+J_LIFT], 0
-                je      sl_put_do
-                mov     al, cur
-                cmp     al, _lift_y0
-                jb      sl_put_do
-                cmp     al, _lift_y1
-                jb      sl_put_adv
+                jne     sl_put_lift     ; (rare: out of the loop)
 sl_put_do:      mov     al, cur
                 mov     [bx+J_PUT], al
                 mov     si, [bx+J_SAVE]
@@ -139,9 +162,15 @@ sl_put_adv:     mov     ax, [bx+J_OO]
                 xor     ax, ax
 sl_put_st:      mov     [bx+J_OO], ax
                 jmp     sl_put
+sl_next0:       inc     cur             ; (sl_next, in a short jump's reach)
+                jmp     sl_line
+sl_hook:        call    hq_line
+                jmp     short sl_drw0
 sl_draws:       cmp     _gx_pass, 0
-                je      sl_next
-                mov     jpi, offset DGROUP:_gx_jp
+                je      sl_next0
+                cmp     hql, 0
+                jne     sl_hook
+sl_drw0:        mov     jpi, offset DGROUP:_gx_jp
 sl_drw:         mov     si, jpi
                 cmp     si, jend
                 jae     sl_next
@@ -153,10 +182,13 @@ sl_drw:         mov     si, jpi
                 cmp     al, [bx+J_SH]
                 jae     sl_drw_next
                 ; what is under it, into its ring (screen -> DGROUP),
-                ; unless that is what was just put back
+                ; unless that is what was just put back (same 1), or it
+                ; stays here (same 2: only the waiting lines change it)
                 cmp     byte ptr [bx+J_SAME], 0
                 je      sl_save
-                mov     al, cur
+                test    byte ptr [bx+J_SAME], 2
+                jnz     sl_stay
+sl_same:        mov     al, cur
                 cmp     al, [bx+J_PUT]
                 je      sl_saved
 sl_save:        mov     di, [bx+J_SAVE]
@@ -185,14 +217,118 @@ sl_drw_st:      mov     [bx+J_NO], ax
                 push    bx
                 call    clkrow
                 pop     bx
-                mov     al, [bx+J_WB]
+sl_src:         mov     al, [bx+J_WB]
                 xor     ah, ah
                 add     [bx+J_SRC], ax
 sl_drw_next:    add     jpi, 2
                 jmp     sl_drw
 sl_next:        inc     cur
                 jmp     sl_line
+                ; (out of the loop: lifted, its old row goes back unless
+                ; spr_bg put it back already (2), or only on a waiting
+                ; line (4) ...
+sl_put_lift:    test    byte ptr [bx+J_LIFT], 4
+                jnz     sl_put_hq
+                mov     al, cur
+                cmp     al, _lift_y0
+                jb      sl_put_do0
+                cmp     al, _lift_y1
+                jb      sl_put_adv0
+sl_put_do0:     jmp     sl_put_do
+sl_put_hq:      cmp     hql, 0
+                jne     sl_put_do0
+sl_put_adv0:    jmp     sl_put_adv
+                ; ... and same 2: on the others it stays, its rows moving
+                ; on)
+sl_stay:        cmp     hql, 0
+                jne     sl_save
+                mov     ax, [bx+J_NO]
+                add     ax, [bx+J_NST]
+                cmp     ax, [bx+J_NEND]
+                jb      sl_stay1
+                xor     ax, ax
+sl_stay1:       mov     [bx+J_NO], ax
+                jmp     sl_src
 gx_sprlines_    ENDP
+
+; The dotted lines waiting on line cur, in the order they came, where
+; the old rows just put back were.
+hq_line         PROC    NEAR
+                xor     si, si
+hq_k:           mov     ax, si
+                cmp     al, _hq_n
+                jae     hq_ret
+                mov     al, cur
+                cmp     al, _hq_y[si]
+                jne     hq_nx
+                mov     _gx_y, al
+                mov     al, _hq_c[si]
+                mov     _hd_n, al
+                mov     al, _hq_fg[si]
+                mov     _gx_fg0, al
+                mov     al, _hq_lm[si]
+                mov     _gx_lm, al
+                mov     bx, si
+                shl     bx, 1
+                mov     ax, _hq_off[bx]
+                mov     _hd_off, ax
+                mov     jpi, offset DGROUP:_gx_jp
+hq_j:           mov     bx, jpi
+                cmp     bx, jend
+                jae     hq_nx
+                add     jpi, 2
+                mov     bx, [bx]
+                cmp     byte ptr [bx+J_DRAWN], 0
+                je      hq_j
+                mov     al, cur
+                sub     al, [bx+J_OSY]
+                cmp     al, [bx+J_OSH]
+                jae     hq_j
+                mov     al, [bx+J_OBX]
+                mov     dl, al
+                add     dl, [bx+J_ON]
+                call    gx_hdclip_
+                jmp     hq_j
+hq_nx:          inc     si
+                jmp     hq_k
+hq_ret:         ret
+hq_line         ENDP
+
+; void gx_hdclip(a AL, b DL; AH, DH whatever): see gfx.c.
+                PUBLIC  gx_hdclip_
+gx_hdclip_      PROC    NEAR
+                xor     ah, ah
+                xor     dh, dh
+                mov     bx, _hd_off
+                xor     cx, cx
+                cmp     _plat_jr, 0
+                je      hc_s
+                inc     cx                  ; the PCjr: a dot every other byte
+hc_s:           sub     ax, bx              ; the dots before byte a ...
+                jg      hc_a
+                xor     ax, ax
+                jmp     short hc_b
+hc_a:           add     ax, cx
+                shr     ax, cl
+hc_b:           sub     dx, bx              ; ... and before byte b
+                jle     hc_ret
+                add     dx, cx
+                shr     dx, cl
+                mov     di, dx
+                mov     dl, _hd_n
+                cmp     di, dx
+                jbe     hc_e
+                mov     di, dx
+hc_e:           sub     di, ax
+                jle     hc_ret
+                mov     dx, di
+                mov     _gx_n, dl
+                shl     ax, cl
+                add     ax, bx
+                mov     _gx_off, ax
+                jmp     gx_hdots_
+hc_ret:         ret
+gx_hdclip_      ENDP
 
 ; Job BX's picture row (a bit a colour clock, MSB left) at its x on line
 ; cur: lit clocks become its pattern for the line's parity, the rest stay.
