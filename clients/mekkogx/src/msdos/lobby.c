@@ -53,8 +53,9 @@ static int slot_drive(uint8_t slot)
 }
 
 /* Put keys in the BIOS's keyboard buffer (0040:001A head, 001C tail,
- * 001E..003D the buffer), as if typed. */
-static void type_in(const char *k)
+ * 001E..003D the buffer), as if typed. (plat.c too: MULEJR.EXE leaves a
+ * machine it can't run on to MULE.EXE.) */
+void type_in(const char *k)
 {
     uint16_t __far *head = MK_FP(0x40, 0x1A);
     uint16_t __far *tail = MK_FP(0x40, 0x1C);

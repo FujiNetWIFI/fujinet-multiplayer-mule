@@ -57,8 +57,11 @@ run() {
     coco) MAME=${OLD_MAME:-$MAME_DEFAULT} shoot coco "$MX" python3 tools/cocosim/cocosim.py r2r/coco/mule.dsk build/mule-coco.map ;;
     msdos-cga) DOSSIM_MACHINE=ibm5150 DOSSIM_NOFN=1 \
         shoot msdos-cga "$MX" python3 tools/dossim/dossim.py r2r/msdos/mule.exe build/mule-msdos.map ;;
+    # the PCjr runs MULEJR.EXE (MULESEL picks it): its own name on the
+    # disk, where its overlays are read from (DOS 2 tells it no other)
     msdos-pcjr) MAME=${OLD_MAME:-$MAME_DEFAULT} DOSSIM_RAMOPT=-ramsize DOSSIM_RAM=128K DOSSIM_NOFN=1 \
-        shoot msdos-pcjr "$MX" python3 tools/dossim/dossim.py r2r/msdos/mule.exe build/mule-msdos.map ;;
+        DOSSIM_FILES="r2r/msdos/mulejr.exe r2r/msdos/mulesel.com" DOSSIM_AUTOEXEC=MULESEL \
+        shoot msdos-pcjr "$MX" python3 tools/dossim/dossim.py r2r/msdos/mule.exe build/mulejr-msdos.map ;;
     adam) shoot adam "$MX" python3 tools/adam/adamsim/adamsim.py r2r/adam/mule.ddp r2r/adam/mule.map ;;
     msx) shoot msx "$MX" python3 tools/msx/msxsim/msxsim.py r2r/msxrom/mule.rom r2r/msxrom/mule.map ;;
     atari) shoot atari "$MX" python3 tools/atarisim/atarisim.py r2r/atari/mule.atr build/mule-atari.map ;;

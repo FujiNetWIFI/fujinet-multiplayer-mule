@@ -2,7 +2,8 @@
 #
 #   make apple2                        r2r/apple2/mule.po (ProDOS, 128K //e, IIc, IIgs)
 #   make coco                          r2r/coco/mule.dsk (DECB, 64K CoCo 1/2)
-#   make msdos                         r2r/msdos/mule.img (MULE.EXE: 128K PC with CGA, or PCjr)
+#   make msdos                         r2r/msdos/mule.img (MULE.EXE: 128K PC with CGA, or PCjr;
+#                                      MULEJR.EXE: the PCjr's own)
 #   make adam                          r2r/adam/mule.ddp and mule.dsk (Coleco Adam)
 #   make msxrom                        r2r/msxrom/mule.rom (MSX, a FujiNet user ROM: ASCII8)
 #   make atari                         r2r/atari/mule.atr (48K Atari 400/800, XL/XE)
@@ -19,6 +20,10 @@
 
 PRODUCT = mule
 PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms
+# The PC's disk has two: MULE.EXE, and MULEJR.EXE for the PCjr (MS-DOS below)
+ifeq ($(PLATFORM),msdos)
+  PRODUCTS = mule mulejr
+endif
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -151,8 +156,22 @@ EXTRA_INCLUDE_MSDOS += build/fnlib-msdos/include
 CFLAGS_EXTRA_MSDOS += -adt=$@
 EXECUTABLE_EXTRA_DEPS_MSDOS += $(DOS_TOOLS)/wlink-mule.py
 
+# MULEJR.EXE is the PCjr's own build (src/msdos/machine.h): only its
+# 16-colour mode, the CGA, EGA/VGA and PC keyboard and speaker code left
+# out, so the 128K PCjr has that much more room for the overlays. It
+# hands any other machine to MULE.EXE. MULESEL.COM (tools/dos/mulesel.asm),
+# AUTOEXEC.BAT's last line, types the one for the machine as the
+# keyboard's: nothing of it, or of the batch file, is left when the game
+# runs.
+mulejr_CFLAGS += -DPLAT_JRONLY
+mulejr_ASFLAGS += -dJRONLY
+DISK_EXTRA_FILES_MSDOS += r2r/msdos/mulesel.com
+r2r/msdos/mulesel.com: tools/dos/mulesel.asm | r2r/msdos
+	$(DOS_TOOLS)/ow wasm -zq -fo=build/mulesel.o $<
+	$(DOS_TOOLS)/ow wlink option quiet format dos com name $@ file build/mulesel.o
+
 msdos/disk-post::
-	printf '@ECHO OFF\r\nMULE.EXE\r\n' > build/autoexec.bat
+	printf '@ECHO OFF\r\nMULESEL\r\n' > build/autoexec.bat
 	mcopy -o -i $(DISK) build/autoexec.bat "::AUTOEXEC.BAT"
 
 # A boot floppy with the game on it, for a PCjr whose MULE.EXE would
@@ -164,6 +183,8 @@ PCJR_BOOT ?= $(HOME)/Vintage/IBM 5160 PCXT/fn-dos21.img
 pcjr-floppy: r2r/msdos/$(PRODUCT)
 	cp "$(PCJR_BOOT)" r2r/msdos/pcjr-boot.img
 	mcopy -o -i r2r/msdos/pcjr-boot.img r2r/msdos/mule.exe ::MULE.EXE
+	mcopy -o -i r2r/msdos/pcjr-boot.img r2r/msdos/mulejr.exe ::MULEJR.EXE
+	mcopy -o -i r2r/msdos/pcjr-boot.img r2r/msdos/mulesel.com ::MULESEL.COM
 	mcopy -o -i r2r/msdos/pcjr-boot.img build/autoexec.bat ::AUTOEXEC.BAT
 	@echo "r2r/msdos/pcjr-boot.img: boot it (fdd_01_fn in 86box.cfg) and MULE runs from A:"
 

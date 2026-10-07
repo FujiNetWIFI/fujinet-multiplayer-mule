@@ -27,8 +27,7 @@
 #include "mule.h"
 #include "gfxdata.h"
 
-extern uint8_t plat_jr;         /* plat.c: the PCjr's 16-colour mode */
-extern uint8_t plat_pal;        /* plat.c: 0 CGA, 1 EGA/VGA, 2 PCjr registers */
+#include "machine.h"
 
 /* The screen. CGA's is at B800. The PCjr's 16-colour one is 32K of main
  * RAM (its CPU page, 16K units): its B800 window is only 16K wide, so the
@@ -46,13 +45,13 @@ uint16_t cga_w[16];
 uint16_t jr_w[16][2];
 static uint8_t bgpat;           /* what "black" is: the background */
 
+#ifndef PLAT_JRONLY             /* (MULEJR.EXE: the PCjr only, machine.h) */
 /* Masks: four CGA pixels -> a byte. */
 const uint8_t m4[16] = {
     0x00, 0x03, 0x0C, 0x0F, 0x30, 0x33, 0x3C, 0x3F,
     0xC0, 0xC3, 0xCC, 0xCF, 0xF0, 0xF3, 0xFC, 0xFF,
 };
 
-/* Logical colours: CGA pixel values (4 = stripes), PCjr RGBI. */
 #define STRIPES 4
 static const uint8_t cga_of[16] = {
     0,          /* C_BLACK */
@@ -72,6 +71,9 @@ static const uint8_t cga_of[16] = {
     2,          /* C_PINK */
     STRIPES,    /* C_P3: player 3 */
 };
+#endif
+
+/* Logical colours: PCjr RGBI (and CGA pixel values above, 4 = stripes). */
 static const uint8_t rgbi_of[16] = {
     0,          /* C_BLACK */
     15,         /* C_WHITE */
@@ -96,15 +98,17 @@ static const uint8_t rgbi_of[16] = {
 /* The byte pattern of colour col on Atari line y. */
 static uint8_t pat(uint8_t col, uint8_t y)
 {
-    uint8_t v;
     if (col == C_BLACK)
         return bgpat;
-    if (plat_jr)
-        return rgbi_of[col] * 0x11;
-    v = cga_of[col];
-    if (v == STRIPES)
-        return (y & 1) ? 0xAA : 0x55;
-    return v * 0x55;
+#ifndef PLAT_JRONLY
+    if (!plat_jr) {
+        uint8_t v = cga_of[col];
+        if (v == STRIPES)
+            return (y & 1) ? 0xAA : 0x55;
+        return v * 0x55;
+    }
+#endif
+    return rgbi_of[col] * 0x11;
 }
 
 static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h);
@@ -472,15 +476,19 @@ void gfx_plot(uint8_t p, const PlotLook *look)
  * cga2[], an RGBI's CGA pixel pair. */
 const uint8_t __far *gx_tsrc;
 uint8_t gx_cx0, gx_cy0, gx_cx1, gx_cy1;
+#ifndef PLAT_JRONLY
 uint8_t cga2[16];
+#endif
 void __near gx_town(void);
 #pragma aux gx_town "*_" parm [] modify [ax bx cx dx si di es]
 
 void gfx_town(void)
 {
+#ifndef PLAT_JRONLY
     uint8_t i;
     for (i = 0; i < 16; ++i)
         cga2[i] = rgbi_cga[i] | rgbi_cga[i] << 2;
+#endif
     gx_tsrc = town_jr;
     gx_cx0 = town_corral[0] + 1;
     gx_cy0 = town_corral[1] + 1;

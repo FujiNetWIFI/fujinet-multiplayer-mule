@@ -5,7 +5,7 @@
 #include <i86.h>
 #include "mule.h"
 
-extern uint8_t plat_jr, plat_pal;       /* plat.c */
+#include "machine.h"
 extern uint8_t __far *vram_p;           /* gfx.c */
 extern uint16_t rowoff[192], cga_w[16], jr_w[16][2];
 void set_bg(uint8_t c);

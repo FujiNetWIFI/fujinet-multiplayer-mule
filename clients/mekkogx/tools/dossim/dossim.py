@@ -34,6 +34,10 @@ is wherever DOS loaded the game, so it is taken from the CPU's DS once the
 title has written 3C C3 into test_hook. DOSSIM_NOFN=1 boots without
 CONFIG.SYS (no FUJINET.SYS: the game answers INT F5h itself).
 DOSSIM_AUTOEXEC replaces the AUTOEXEC.BAT's MULE line ("\\n" between lines).
+DOSSIM_FILES puts more files on the disk, under their own names (space
+between them): e.g. r2r/msdos/mulejr.exe r2r/msdos/mulesel.com, with
+DOSSIM_AUTOEXEC=MULESEL, to boot as the PC's disk does (the map given is
+then the one of the EXE that will run).
 
 Against a FujiNet: DOSSIM_FUJINET=127.0.0.1:PORT connects the serial port
 (a null modem) to a fujinet-pc (RS232 build) listening for BoIP there; the
@@ -75,6 +79,9 @@ def make_disk(exe, out):
     open(bat, "wb").write(("@ECHO OFF\r\n" + "".join(l + "\r\n" for l in lines)).encode())
     subprocess.run(["mcopy", "-o", "-i", disk, bat, "::AUTOEXEC.BAT"], check=True)
     subprocess.run(["mcopy", "-o", "-i", disk, exe, "::MULE.EXE"], check=True)
+    for f in os.environ.get("DOSSIM_FILES", "").split():
+        subprocess.run(["mcopy", "-o", "-i", disk, f,
+                        "::" + os.path.basename(f).upper()], check=True)
     return disk
 
 

@@ -27,7 +27,7 @@
 #include <bios.h>
 #include "mule.h"
 
-extern uint8_t plat_pcjr;       /* plat.c */
+#include "machine.h"
 
 uint8_t inp_dir, inp_btn, ev_btn, ev_key;
 uint8_t inp_hook, inp_hook_dir, inp_hook_btn, inp_hook_key;

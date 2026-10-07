@@ -13,6 +13,8 @@
  * keeps only the last 16K from DOS, so the 16K under it must be free: the
  * game shrinks itself to what it needs and claims the rest up to the top.
  * If DOS or a resident program is in the way, it uses the 4-colour mode.
+ * MULEJR.EXE (PLAT_JRONLY, machine.h) has only the 16-colour mode, and
+ * leaves the machine to MULE.EXE when that can't be had.
  *
  * FUJINET.SYS used to wait 15 s for each byte of a reply, with no retry:
  * a reply cut short (a byte lost on the line) held the game that long,
@@ -32,11 +34,12 @@
 #include <i86.h>
 #include <conio.h>
 #include "mule.h"
+#include "machine.h"
 
 uint16_t frame_count;
-uint8_t plat_jr;                /* the PCjr's 16-colour mode is on */
-uint8_t plat_pal;               /* palette registers: 0 no (CGA), 1 EGA/VGA, 2 PCjr */
-uint8_t plat_pcjr;              /* this is a PCjr */
+#ifndef PLAT_JRONLY
+uint8_t plat_jr, plat_pal, plat_pcjr;   /* (machine.h) */
+#endif
 static uint16_t seed = 0x1234;
 /* for tools/dossim: our PSP, the BIOS's memory size (paragraphs), the
  * largest free block's segment and size (paragraphs) at start */
@@ -138,6 +141,7 @@ static void pit(uint16_t divisor)
     _enable();
 }
 
+#ifndef PLAT_JRONLY
 /* EGA or VGA: INT 10h AH=12h BL=10h returns BL changed. */
 static uint8_t ega_or_vga(void)
 {
@@ -147,6 +151,7 @@ static uint8_t ega_or_vga(void)
     int86(0x10, &r, &r);
     return r.h.bl != 0x10;
 }
+#endif
 
 /* Watcom's dynamic overlay manager: more room for the phases' overlays,
  * so that the ones loaded stay (a segment and a size in paragraphs). */
@@ -244,12 +249,19 @@ const char *plat_init(void)
 
     stack_fill();
 
-    plat_pcjr = *(uint8_t __far *)MK_FP(0xF000, 0xFFFE) == 0xFD;
     plat_mem[0] = _psp;
-    plat_pal = plat_pcjr ? 2 : ega_or_vga();
     r.h.ah = 0x0F;
     int86(0x10, &r, &r);
     old_mode = r.h.al;
+#ifdef PLAT_JRONLY
+    if (*(uint8_t __far *)MK_FP(0xF000, 0xFFFE) != 0xFD || !jr_memory()) {
+        extern void type_in(const char *k);     /* lobby.c */
+        type_in("MULE\r");     /* run as if typed, once this has gone */
+        exit(1);
+    }
+#else
+    plat_pcjr = *(uint8_t __far *)MK_FP(0xF000, 0xFFFE) == 0xFD;
+    plat_pal = plat_pcjr ? 2 : ega_or_vga();
     if (plat_pcjr)
         plat_jr = jr_memory();
     if (!plat_jr) {             /* room to spare: keep the overlays in */
@@ -261,6 +273,7 @@ const char *plat_init(void)
                 _ovl_addarea(seg, n);
         }
     }
+#endif
 
     seed ^= *(uint16_t __far *)MK_FP(0x40, 0x6C);   /* the BIOS tick count */
     old_int8 = _dos_getvect(0x08);

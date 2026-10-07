@@ -14,7 +14,7 @@
 #include "sound.h"
 #include "plat.h"
 
-extern uint8_t plat_pcjr;       /* plat.c */
+#include "machine.h"
 
 typedef struct {
     uint8_t d1, f1;         /* delay, frames */
@@ -36,7 +36,8 @@ static const Effect fx[SND_COUNT] = {
     {  18,  2,   0,  0 },   /* tock */
 };
 
-static uint8_t cur_f, next_d, next_f, muted, soft, sn, vol;
+static uint8_t cur_f, next_d, next_f, muted, soft, vol;
+#define sn plat_pcjr             /* the PCjr's SN76496, else the speaker */
 
 static void sn_write(uint8_t v)
 {
@@ -79,7 +80,6 @@ static void quiet(void)
 
 void snd_init(void)
 {
-    sn = plat_pcjr;
     if (sn) {
         sn_all_off();
         outp(0x61, inp(0x61) | 0x60);               /* the SN76496 to the speaker */

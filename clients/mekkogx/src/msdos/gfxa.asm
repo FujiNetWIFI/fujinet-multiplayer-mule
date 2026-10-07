@@ -12,8 +12,10 @@ DGROUP          GROUP   _BSS
 _BSS            SEGMENT WORD PUBLIC 'BSS'
                 EXTRN   _gx_jp:WORD, _gx_nc:BYTE, _gx_y0:BYTE, _gx_y1:BYTE
                 EXTRN   _gx_pass:BYTE, _lift_y0:BYTE, _lift_y1:BYTE
-                EXTRN   _rowoff:WORD, _cga_w:WORD, _plat_jr:BYTE, _vram_p:DWORD
-                EXTRN   _jr_w:WORD, _m4:BYTE
+                EXTRN   _rowoff:WORD, _cga_w:WORD, _vram_p:DWORD, _jr_w:WORD
+                IFNDEF  JRONLY          ; (MULEJR.EXE: the PCjr only)
+                EXTRN   _plat_jr:BYTE, _m4:BYTE, _cga2:BYTE
+                ENDIF
                 EXTRN   _gx_gc:BYTE, _gx_gb:WORD, _gx_off:WORD, _gx_n:BYTE
                 EXTRN   _gx_rows:BYTE, _gx_y:BYTE, _gx_fg0:BYTE, _gx_fg1:BYTE
                 EXTRN   _gx_bgp:BYTE, _gx_kind:BYTE
@@ -22,7 +24,7 @@ _BSS            SEGMENT WORD PUBLIC 'BSS'
                 EXTRN   _pl_r:WORD, _pl_w:WORD, _pl_bg:WORD, _pl_x:WORD
                 EXTRN   _pl_y0:BYTE, _pl_p0:BYTE, _pl_p1:BYTE
                 EXTRN   _gx_tsrc:DWORD, _gx_cx0:BYTE, _gx_cy0:BYTE
-                EXTRN   _gx_cx1:BYTE, _gx_cy1:BYTE, _cga2:BYTE
+                EXTRN   _gx_cx1:BYTE, _gx_cy1:BYTE
                 EXTRN   _hq_n:BYTE, _hq_lo:BYTE, _hq_hi:BYTE, _hq_y:BYTE
                 EXTRN   _hq_c:BYTE, _hq_fg:BYTE, _hq_lm:BYTE, _hq_off:WORD
                 EXTRN   _hd_off:WORD, _hd_n:BYTE
@@ -301,8 +303,10 @@ gx_hdclip_      PROC    NEAR
                 xor     dh, dh
                 mov     bx, _hd_off
                 xor     cx, cx
+                IFNDEF  JRONLY
                 cmp     _plat_jr, 0
                 je      hc_s
+                ENDIF
                 inc     cx                  ; the PCjr: a dot every other byte
 hc_s:           sub     ax, bx              ; the dots before byte a ...
                 jg      hc_a
@@ -343,8 +347,10 @@ cr_pt:          mov     cl, [bx+J_WB]
                 mov     cnt, cl
                 xor     ch, ch
                 mov     ax, [bx+J_X]
+                IFNDEF  JRONLY
                 cmp     _plat_jr, 0
                 je      cr_cga
+                ENDIF
                 ; the PCjr: a clock is a byte
                 or      ax, ax
                 js      cr_slow
@@ -399,6 +405,9 @@ cr_sbit:        shl     bl, 1
                 cmp     bp, 160
                 jae     cr_snext
                 mov     di, row
+                IFDEF   JRONLY
+                mov     es:[bp+di], dl
+                ELSE
                 cmp     _plat_jr, 0
                 je      cr_scga
                 mov     es:[bp+di], dl
@@ -416,12 +425,14 @@ cr_smask:       mov     dh, es:[di]
                 and     ah, al
                 xor     ah, dh
                 mov     es:[di], ah
+                ENDIF
 cr_snext:       inc     bp
                 dec     bh
                 jnz     cr_sbit
                 loop    cr_sbyte
                 ret
 
+                IFNDEF  JRONLY
 ; CGA: two clocks a byte, a source byte two words (cga_w's masks). An odd
 ; x puts a clock of nothing in front: the source a clock to the right, a
 ; byte longer.
@@ -488,6 +499,7 @@ cr_clo:         add     di, 4
                 dec     bp
                 jnz     cr_cbyte
                 ret
+                ENDIF
 clkrow          ENDP
 
 ; gx_cells' next cell: AL = its picture's row byte (SI: the cell list)
@@ -550,6 +562,7 @@ gc_r:           xor     ah, ah
                 jz      gc_next
                 cmp     _gx_kind, 0
                 jne     gc_big
+                IFNDEF  JRONLY
                 cmp     _plat_jr, 0
                 jne     gc_tjr
 gc_tc:          CELLV                   ; CGA text: a byte a nibble (m4)
@@ -568,6 +581,7 @@ gc_tc:          CELLV                   ; CGA text: a byte a nibble (m4)
                 dec     cl
                 jnz     gc_tc
                 jmp     gc_next
+                ENDIF
 gc_tjr:         CELLV                   ; PCjr text: a word a nibble (cga_w)
                 mov     ch, al
                 mov     bl, al
@@ -586,7 +600,9 @@ gc_tjr:         CELLV                   ; PCjr text: a word a nibble (cga_w)
                 dec     cl
                 jnz     gc_tjr
                 jmp     gc_next
-gc_big:         cmp     _plat_jr, 0
+gc_big:
+                IFNDEF  JRONLY
+                cmp     _plat_jr, 0
                 jne     gc_bjr
 gc_bc:          CELLV                   ; CGA big: a word a nibble (cga_w)
                 mov     ch, al
@@ -606,6 +622,7 @@ gc_bc:          CELLV                   ; CGA big: a word a nibble (cga_w)
                 dec     cl
                 jnz     gc_bc
                 jmp     gc_next
+                ENDIF
 gc_bjr:         CELLV                   ; PCjr big: two words a nibble (jr_w)
                 mov     ch, al
                 mov     bl, al
@@ -683,12 +700,15 @@ gx_hdots_       PROC    NEAR
                 xor     ch, ch
                 jcxz    gh_ret
                 mov     al, _gx_fg0
+                IFNDEF  JRONLY
                 cmp     _plat_jr, 0
                 je      gh_cga
+                ENDIF
 gh_jr:          stosb
                 inc     di
                 loop    gh_jr
 gh_ret:         ret
+                IFNDEF  JRONLY
 gh_cga:         mov     ah, _gx_lm
                 and     al, ah
                 not     ah
@@ -699,6 +719,7 @@ gh_c:           mov     dl, es:[di]
                 inc     di
                 loop    gh_c
                 ret
+                ENDIF
 gx_hdots_       ENDP
 
 ; ES:DI's byte through mask AL in pattern DL; DI on.
@@ -715,6 +736,7 @@ gr_mask         ENDP
 
 ; gx_plot: DX = DX ^ ((DX ^ val) & mask) for the clocks in nibble nib,
 ; mask = cga_w (SEL2) or a word of jr_w (SEL4, ofs 0 or 2).
+                IFNDEF  JRONLY
 SEL2            MACRO   nib, val
                 LOCAL   skip
                 or      nib, nib
@@ -729,6 +751,7 @@ SEL2            MACRO   nib, val
                 xor     dx, si
 skip:
                 ENDM
+                ENDIF
 
 SEL4            MACRO   nib, ofs, val
                 LOCAL   skip
@@ -797,8 +820,10 @@ gp_byte         PROC    NEAR
                 mov     ax, _pl_bg      ; plains only
                 stosw
                 stosw
+                IFNDEF  JRONLY
                 cmp     _plat_jr, 0
                 je      gp_ret
+                ENDIF
                 stosw
                 stosw
 gp_ret:         ret
@@ -814,6 +839,7 @@ gp_mix:         mov     vo, ax
                 mov     ch, vw
                 and     ch, 0Fh         ; then the right four
 gp_nib:         mov     dx, _pl_bg      ; AL owner, AH river, CH white
+                IFNDEF  JRONLY
                 cmp     _plat_jr, 0
                 jne     gp_njr
                 SEL2    ah, _pl_r
@@ -822,6 +848,7 @@ gp_nib:         mov     dx, _pl_bg      ; AL owner, AH river, CH white
                 mov     es:[di], dx
                 add     di, 2
                 ret
+                ENDIF
 gp_njr:         SEL4    ah, 0, _pl_r
                 SEL4    al, 0, pw
                 SEL4    ch, 0, _pl_w
@@ -863,8 +890,11 @@ tw_run:         sub     al, 125         ; a run: AL - 125 clocks of the next
                 lodsb
                 mov     bh, al
                 mov     bl, 1
-tw_emit:        cmp     ss:_plat_jr, 0
+tw_emit:
+                IFNDEF  JRONLY
+                cmp     ss:_plat_jr, 0
                 je      tw_cga
+                ENDIF
                 mov     al, bh
 tw_jr:          mov     cx, 96          ; the PCjr: as much as the line has room for
                 sub     cl, ss:tx
@@ -882,6 +912,7 @@ tw_jr2:         call    tw_eol
                 or      dx, dx
                 jnz     tw_jr
                 jmp     tw_tok
+                IFNDEF  JRONLY
 tw_cga:         mov     al, bh          ; CGA: a clock at a time
                 or      bl, bl
                 jnz     tw_c1
@@ -919,6 +950,7 @@ tw_c4:          inc     ss:tx
                 dec     dx
                 jnz     tw_cga
                 jmp     tw_tok
+                ENDIF
 tw_done:        pop     ds
                 ASSUME  DS:DGROUP
                 pop     bp
@@ -946,8 +978,10 @@ tw_addr         PROC    NEAR
                 shl     bx, 1
                 mov     di, ss:_rowoff[bx]
                 add     di, 16
+                IFNDEF  JRONLY
                 cmp     ss:_plat_jr, 0
                 je      ta_ret
+                ENDIF
                 add     di, 16
 ta_ret:         pop     bx
                 ret

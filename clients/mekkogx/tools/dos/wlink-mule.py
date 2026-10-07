@@ -24,8 +24,9 @@ OW = os.path.join(HERE, "ow")
 OVERLAYS = [["boot", "teststart", "net", "gfxinit"], ["status"], ["grant", "events"],
             ["auction"], ["develop"], ["lobby"]]
 FNLIB = os.environ.get("MULE_FNLIB", "build/fnlib-msdos/fujinet-msdos.lib")
-MAP = "build/mule-msdos.map"
-STACK = 1024                    # ~300 bytes used, FUJINET.SYS calls included
+MAP = "build/%s-msdos.map"     # mule-msdos.map, mulejr-msdos.map (`name`)
+STACK = 1024                    # ~580 used at most in the test scenes (the
+                                # summary's walk-in), FUJINET.SYS adds its calls
 AREA = int(os.environ.get("MULE_OVL_AREA", "4800"))
 
 
@@ -45,6 +46,11 @@ def main():
             break
         j += 1
     rest = args[:i] + args[j + 1:]
+    global MAP
+    if "name" in rest:
+        MAP = MAP % os.path.splitext(os.path.basename(rest[rest.index("name") + 1]))[0]
+    else:
+        MAP = MAP % "mule"
 
     def base(o):
         return os.path.splitext(os.path.basename(o))[0]
