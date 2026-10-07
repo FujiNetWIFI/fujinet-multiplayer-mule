@@ -1,0 +1,5 @@
+# the table is drawn into the queue a frame at a time: the species walk
+# to their rows a little later than elsewhere
+test 7
+wait 900
+snap 03-summary

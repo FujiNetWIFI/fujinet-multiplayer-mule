@@ -5,14 +5,15 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are seven platforms:
+There are eight platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
 - the **Coleco Adam**, booted from a FujiNet disk or tape, with its SN76489;
 - the **MSX** (MSX1 and up), as a ROM the FujiNet cartridge runs, with its PSG;
 - the **Atari 400/800** with 48K (and the XL/XE), with the original's own graphics, music and sound effects, from its disk;
-- the **Atari Lynx**, as a cart image, with FujiNet-Lynx on ComLynx, and the Atari's music and effects on Mikey.
+- the **Atari Lynx**, as a cart image, with FujiNet-Lynx on ComLynx, and the Atari's music and effects on Mikey;
+- the **NES**, as an MMC3 image the FujiNet NES cartridge boots, with the Adam's pictures and effects on its pulse channel.
 
 The Adam and the MSX share their graphics code (`src/tms9918`): both have a TMS9918A.
 
@@ -29,6 +30,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/adam/`, `src/msx/` | the rest of the Adam and MSX implementations |
 | `src/atari/` | the Atari implementation (cc65, much of it 6502 assembly) |
 | `src/lynx/` | the Lynx implementation (cc65; its sound is the Atari's `pokey.s`) |
+| `src/nes/` | the NES implementation (cc65; the screen is the TMS9918A's, in the PPU's terms) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -480,6 +482,59 @@ The name is picked a letter at a time (`PLAT_NO_KEYBOARD` in `boot.c`): up and d
 
   The build remembers `ENDPOINT` (in `gen/endpoint`): put back `http://fujinet.online:9900/` after testing locally.
 
+## The NES version
+
+An image for the NES on the FujiNet NES cartridge (fujinet-firmware `pico/nes`, the `nes-bringup` branch): the NES CONFIG boots it from TNFS like any other `.nes`. It draws the Adam's pictures, 32 columns, and plays the Adam's effects.
+
+    make nes                                   # r2r/nes/mule.nes
+    make nes ENDPOINT=http://myhost:8080       # the server: its host, stream port 9902
+
+- **What it needs:** cc65 2.19, Python 3 with Pillow, and fujinet-lib-experimental's `add-nes` branch in `~/Workspace/fujinet-lib-experimental` (or `make FNLIB_EXP=/path`). `tools/nes/mkfnlib.sh` compiles it into `build/fnlib-nes`.
+- **Graphics** are the Adam's (`tools/mkgfx_nes.py`, from `mkgfx_tms.py`): the Namco font, the plot parts, the shapes. Only the town is made again, a 16 x 16 block at a time in the NES's palettes, into `gen/nes/` (previews in `gen/preview/nes/`).
+- **The check:** `tools/nes/checkrom.py` runs after the link. It wants the "FUJI" claim at $FFF0 (without it the cartridge turns its mailbox off once the image boots), a reset vector in the fixed banks, and no read-modify-write instruction aimed at the mailbox's write-only pages. A failing image is deleted.
+
+**The cartridge image** (`src/nes/mule-nes.cfg`): MMC3 (mapper 4), 128K PRG, 16K CHR-RAM, 8K WRAM, NES 2.0 header.
+- **$C000-$FFFF**, fixed: the program, the runtime and fujinet-lib.
+- **$A000-$BFFF**, R7: more of the program (`nsnet.c`, `net.c`, `text.c`, `map.c`, `fx.c`, `test.c`), never switched.
+- **$8000-$9FFF**, R6: the phase's overlay (banks 0-4). The art (bank 5) and the strings (bank 6) take turns there too, as on the MSX (`src/nes/bank.c`): the code that switches lives outside the window and puts the phase back. The town and the auction's dotted lines are drawn by their own phases, so their code and the town's tables sit in those overlays.
+- **WRAM** holds the data and the variables; the C stack is in the console's RAM at $0500-$07FF.
+- Both the fixed banks and R7 are nearly full: under 200 bytes free in each (`build/mule-nes.map`).
+
+**The screen** is the TMS9918A's Graphics II, in the PPU's terms (`src/nes/gfx.c`, `crt0.s`):
+- **A bitmap.** All 768 cells have their own tile. Each third of the screen (8 rows) has its own 4K pattern table in CHR-RAM. MMC3's scanline interrupt switches the background's table at lines 79 and 143. The 24 rows are name table rows 2-25. Above them the background is off, and from line 208 the PPU is off altogether.
+- **Colour** is a 16 x 16 block's palette (1 of 4), 3 colours and the background each. Each screen has its set: black screens, the map (the plains, white, black, a player's colour), the town (the players' colours, and two building palettes). White is in every palette. Drawing in a colour gives its block that colour's palette, and the last colour drawn in a block wins.
+- **The river** on the map is sprites behind the background: the plots' palettes have no room for its blue.
+- **Drawing goes through a queue** (`ppuq`). The PPU can only be written while it shows nothing, so the interrupts drain the queue: from line 208 to the vertical blank, then in the NMI after the sprites' DMA, about 280 bytes a frame. `gfx_clear` turns the display off until the next `frame_wait`, so a whole screen is drawn at once and shows complete.
+- **Sprites:** 8 x 16, one colour each, from four palettes. A slot is up to six of them, with its own patterns, sent when its frame or colour changes. When a line has a ninth sprite, the order rotates a frame at a time.
+- MMC3's bank select register is shared by the game (R6) and the interrupts (R0/R1). The game's choice is kept in `mmc3_sel`, written before the register, and the interrupts put it back.
+
+**The network: stream mode, never waited on.** `src/nes/nstrans.c` writes each STATUS, READ or WRITE straight into the cartridge's mailbox: registers at $5500+n, the request at $5700, a sequence number to launch it. It looks again on the next frames, and copies the reply out of the 1K window at $5000.
+- The sequence number is the cartridge's ACKSEQ + 1, never a counter of our own: a console Reset doesn't reset the cartridge.
+- Only plain stores touch $5500-$57FF.
+- The open, the close and the appkeys are fujinet-lib's: a wait, once. Before an appkey call, `nt_quiesce` lets the call in flight finish.
+- `nt_detect` wants the cartridge and an answer from the FujiNet behind it (`fuji_get_wifi_status`).
+
+**Controls** (joypad 1):
+
+| Button | Does |
+|---|---|
+| pad | walk; up/down in auctions; left/right in the lobby |
+| A | the button |
+| B | rub out (the name) |
+| START | RETURN: end your turn, finish the name |
+| SELECT | ESC: leave the table (asks first in a game); at the table list, quit |
+| START + B | 0: sit this good out |
+
+The name is picked a letter at a time, as on the Lynx. Quitting says goodbye to the server and asks for the NES to be switched off: Reset doesn't bring CONFIG back, only a power cycle does.
+
+**Testing.**
+- **Offline, in MAME** (`tools/nessim/nessim.py`): `tools/a2sim`'s scenario language, with the image on the FujiNet cartridge's MAME device (fujinet-firmware `pico/nes/emu`, grafted into `~/Workspace/mame` by its `apply.sh`). The cartridge puts the image straight into its SRAMs. `NESWAV=out.wav` records the sound. The cartridge is pointed at a port nothing listens on, so a fujinet-pc isn't needed, or disturbed.
+
+      python3 tools/nessim/nessim.py r2r/nes/mule.nes build/mule-nes.map scenario.txt out/
+
+- **Live, in MAME:** the same device, with a fujinet-pc (`fujinet-pc-rs232`, BoIP on 127.0.0.1:9995, or `FUJINET_TCP`) and a server. Run it throttled: under `-nothrottle` the server's countdowns look frozen. To keep clear of other servers on :9902, run the server, a copy of fujinet-pc and MAME together in `unshare -rnm`, with a hosts file mapping fujinet.online to 127.0.0.1. Played that way: lobby, transport, summary, land grant, land auction, with no failed calls.
+- **The scanline interrupt's first line:** MAME's cartridge device clocks MMC3's counter from line 0. The hardware also clocks it on the pre-render line, one line earlier. `IRQ_EARLY` in `crt0.s` is 0 for MAME. On a real cartridge it may need to be 1: a one-line seam at the table switches would show it.
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
@@ -494,6 +549,9 @@ The name is picked a letter at a time (`PLAT_NO_KEYBOARD` in `boot.c`): up and d
 - **MS-DOS, CGA:** the fourth player is striped, and the fence around the town's corral is white.
 - **Adam: phase changes** read the phase's overlay (up to 6 blocks). That is quick from a FujiNet, and slow from a real tape.
 - **Adam: arrow keys** repeat rather than hold (the keyboard sends characters): walking is smoother with a controller.
+- **NES: untested on hardware.** No NES cartridge has been built yet. The MMC3 interrupt's line (`IRQ_EARLY`) and the drain budgets in `crt0.s` are set for MAME.
+- **NES: colour clash** by 16 x 16 block. Two colours that need different palettes in one block share the last one drawn. On the map, a plot is 3 cells wide, so every other plot shares a block column with its neighbour.
+- **NES: big redraws without a clear** (the summary's table, a scrolling message) go through the queue at about 280 bytes a frame. A message row being scrolled can show half its old position for a frame.
 - **TMS9918: colour clash.** Text or a sprite-free drawing next to another colour can recolour a few pixels of its cell's row.
 - **MSX: fujinet-lib-experimental's MSX bus** needed fixes for zsdcc, all in `tools/z80/mkfnlib.sh`:
   - its port routines used IX and IY, which zsdcc keeps;

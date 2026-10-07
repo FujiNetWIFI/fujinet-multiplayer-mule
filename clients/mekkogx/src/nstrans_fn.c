@@ -1,8 +1,9 @@
 /*
  * nstrans_fn.c -- stream mode's bytes (src/nsnet.c) through fujinet-lib:
  * an N:TCP socket to the server's stream port. The CoCo and the Apple II
- * use it (the Adam drives its DCB itself: src/adam/nstrans.c; the MSX and
- * MS-DOS put their packets together: src/nstrans_fb.c).
+ * use it (the Adam drives its DCB itself: src/adam/nstrans.c; the NES its
+ * cartridge's mailbox: src/nes/nstrans.c; the MSX and MS-DOS put their
+ * packets together: src/nstrans_fb.c).
  *
  * It replaced HTTP polls (net.c), which held the machine for the whole
  * request: FujiNet makes the GET inside the first status call after the
@@ -24,7 +25,7 @@
  *    the answer. fujinet-lib asks "ready?" before each part: three round
  *    trips for a status, five for a read, two for a write; here one each.
  */
-#if defined(PLAT_NETSTREAM) && !defined(__ATARI__) && !defined(__LYNX__) && !defined(__ADAM__) \
+#if defined(PLAT_NETSTREAM) && !defined(__ATARI__) && !defined(__LYNX__) && !defined(__ADAM__) && !defined(__NES__) \
     && !defined(PLAT_FUJIBUS)
 
 #include <string.h>

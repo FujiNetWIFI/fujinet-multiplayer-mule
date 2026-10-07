@@ -1,0 +1,2 @@
+* MSDOS: make graphics routines fast! It's borderline too slow on IBM 5160 PC/XT, and WAY TOO SLOW on PCjr. Use lookup tables, stosw instruction, whatever will make it faster!
+

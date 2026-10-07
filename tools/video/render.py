@@ -12,10 +12,7 @@ pixel across by one scanline down, the way the console builds its picture
 (a background pixel is 1 x 2, a 0.5x MOB row is 1 x 1). Each unit becomes
 8 x 4 video pixels: 1920 x 1080, with the console's pixel aspect.
 """
-import glob
-import math
 import os
-import subprocess
 import sys
 
 import numpy as np
@@ -24,13 +21,14 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import romgfx  # noqa: E402
+import vidlib  # noqa: E402
+from vidlib import Canvas, wrap, typed, caption, blink  # noqa: E402,F401
 from romgfx import (BLACK, BLUE, RED, TAN, DKGREEN, GREEN, YELLOW, WHITE,  # noqa: E402,F401
                     GREY, CYAN, ORANGE, BROWN, PINK, LTBLUE, YELGREEN, PURPLE)
 
 FONT = os.path.expanduser("~/.local/share/fonts/intellivision.otf")
 INTV = os.path.join(HERE, "..", "..", "clients", "intv")
 W, H, SX, SY = 240, 270, 8, 4
-FPS = 60
 PAL = np.array(romgfx.PAL, dtype=np.uint8)
 PLAYER = [BLUE, PURPLE, GREEN, ORANGE]          # pl_mobcol (screen.bas)
 PTEXT = [BLUE, RED, GREEN, TAN]                 # pl_txtcol
@@ -59,10 +57,7 @@ def load_font():
 
 
 GLYPH = load_font()
-
-
-def bitmask(rows, width=8):
-    return np.array([[(r >> (width - 1 - x)) & 1 for x in range(width)] for r in rows], dtype=bool)
+vidlib.setup(W, H, SX, SY, PAL, GLYPH, WHITE, GREY)
 
 
 def card(block, i):
@@ -74,134 +69,6 @@ def cards(block, i, n):
     for k in range(n):
         out += G[block][i + k]
     return out
-
-
-# ---------------------------------------------------------------------------
-# The canvas
-# ---------------------------------------------------------------------------
-class Canvas:
-    def __init__(self, bg=BLACK):
-        self.a = np.zeros((H, W, 3), dtype=np.uint8)
-        self.a[:] = PAL[bg]
-        self.overlays = []          # (x, y, rgb) in video pixels, drawn last
-        self.k = 1.0
-
-    def rect(self, x, y, w, h, c):
-        x0, y0, x1, y1 = max(0, x), max(0, y), min(W, x + w), min(H, y + h)
-        if x1 > x0 and y1 > y0:
-            self.a[y0:y1, x0:x1] = PAL[c]
-
-    def frame(self, x, y, w, h, c, t=1):
-        self.rect(x, y, w, t, c)
-        self.rect(x, y + h - t, w, t, c)
-        self.rect(x, y, t, h, c)
-        self.rect(x + w - t, y, t, h, c)
-
-    def mask(self, x, y, m, c, sx=1, sy=1, flip=False, bg=None):
-        if flip:
-            m = m[:, ::-1]
-        m = np.kron(m, np.ones((sy, sx), dtype=bool))
-        h, w = m.shape
-        x0, y0 = max(0, x), max(0, y)
-        x1, y1 = min(W, x + w), min(H, y + h)
-        if x1 <= x0 or y1 <= y0:
-            return
-        sub = m[y0 - y:y1 - y, x0 - x:x1 - x]
-        region = self.a[y0:y1, x0:x1]
-        if bg is not None:
-            region[:] = PAL[bg]
-        region[sub] = PAL[c]
-
-    def bits(self, x, y, rows, c, sx=1, sy=2, flip=False, bg=None):
-        """Card rows (bytes): a background card is sy=2, a 0.5x MOB sy=1."""
-        self.mask(x, y, bitmask(rows), c, sx, sy, flip, bg)
-
-    def text(self, x, y, s, c, sx=1, sy=2):
-        for i, ch in enumerate(s):
-            g = GLYPH.get(ch)
-            if g is not None and g.any():
-                self.mask(x + i * 8 * sx, y, g, c, sx, sy)
-
-    def ctext(self, y, s, c, sx=1, sy=2, cx=W // 2):
-        self.text(cx - len(s) * 4 * sx, y, s, c, sx, sy)
-
-    def paste(self, x, y, arr):
-        h, w = arr.shape[:2]
-        x0, y0, x1, y1 = max(0, x), max(0, y), min(W, x + w), min(H, y + h)
-        if x1 > x0 and y1 > y0:
-            self.a[y0:y1, x0:x1] = arr[y0 - y:y1 - y, x0 - x:x1 - x]
-
-    def dim(self, k):
-        self.k = k
-
-    def over(self, x, y, img):
-        self.overlays.append((int(x), int(y), img))
-
-    def otext(self, cx, y, s, c, scale=3):
-        """Small text straight on the video picture, centred on cx (labels
-        too small for the canvas grid), in square pixels of `scale`."""
-        if not s:
-            return
-        m = np.zeros((8, 8 * len(s)), dtype=bool)
-        for i, ch in enumerate(s):
-            g = GLYPH.get(ch)
-            if g is not None:
-                m[:, i * 8:i * 8 + 8] = g
-        m = np.kron(m, np.ones((scale, scale), dtype=bool))
-        img = np.zeros(m.shape + (4,), dtype=np.uint8)
-        img[m, :3] = PAL[c]
-        img[m, 3] = 255
-        self.over(cx - m.shape[1] // 2, y, img)
-
-    def video(self):
-        v = np.repeat(np.repeat(self.a, SY, axis=0), SX, axis=1)
-        VW, VH = W * SX, H * SY
-        for x, y, img in self.overlays:
-            h, w = img.shape[:2]
-            x0, y0, x1, y1 = max(0, x), max(0, y), min(VW, x + w), min(VH, y + h)
-            if x1 <= x0 or y1 <= y0:
-                continue
-            sub = img[y0 - y:y1 - y, x0 - x:x1 - x]
-            if sub.shape[2] == 4:
-                m = sub[:, :, 3] > 0
-                v[y0:y1, x0:x1][m] = sub[:, :, :3][m]
-            else:
-                v[y0:y1, x0:x1] = sub
-        if self.k < 1.0:
-            v = (v.astype(np.float32) * self.k).astype(np.uint8)
-        return v
-
-
-def wrap(s, n=COLS - 2):
-    out, line = [], ""
-    for w in s.split():
-        if line and len(line) + 1 + len(w) > n:
-            out.append(line)
-            line = w
-        else:
-            line = (line + " " + w).strip()
-    if line:
-        out.append(line)
-    return out
-
-
-def typed(s, t, cps=40):
-    """The first part of s revealed after t seconds of typing."""
-    return s[:max(0, int(t * cps))]
-
-
-def caption(cv, t, text, y=204, c=WHITE, step=20, cps=45):
-    """Centred, word-wrapped, typed-out caption lines."""
-    lines = wrap(text)
-    done = 0
-    for i, ln in enumerate(lines):
-        shown = typed(ln, t - done / cps, cps)
-        cv.ctext(y + i * step, shown, c)
-        done += len(ln)
-
-
-def blink(t, hz=2.0):
-    return (t * hz) % 1.0 < 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -355,27 +222,9 @@ def draw_town(cv, ox, oy, s=1, only=None):
 CLIP_DROP = {"develop": (120,)}
 
 
-class Clip:
-    def __init__(self, build, name):
-        self.files = sorted(glob.glob(os.path.join(build, "clips", name, "*.png")))
-        if not self.files:
-            raise SystemExit("no clip %s: run clips.py first" % name)
-        self.cache = {}
-        self.drop = CLIP_DROP.get(name, ())
-
-    def __len__(self):
-        return len(self.files)
-
-    def get(self, i):
-        i = max(0, min(len(self.files) - 1, i))
-        while i in self.drop:
-            i -= 1
-        if i not in self.cache:
-            if len(self.cache) > 64:
-                self.cache.clear()
-            a = np.array(Image.open(self.files[i]).convert("RGB"))[::2, ::4]
-            self.cache[i] = a[8:200, 8:168]           # the 160 x 192 picture
-        return self.cache[i]
+def load_clip_frame(path):
+    a = np.array(Image.open(path).convert("RGB"))[::2, ::4]
+    return a[8:200, 8:168]                         # the 160 x 192 picture
 
 
 CLIPS = {}
@@ -383,7 +232,8 @@ CLIPS = {}
 
 def clip(name):
     if name not in CLIPS:
-        CLIPS[name] = Clip(BUILD, name)
+        CLIPS[name] = vidlib.Clip(os.path.join(BUILD, "clips", name), "*.png", load_clip_frame,
+                                  CLIP_DROP.get(name, ()))
     return CLIPS[name]
 
 
@@ -399,14 +249,7 @@ def show_clip(cv, name, t, start=0, x=40, y=4, speed=1.0):
 # Scenes. Each is (seconds, fn(cv, t, d)) where t runs 0..d.
 # ---------------------------------------------------------------------------
 def stars(cv, t, n=70, seed=7, speed=6.0):
-    rng = np.random.default_rng(seed)
-    xs = rng.uniform(0, W, n)
-    ys = rng.integers(0, H, n)
-    ph = rng.uniform(0, 1, n)
-    for i in range(n):
-        x = int((xs[i] - t * speed * (1 + i % 3)) % W)
-        c = WHITE if (t * 1.5 + ph[i]) % 1 < 0.8 else GREY
-        cv.rect(x, int(ys[i]), 1, 2, c if i % 4 else LTBLUE)
+    vidlib.stars(cv, t, (WHITE, GREY, LTBLUE), n, seed, speed)
 
 
 def sc_title(cv, t, d):
@@ -816,67 +659,17 @@ def sc_outro(cv, t, d):
 # Cross-platform play: real screenshots of the other FujiNet clients
 # (screenshots/<target>/), drawn as overlays at video resolution.
 # ---------------------------------------------------------------------------
-SHOTS = os.path.join(HERE, "..", "..", "screenshots")
-PLATFORMS = [("intv", "INTELLIVISION"), ("atari", "ATARI 8-BIT"), ("atari-2600", "ATARI 2600"),
-             ("apple2", "APPLE II"), ("coco", "COCO"), ("msdos-cga", "IBM PC/PCJR"),
-             ("msx", "MSX"), ("adam", "COLECO ADAM"), ("lynx", "LYNX"), ("astrocade", "ASTROCADE")]
-_SHOT = {}
+PLATS = vidlib.platforms("intv")
 
 
-def shot(target, name, bw, bh):
-    """A screenshot fitted to a bw x bh box: a TV's 4:3, or the Lynx's own
-    shape, scaled with nearest neighbour."""
-    key = (target, name, bw, bh)
-    if key not in _SHOT:
-        im = Image.open(os.path.join(SHOTS, target, name + ".png")).convert("RGB")
-        aspect = im.width / im.height if target == "lynx" else 4 / 3
-        w, h = bw, int(bw / aspect)
-        if h > bh:
-            w, h = int(bh * aspect), bh
-        _SHOT[key] = np.array(im.resize((w, h), Image.NEAREST))
-    return _SHOT[key]
-
-
-def tile(cv, target, name, label, x, y, bw, bh, pop=1.0, lc=WHITE):
-    """A labelled screenshot centred in its box; pop 0..1 grows it in."""
-    if pop <= 0:
-        return
-    img = shot(target, name, bw, bh)
-    if pop < 1.0:
-        f = max(0.05, pop)
-        im = Image.fromarray(img)
-        img = np.array(im.resize((max(1, int(im.width * f)), max(1, int(im.height * f))), Image.NEAREST))
-    h, w = img.shape[:2]
-    cx, cy = x + bw // 2, y + bh // 2
-    border = np.zeros((h + 8, w + 8, 3), dtype=np.uint8)
-    border[:] = PAL[DKGREEN]
-    border[4:-4, 4:-4] = img
-    cv.over(cx - w // 2 - 4, cy - h // 2 - 4, border)
-    if pop >= 1.0:
-        cv.otext(cx, y + bh + 12, label, lc)
+def grid10(cv, t, name, t0=0.0):
+    vidlib.grid10(cv, t, name, PLATS, PTEXT, t0)
 
 
 def sc_online(cv, t, d):
     cv.ctext(4, "PLAY ONLINE!", YELLOW, 2, 4)
     caption(cv, t - 2.6, "UP TO 4 PLAYERS, EACH ON THEIR OWN MACHINE.", y=226, c=WHITE)
-    four = [PLATFORMS[0], PLATFORMS[1], PLATFORMS[3], PLATFORMS[6]]
-    bw, bh = 400, 280
-    for i, (tg, label) in enumerate(four):
-        r, c = divmod(i, 2)
-        x = 960 - bw - 30 + c * (bw + 60)
-        y = 160 + r * (bh + 80)
-        tile(cv, tg, "03-summary", label, x, y, bw, bh, pop=min(1.0, (t - 0.8 - i * 0.5) / 0.25),
-             lc=PTEXT[i])
-
-
-def grid10(cv, t, name, t0=0.0):
-    bw, bh = 320, 240
-    for i, (tg, label) in enumerate(PLATFORMS):
-        r, c = divmod(i, 5)
-        x = 60 + c * (bw + 40)
-        y = 170 + r * (bh + 90)
-        tile(cv, tg, name, label, x, y, bw, bh, pop=min(1.0, (t - t0 - i * 0.3) / 0.2),
-             lc=PTEXT[i % 4])
+    vidlib.grid_online(cv, t, [PLATS[0], PLATS[1], PLATS[3], PLATS[6]], PTEXT)
 
 
 def sc_crossplay(cv, t, d):
@@ -933,53 +726,8 @@ SCENES = [
     (7, sc_pevent), (8, sc_production), (10, sc_events), (5, sc_goods), (6, sc_declare),
     (10, sc_trading), (10, sc_win), (16, sc_crossplay), (10, sc_outro),
 ]
-TOTAL = sum(d for d, _ in SCENES)
-FADE = 0.12
-
-
-def frame_at(T):
-    t0 = 0.0
-    for d, fn in SCENES:
-        if T < t0 + d or fn is SCENES[-1][1]:
-            t = T - t0
-            cv = Canvas()
-            fn(cv, t, d)
-            # a quick dip to black at each cut (the Atari blanks too); the
-            # last scene fades out over its final second
-            out = 1.0 if fn is SCENES[-1][1] else FADE
-            k = min(1.0, t / FADE, (d - t) / out)
-            if k < 1.0:
-                cv.dim(max(0.0, k))
-            return cv
-        t0 += d
-
-
-def main():
-    global BUILD
-    BUILD = os.path.abspath(sys.argv[1])
-    if "--still" in sys.argv:
-        for ts in sys.argv[sys.argv.index("--still") + 1:]:
-            T = float(ts)
-            Image.fromarray(frame_at(T).video()).save(os.path.join(BUILD, "still_%06.2f.png" % T))
-        return
-    out = sys.argv[2]
-    n = int(round(TOTAL * FPS))
-    print("%d scenes, %.1f s, %d frames" % (len(SCENES), TOTAL, n))
-    ff = subprocess.Popen(
-        ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (W * SX, H * SY),
-         "-r", str(FPS), "-i", "-", "-i", os.path.join(BUILD, "music.wav"),
-         "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "slow", "-crf", "16",
-         "-tune", "animation", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-         "-movflags", "+faststart", "-shortest", out], stdin=subprocess.PIPE)
-    for f in range(n):
-        ff.stdin.write(frame_at(f / FPS).video().tobytes())
-        if f % 600 == 0:
-            print("  %3d s" % (f // FPS), flush=True)
-    ff.stdin.close()
-    ff.wait()
-    print("wrote", out)
-
+BUILD = os.path.join(HERE, "..", "..", "videos", "build")
 
 if __name__ == "__main__":
-    BUILD = os.path.join(HERE, "..", "..", "videos", "build")
-    main()
+    BUILD = os.path.abspath(sys.argv[1])
+    vidlib.run(SCENES, BUILD, sys.argv[2:])

@@ -7,6 +7,7 @@
 #   make msxrom                        r2r/msxrom/mule.rom (MSX, a FujiNet user ROM: ASCII8)
 #   make atari                         r2r/atari/mule.atr (48K Atari 400/800, XL/XE)
 #   make lynx                          r2r/lynx/mule.lnx (Atari Lynx cart, FujiNet-Lynx)
+#   make nes                           r2r/nes/mule.nes (NES, the FujiNet NES cartridge: MMC3)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -16,7 +17,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom atari lynx
+PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -274,13 +275,49 @@ $(LXOBJ)/grant.o $(LXOBJ)/events.o:   CFLAGS += --code-name OVERLAY3 --rodata-na
 $(LXOBJ)/auction.o:                   CFLAGS += --code-name OVERLAY4 --rodata-name OVERLAY4
 $(LXOBJ)/develop.o:                   CFLAGS += --code-name OVERLAY5 --rodata-name OVERLAY5
 
+# ---- NES ---------------------------------------------------------------------
+# cc65, an MMC3 cart image (.nes) for the FujiNet NES cartridge, which the
+# NES CONFIG boots: 128K PRG, 16K CHR-RAM, 8K WRAM (src/nes/mule-nes.cfg).
+# The program is in the fixed banks and R7; the phases, the art and the
+# strings take turns in the window at $8000 (src/nes/bank.c). The screen
+# is the Adam's 256 x 192 bitmap, a pattern table to each third of it,
+# switched by the scanline interrupt (src/nes/crt0.s, gfx.c). fujinet-lib
+# is fujinet-lib-experimental's nes target (tools/nes/mkfnlib.sh); the
+# stream's calls go to the cartridge's mailbox unwaited (src/nes/nstrans.c).
+ifeq ($(PLATFORM),nes)
+  FUJINET_LIB := __UNDEFINED__
+  LIBS += build/fnlib-nes/fujinet-nes.lib
+endif
+CFLAGS_EXTRA_NES += -Os -Cl -DPLAT_NETSTREAM -DPLAT_NO_KEYBOARD \
+                    -DKEY_END_NAME='"START"' -DBUTTON_NAME='"A"' -DLEAVE_KEY_NAME='"SELECT"' \
+                    -DQUIT_HINT='"SELECT: QUIT"' -DLOBBY_HINT='"<->SPECIES A READY SELECT LEAVE"'
+EXTRA_INCLUDE_NES += build/fnlib-nes/include
+LDFLAGS_EXTRA_NES += -C src/nes/mule-nes.cfg -m build/mule-nes.map
+EXECUTABLE_EXTRA_DEPS_NES += src/nes/mule-nes.cfg build/fnlib-nes/fujinet-nes.lib
+
+NSOBJ = build/$(PRODUCT)/nes
+$(NSOBJ)/src/boot.o $(NSOBJ)/src/teststart.o: CFLAGS += --code-name OVERLAY1 --rodata-name OVERLAY1
+$(NSOBJ)/src/status.o:                        CFLAGS += --code-name OVERLAY2 --rodata-name OVERLAY2
+$(NSOBJ)/src/grant.o $(NSOBJ)/src/events.o:   CFLAGS += --code-name OVERLAY3 --rodata-name OVERLAY3
+$(NSOBJ)/src/auction.o:                       CFLAGS += --code-name OVERLAY4 --rodata-name OVERLAY4
+$(NSOBJ)/src/develop.o:                       CFLAGS += --code-name OVERLAY5 --rodata-name OVERLAY5
+$(NSOBJ)/src/strings.o:                       CFLAGS += --rodata-name STRS
+$(NSOBJ)/gen/nes/gfx.o:                       CFLAGS += --rodata-name ART
+# R7's bank: the rest of the program, never switched out
+$(NSOBJ)/src/nsnet.o $(NSOBJ)/src/net.o $(NSOBJ)/src/text.o $(NSOBJ)/src/map.o \
+  $(NSOBJ)/src/test.o $(NSOBJ)/src/fx.o:      CFLAGS += --code-name CODE2
+
+# The claim, the vectors and no read-modify-write of the mailbox.
+nes/executable-post::
+	python3 tools/nes/checkrom.py build/mule-nes.map $(EXECUTABLE)
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
@@ -288,6 +325,7 @@ r2r/adam/$(PRODUCT): gen-adam
 r2r/msxrom/$(PRODUCT): gen-msxrom
 r2r/atari/$(PRODUCT): gen-atari
 r2r/lynx/$(PRODUCT): gen-lynx
+r2r/nes/$(PRODUCT): gen-nes
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
@@ -296,6 +334,7 @@ gen-adam: gen/config.h gen/tms9918/gfx.c build/fnlib-adam/fujinet-adam.lib
 gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
 gen-atari: gen/config.h gen/atari/gfx.c
 gen-lynx: gen/config.h gen/lynx/gfx.c build/fnlib-lynx/fujinet-lynx.lib
+gen-nes: gen/config.h gen/nes/gfx.c build/fnlib-nes/fujinet-nes.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -342,6 +381,15 @@ gen/lynx/gfx.c: tools/mkgfx_lynx.py tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_lynx.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/lynx $@
 
+gen/nes/gfx.c: tools/mkgfx_nes.py tools/mkgfx_tms.py tools/tms/namco.bin tools/mkgfx_dos.py tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/nes
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_nes.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/nes $@
+
+build/fnlib-nes/fujinet-nes.lib: tools/nes/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/nes/* $(FNLIB_EXP)/include/*.h)
+	tools/nes/mkfnlib.sh $(FNLIB_EXP) build/fnlib-nes
+
 build/fnlib-lynx/fujinet-lynx.lib: tools/lynx/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/lynx/* $(FNLIB_EXP)/include/*.h)
 	tools/lynx/mkfnlib.sh $(FNLIB_EXP) build/fnlib-lynx
 
@@ -355,5 +403,5 @@ build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
 
 clean::
-	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/lynx gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/lynx gen/nes gen/preview gen/config.h
 endif
