@@ -1,6 +1,7 @@
 /*
- * gfx.c -- gfx.h on the TMS9918A (the Adam, the MSX): Graphics II, a
- * 256 x 192 bitmap in which each 8-pixel row of a cell has two colours.
+ * gfx.c -- gfx.h on the TMS9918A (the Adam, the MSX) and the SMS: Graphics
+ * II, a 256 x 192 bitmap in which each 8-pixel row of a cell has two
+ * colours. The SMS shows the same cells in its own mode (vram_sms.h).
  *
  * x is scaled 3/2 from the Atari's colour clocks, 4 pixels in: 160 clocks
  * are pixels 4..243, and a plot (16 clocks from clock 8 + 16k) is exactly
@@ -11,6 +12,8 @@
  * paints them (paint(): a colour the cell hasn't got takes the place of
  * the one with fewer pixels left, which then show in the new colour) and
  * writes them back. Plots and the town are cell-aligned and made whole.
+ * Where the cells are kept is the VDP's business: vram_tms.h on the
+ * TMS9918A, src/sms/vram_sms.h on the SMS.
  *
  * The sprites are the VDP's (16 x 16, one colour each): a slot is up to
  * four of them side by side and one above the other, with its own four
@@ -60,60 +63,28 @@ static uint8_t tcol(uint8_t c)
     return c == C_BLACK ? bgc : tms_of[c & 15];
 }
 
-/* ---- VRAM --------------------------------------------------------------- */
-static void vfill(uint16_t a, uint8_t v, uint16_t n)
-{
-    uint8_t k;
-    while (n) {                 /* a page at a time: the MSX's interrupt */
-        k = n > 255 ? 255 : (uint8_t)n;     /* gets a look in between */
-        n -= k;
-        VDP_LOCK();
-        VDP_WADDR(a);
-        do {
-            VDP_DATA = v;
-        } while (--k);
-        VDP_UNLOCK();
-        a += 255;
-    }
-}
-
-static void vwrite(uint16_t a, const uint8_t *s, uint8_t n)
-{
-    VDP_LOCK();
-    VDP_WADDR(a);
-    do {
-        VDP_DATA = *s++;
-    } while (--n);
-    VDP_UNLOCK();
-}
-
 /* One cell: its patterns and colours while it is painted. */
 static uint8_t cp[8], cc[8];
 static uint16_t ca;
 
-static void cell_at(uint8_t cx, uint8_t cy)
+/* Text, cut to the screen (take(): it may be in the overlay window, which
+ * ART_BEGIN changes). */
+static char tbuf[TCOLS + 1];
+
+static const uint8_t *glyph_of(char c)
 {
-    ca = ((uint16_t)cy << 8) | ((uint16_t)cx << 3);
+    if (c >= 'a' && c <= 'z')
+        c -= 32;
+    if (c < 32 || c > 95)
+        c = '?';
+    return tms_font + ((uint8_t)(c - 32) << 3);
 }
 
-static void cell_load(void)
-{
-    uint8_t i;
-    VDP_LOCK();
-    VDP_RADDR(ca);
-    for (i = 0; i < 8; ++i)
-        cp[i] = VDP_DATA;
-    VDP_RADDR(ca + VR_COL);
-    for (i = 0; i < 8; ++i)
-        cc[i] = VDP_DATA;
-    VDP_UNLOCK();
-}
-
-static void cell_store(void)
-{
-    vwrite(ca, cp, 8);
-    vwrite(ca + VR_COL, cc, 8);
-}
+#ifdef __SMS__
+#include "vram_sms.h"
+#else
+#include "vram_tms.h"
+#endif
 
 /* The pixels set in a byte, by table (made in gfx_init): counting them
  * bit by bit made a plot cost three frames. */
@@ -234,33 +205,8 @@ void gfx_init(void)
     uint16_t i;
     for (i = 1; i < 256; ++i)
         popc[i] = popc[i >> 1] + (uint8_t)(i & 1);
-    VDP_LOCK();
-    VDP_REG(0, 0x02);           /* Graphics II */
-    VDP_REG(1, 0x82 | VDP_R1_IE);   /* 16K, blank, 16 x 16 sprites */
-    VDP_REG(2, VR_NAME >> 10);
-    VDP_REG(3, 0xFF);           /* colours at 2000h, all three thirds */
-    VDP_REG(4, 0x03);           /* patterns at 0000h, all three thirds */
-    VDP_REG(5, VR_SAT >> 7);
-    VDP_REG(6, VR_SPAT >> 11);
-    VDP_REG(7, T_BLACK);        /* the border */
-    VDP_WADDR(VR_NAME);
-    for (i = 0; i < 768; ++i)
-        VDP_DATA = (uint8_t)i;
-    VDP_WADDR(VR_SAT);
-    VDP_DATA = 0xD0;            /* no sprites */
-    VDP_UNLOCK();
-    vfill(VR_PAT, 0, 0x1800);
-    vfill(VR_COL, (T_WHITE << 4) | T_BLACK, 0x1800);
-    VDP_LOCK();
-    VDP_REG(1, 0xC2 | VDP_R1_IE);   /* on */
-    VDP_UNLOCK();
+    vram_init();
     spr_init();
-}
-
-static void clear_all(void)
-{
-    vfill(VR_PAT, 0, 0x1800);
-    vfill(VR_COL, (T_WHITE << 4) | bgc, 0x1800);
 }
 
 void gfx_clear(void)
@@ -268,7 +214,7 @@ void gfx_clear(void)
     spr_hide_all();
     spr_flush();
     bgc = T_BLACK;
-    clear_all();
+    vram_clear();
 }
 
 void gfx_map_frame(void)
@@ -276,15 +222,13 @@ void gfx_map_frame(void)
     spr_hide_all();
     spr_flush();
     bgc = T_PLAINS;
-    clear_all();
+    vram_clear();
 }
 
 /* ---- text --------------------------------------------------------------- */
 /* A character is a whole cell (the Namco font, 32 across: TCOLS), written
- * straight in: its 8 pattern bytes, then 8 colour bytes. The cells of a
- * row are one run of VRAM, so a string is two bursts. Big text is the same
- * (BIGW 1). */
-static char tbuf[TCOLS + 1];
+ * straight in (text_cells: the backend's): its 8 pattern bytes, then 8
+ * colour bytes. Big text is the same (BIGW 1). */
 
 /* s, at most n characters, cut at the right edge from tx: into tbuf (it may
  * be in the overlay window, which ART_BEGIN changes). */
@@ -297,46 +241,6 @@ static uint8_t take(const char *s, uint8_t n, uint8_t tx)
         ++tx;
     }
     return k;
-}
-
-static const uint8_t *glyph_of(char c)
-{
-    if (c >= 'a' && c <= 'z')
-        c -= 32;
-    if (c < 32 || c > 95)
-        c = '?';
-    return tms_font + ((uint8_t)(c - 32) << 3);
-}
-
-/* k cells from (tx, ty): tbuf's characters (or blanks, when !chars) in
- * colour c on the background. */
-static void text_cells(uint8_t tx, uint8_t ty, uint8_t k, uint8_t c, uint8_t chars)
-{
-    const uint8_t *g;
-    uint16_t a = ((uint16_t)ty << 8) | ((uint16_t)tx << 3);
-    uint8_t i, r, v;
-    ART_BEGIN();
-    VDP_LOCK();
-    VDP_WADDR(a);
-    for (i = 0; i < k; ++i) {
-        if (chars) {
-            g = glyph_of(tbuf[i]);
-            for (r = 0; r < 8; ++r)
-                VDP_DATA = g[r];
-        } else {
-            for (r = 0; r < 8; ++r)
-                VDP_DATA = 0;
-        }
-    }
-    VDP_UNLOCK();
-    ART_END();
-    v = (uint8_t)(c << 4) | bgc;
-    VDP_LOCK();
-    VDP_WADDR(a + VR_COL);
-    for (i = 0; i < k; ++i)
-        for (r = 0; r < 8; ++r)
-            VDP_DATA = v;
-    VDP_UNLOCK();
 }
 
 void gfx_textn(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
@@ -388,12 +292,11 @@ void gfx_fill(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t col)
 }
 
 /* Line y, pixels px0 .. px1 - 1: pic's pixels become colour c. Only that
- * line's pattern and colour byte of each cell is read and written (op()
- * moves all 16 of every cell). */
+ * line's pattern and colour byte of each cell is read and written where
+ * the VDP allows (row_load/row_store; op() moves all 16 of every cell). */
 static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, uint8_t c)
 {
-    uint8_t cx, cx0, cx1, lm, rm, m, r = y & 7;
-    uint16_t a;
+    uint8_t cx, cx0, cx1, cy, lm, rm, m, r = y & 7;
     if (px1 > 256)
         px1 = 256;
     if (y >= 192 || px0 >= px1)
@@ -402,8 +305,8 @@ static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, u
     cx1 = (uint8_t)((px1 - 1) >> 3);
     lm = 0xFF >> (px0 & 7);
     rm = 0xFF << (7 - ((px1 - 1) & 7));
-    a = ((uint16_t)(y >> 3) << 8) | ((uint16_t)cx0 << 3) | r;
-    for (cx = cx0; cx <= cx1; ++cx, a += 8) {
+    cy = y >> 3;
+    for (cx = cx0; cx <= cx1; ++cx) {
         m = pic[cx];
         if (cx == cx0)
             m &= lm;
@@ -411,19 +314,10 @@ static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, u
             m &= rm;
         if (!m)
             continue;
-        VDP_LOCK();
-        VDP_RADDR(a);
-        cp[r] = VDP_DATA;
-        VDP_RADDR(a + VR_COL);
-        cc[r] = VDP_DATA;
-        VDP_UNLOCK();
+        cell_at(cx, cy);
+        row_load(r);
         paint(r, m, c);
-        VDP_LOCK();
-        VDP_WADDR(a);
-        VDP_DATA = cp[r];
-        VDP_WADDR(a + VR_COL);
-        VDP_DATA = cc[r];
-        VDP_UNLOCK();
+        row_store(r);
     }
 }
 
@@ -542,8 +436,7 @@ void gfx_plot(uint8_t p, const PlotLook *look)
     for (cy = 0; cy < 4; ++cy)
         for (cx = 0; cx < 3; ++cx, o += 16) {
             cell_at(cx0 + cx, cy0 + cy);
-            vwrite(ca, o, 8);
-            vwrite(ca + VR_COL, o + 8, 8);
+            cell_put(o);
         }
 }
 
@@ -580,19 +473,14 @@ void gfx_town(void)
 {
     static uint8_t buf[TOWN_CW * 8];
     uint8_t cy;
-    uint16_t a;
     rl_src = town_rle;
     rl_lit = rl_run = 0;
     for (cy = 0; cy < TOWN_CH; ++cy) {
-        a = ((uint16_t)(TOWN_CY + cy) << 8) | (TOWN_CX << 3);
         ART_BEGIN();
         unpack(buf, sizeof(buf));
+        unpack(pl_trip, sizeof(buf));   /* (free while no plot is made) */
         ART_END();
-        vwrite(a, buf, sizeof(buf));
-        ART_BEGIN();
-        unpack(buf, sizeof(buf));
-        ART_END();
-        vwrite(a + VR_COL, buf, sizeof(buf));
+        town_row(cy, buf, pl_trip);
     }
 }
 
@@ -603,6 +491,9 @@ static uint8_t s_on[SPR_SLOTS], s_shape[SPR_SLOTS], s_frame[SPR_SLOTS];
 static uint8_t s_col[SPR_SLOTS], s_flags[SPR_SLOTS];
 static int16_t s_x[SPR_SLOTS], s_y[SPR_SLOTS];
 static uint8_t s_sent_shape[SPR_SLOTS], s_sent_frame[SPR_SLOTS];
+#if SPR_COL_IN_PAT
+static uint8_t s_sent_col[SPR_SLOTS];
+#endif
 static uint8_t any_dirty, rot;
 
 static void spr_init(void)
@@ -655,8 +546,10 @@ static uint8_t frame_of(uint8_t i)
 }
 
 /* Send slot i's frame f as its patterns: part = column + 2 * row... in
- * order along the rows of VDP sprites. */
-static void send(uint8_t i, const ShapeDef *d, uint8_t f, uint8_t cols, uint8_t rows)
+ * order along the rows of VDP sprites (in TMS colour c, where the VDP
+ * keeps the colour in the pattern). */
+static void send(uint8_t i, const ShapeDef *d, uint8_t f, uint8_t cols, uint8_t rows,
+                 uint8_t c)
 {
     static uint8_t pat[32];
     uint8_t line[6];
@@ -689,7 +582,7 @@ static void send(uint8_t i, const ShapeDef *d, uint8_t f, uint8_t cols, uint8_t 
                 pat[l] = line[gc * 2];
                 pat[16 + l] = line[gc * 2 + 1];
             }
-            vwrite(VR_SPAT + (uint16_t)(i * PARTS + part) * 32, pat, 32);
+            spr_pattern(i * PARTS + part, pat, c);
         }
     }
     ART_END();
@@ -697,9 +590,8 @@ static void send(uint8_t i, const ShapeDef *d, uint8_t f, uint8_t cols, uint8_t 
 
 void spr_flush(void)
 {
-    static uint8_t sat[SPR_SLOTS * PARTS * 4 + 1];
     const ShapeDef *d;
-    uint8_t i, k, f, cols, rows, gc, gr, part, n, ec, shape, h;
+    uint8_t i, k, f, cols, rows, gc, gr, part, shape, h, c;
     int16_t x, y;
 
     if (!any_dirty && !(vdp_seen & 0x40))
@@ -708,7 +600,7 @@ void spr_flush(void)
         rot = rot + 1 < SPR_SLOTS ? rot + 1 : 0;
     vdp_seen = 0;
     any_dirty = 0;
-    n = 0;
+    sat_begin();
     for (k = 0; k < SPR_SLOTS; ++k) {
         i = k + rot;
         if (i >= SPR_SLOTS)
@@ -725,8 +617,14 @@ void spr_flush(void)
         if (cols * rows > PARTS)
             rows = PARTS / cols;
         f = frame_of(i);
+        c = tms_of[s_col[i] & 15];
+#if SPR_COL_IN_PAT
+        if (s_sent_shape[i] != shape || s_sent_frame[i] != f || s_sent_col[i] != c) {
+            s_sent_col[i] = c;
+#else
         if (s_sent_shape[i] != shape || s_sent_frame[i] != f) {
-            send(i, &tms_shapes[shape], f, cols, rows);
+#endif
+            send(i, &tms_shapes[shape], f, cols, rows, c);
             s_sent_shape[i] = shape;
             s_sent_frame[i] = f;
         }
@@ -736,22 +634,11 @@ void spr_flush(void)
                 y = s_y[i] + (gr << 4);
                 x = s_x[i];
                 x = x + (x >> 1) + 4 + (gc << 4);   /* PX, signed */
-                if (y <= -16 || y >= 192 || x <= -16 || x >= 256 || n >= 32)
+                if (y <= -16 || y >= 192 || x <= -16 || x >= 256)
                     continue;
-                ec = 0;
-                if (x < 0) {
-                    x += 32;            /* the early clock: 32 to the left */
-                    ec = 0x80;
-                }
-                sat[n * 4] = (uint8_t)(y - 1);
-                sat[n * 4 + 1] = (uint8_t)x;
-                sat[n * 4 + 2] = (uint8_t)((i * PARTS + part) << 2);
-                sat[n * 4 + 3] = ec | tms_of[s_col[i] & 15];
-                ++n;
+                sat_put(x, y, i * PARTS + part, c);
             }
         }
     }
-    if (n < 32)
-        sat[n * 4] = 0xD0;          /* the end of the list */
-    vwrite(VR_SAT, sat, n < 32 ? n * 4 + 1 : 128);
+    sat_end();
 }

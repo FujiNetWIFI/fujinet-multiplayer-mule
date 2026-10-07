@@ -8,6 +8,7 @@
 #   make atari                         r2r/atari/mule.atr (48K Atari 400/800, XL/XE)
 #   make lynx                          r2r/lynx/mule.lnx (Atari Lynx cart, FujiNet-Lynx)
 #   make nes                           r2r/nes/mule.nes (NES, the FujiNet NES cartridge: MMC3)
+#   make sms                           r2r/sms/mule.sms (Sega Master System, the FujiNet SMS cartridge)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -17,7 +18,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes
+PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms
 
 SRC_DIRS = src src/%PLATFORM% gen/%PLATFORM%
 EXTRA_INCLUDE = src src/platform-specific .. gen
@@ -32,7 +33,8 @@ PLATFORM_COMBOS = \
   msxrom+=tms9918,msx \
   msxdos+=msx \
   adam_cpm+=adam \
-  adam+=tms9918
+  adam+=tms9918 \
+  sms+=tms9918
 
 # ---- Apple II -------------------------------------------------------------
 # HGR page 1 sits at $2000-$3FFF: the linker config keeps code and data out
@@ -165,12 +167,12 @@ pcjr-floppy: r2r/msdos/$(PRODUCT)
 	mcopy -o -i r2r/msdos/pcjr-boot.img build/autoexec.bat ::AUTOEXEC.BAT
 	@echo "r2r/msdos/pcjr-boot.img: boot it (fdd_01_fn in 86box.cfg) and MULE runs from A:"
 
-# ---- Coleco Adam (and the MSX): z88dk --------------------------------------
+# ---- Coleco Adam (and the MSX, the SMS): z88dk -----------------------------
 # zcc with zsdcc, from defoogi unless installed (tools/z80/z88dk). The
 # TMS9918A code is src/tms9918 (a PLATFORM_COMBOS entry). fujinet-lib is
 # fujinet-lib-experimental built with zsdcc (tools/z80/mkfnlib.sh).
 Z80_TOOLS = $(CURDIR)/tools/z80
-ifneq ($(filter adam msxrom,$(PLATFORM)),)
+ifneq ($(filter adam msxrom sms,$(PLATFORM)),)
   FUJINET_LIB := __UNDEFINED__
   CC_Z88DK = $(Z80_TOOLS)/z88dk zcc
   AS_Z88DK = $(Z80_TOOLS)/z88dk z80asm
@@ -221,6 +223,37 @@ $(MXOBJ)/gen/tms9918/gfx.o:                   CFLAGS += --constseg=ART
 
 msxrom/r2r-post::
 	python3 tools/msx/mkrom.py r2r/msxrom
+
+# ---- Sega Master System: the FujiNet SMS cartridge -------------------------
+# A Sega-mapper image (src/sms/mule.asm, tools/sms/mkrom.py): the program
+# fixed in banks 0-1 (0000h-7FD7h), the phases, the art and the strings
+# taking turns in slot 2 at 8000h-AFFFh (B000h-BFFFh is the cartridge's
+# mailbox, over every bank). The screen is the Adam's cells shown in Mode 4
+# through a tile cache (src/tms9918, src/sms/vram_sms.h). The stream's calls
+# go to the mailbox unwaited (src/sms/nstrans.c). fujinet-lib is the add-sms
+# branch (FNLIB_SMS: fujinet-lib-experimental's worktree) built with zsdcc.
+FNLIB_SMS ?= $(HOME)/Workspace/fnlib-sms
+CFLAGS_EXTRA_SMS += -compiler=sdcc -SO3 -DPLAT_NETSTREAM -DPLAT_NO_KEYBOARD \
+                    -DBUTTON_NAME='"\"1\""' -DBACK_KEY_NAME='"\"2\""' -DKEY_END_NAME='"\"PAUSE\""' \
+                    -DLEAVE_KEY_NAME='"\"2+PAUSE\""' -DQUIT_HINT='"\"2+PAUSE: QUIT\""' \
+                    -DLOBBY_HINT='"\"<->SPECIES 1 READY 2+PAUSE LEAVE\""'
+EXTRA_INCLUDE_SMS += src/tms9918 src/sms build/fnlib-sms/include
+LDFLAGS_EXTRA_SMS += -compiler=sdcc -m -pragma-define:CRT_ENABLE_STDIO=0 -pragma-define:CLIB_FOPEN_MAX=0
+ifeq ($(PLATFORM),sms)
+  LIBS += -Lbuild/fnlib-sms -lfujinet-sms
+endif
+EXECUTABLE_EXTRA_DEPS_SMS += build/fnlib-sms/fujinet-sms.lib src/sms/mule.asm
+SMOBJ = build/$(PRODUCT)/sms
+$(SMOBJ)/src/boot.o $(SMOBJ)/src/teststart.o: CFLAGS += --codeseg=OV1 --constseg=OV1
+$(SMOBJ)/src/status.o:                        CFLAGS += --codeseg=OV2 --constseg=OV2
+$(SMOBJ)/src/grant.o $(SMOBJ)/src/events.o:   CFLAGS += --codeseg=OV3 --constseg=OV3
+$(SMOBJ)/src/auction.o:                       CFLAGS += --codeseg=OV4 --constseg=OV4
+$(SMOBJ)/src/develop.o:                       CFLAGS += --codeseg=OV5 --constseg=OV5
+$(SMOBJ)/src/strings.o:                       CFLAGS += --constseg=STR
+$(SMOBJ)/gen/tms9918/gfx.o:                   CFLAGS += --constseg=ART
+
+sms/r2r-post::
+	python3 tools/sms/mkrom.py r2r/sms
 
 # ---- Atari 400/800 (48K), XL/XE -------------------------------------------
 # cc65, no DOS: picoboot loads MULE.COM, whose first chunk (src/atari/
@@ -317,7 +350,7 @@ PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
@@ -326,6 +359,7 @@ r2r/msxrom/$(PRODUCT): gen-msxrom
 r2r/atari/$(PRODUCT): gen-atari
 r2r/lynx/$(PRODUCT): gen-lynx
 r2r/nes/$(PRODUCT): gen-nes
+r2r/sms/$(PRODUCT): gen-sms
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
@@ -335,6 +369,7 @@ gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
 gen-atari: gen/config.h gen/atari/gfx.c
 gen-lynx: gen/config.h gen/lynx/gfx.c build/fnlib-lynx/fujinet-lynx.lib
 gen-nes: gen/config.h gen/nes/gfx.c build/fnlib-nes/fujinet-nes.lib
+gen-sms: gen/config.h gen/tms9918/gfx.c build/fnlib-sms/fujinet-sms.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -398,6 +433,9 @@ build/fnlib-adam/fujinet-adam.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_EXP)/
 
 build/fnlib-msx/fujinet-msx.lib: tools/z80/mkfnlib.sh tools/z80/msx-portio.c $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/msx/* $(FNLIB_EXP)/include/*.h)
 	tools/z80/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msx msx
+
+build/fnlib-sms/fujinet-sms.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_SMS)/common/*.c $(FNLIB_SMS)/bus/sms/* $(FNLIB_SMS)/include/*.h)
+	tools/z80/mkfnlib.sh $(FNLIB_SMS) build/fnlib-sms sms
 
 build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/msdos/*.c $(FNLIB_EXP)/include/*.h)
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos

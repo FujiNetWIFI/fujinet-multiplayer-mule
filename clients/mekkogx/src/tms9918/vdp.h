@@ -9,6 +9,9 @@
  *         (which resets the address latch) sixty times a second and
  *         fujinet-lib times out on its JIFFY count, so the interrupt stays
  *         on: VDP_LOCK/VDP_UNLOCK keep it out of an address + data burst.
+ *   SMS   ports BEh and BFh, as the Adam's, but its own mode (Mode 4: see
+ *         src/sms/vram_sms.h). The frame interrupt (z88dk's crt0) reads
+ *         the status as the MSX's does: the same VDP_LOCK/VDP_UNLOCK.
  *
  * Accesses are 8 us apart at the least (in Graphics II, while the screen is
  * drawn): the C loops that do them are slower than that.
@@ -28,6 +31,12 @@ void vdp_catch_up(void);
 #define VDP_LOCK()   (vdp_busy = 1)
 #define VDP_UNLOCK() do { vdp_busy = 0; if (vdp_pend) vdp_catch_up(); } while (0)
 #define VDP_R1_IE 0x20          /* the interrupt: on (the NMI, src/adam/nmi.asm) */
+#elif defined(__SMS__)
+__sfr __at 0xBE VDP_DATA;
+__sfr __at 0xBF VDP_CTRL;
+#define VDP_LOCK()   __asm__("di")
+#define VDP_UNLOCK() __asm__("ei")
+#define VDP_R1_IE 0x20          /* the frame interrupt: on (src/sms/smsint.asm) */
 #else
 __sfr __at 0x98 VDP_DATA;
 __sfr __at 0x99 VDP_CTRL;

@@ -64,6 +64,7 @@ run() {
     atari) shoot atari "$MX" python3 tools/atarisim/atarisim.py r2r/atari/mule.atr build/mule-atari.map ;;
     lynx) shoot lynx "$MX" python3 tools/lynxsim/lynxsim.py r2r/lynx/mule.lnx build/mule-lynx.map ;;
     nes) shoot nes "$MX" python3 tools/nessim/nessim.py r2r/nes/mule.nes build/mule-nes.map ;;
+    sms) shoot sms "$MX" python3 tools/smssim/smssim.py r2r/sms/mule.sms r2r/sms/mule.map ;;
     intv) shoot intv "$ROOT/clients/intv" python3 tools/intvsim.py mule.rom ;;
     astrocade) shoot astrocade "$ROOT/clients/astrocade" python3 tools/astrosim.py ;;
     atari-2600) a2600 ;;
@@ -72,7 +73,7 @@ run() {
 }
 
 MAME_DEFAULT=${MAME:-$HOME/Workspace/mame}
-TARGETS=${*:-apple2 coco msdos-cga msdos-pcjr adam msx atari lynx nes intv astrocade}
+TARGETS=${*:-apple2 coco msdos-cga msdos-pcjr adam msx atari lynx nes sms intv astrocade}
 for t in $TARGETS; do
     run "$t" &
 done

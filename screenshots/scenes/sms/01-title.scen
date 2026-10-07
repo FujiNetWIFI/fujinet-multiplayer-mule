@@ -1,0 +1,4 @@
+# "NO FUJINET FOUND" is drawn again every 60 frames, and the SMS draws
+# text slower: half a cycle later, between two
+wait 90
+snap 01-title

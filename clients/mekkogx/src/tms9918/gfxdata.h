@@ -38,9 +38,10 @@ extern const uint8_t town_rle[];
 #define PP_STORE  10
 #define PP_RIVER  11
 
-/* Where the tables are out of reach (the MSX keeps them in a ROM bank that
- * shares the overlay window), the drawing brings them in around its work. */
-#ifdef __MSX__
+/* Where the tables are out of reach (the MSX and the SMS keep them in a ROM
+ * bank that shares the overlay window), the drawing brings them in around
+ * its work. */
+#if defined(__MSX__) || defined(__SMS__)
 void bank_art(uint8_t on);
 #define ART_BEGIN() bank_art(1)
 #define ART_END()   bank_art(0)

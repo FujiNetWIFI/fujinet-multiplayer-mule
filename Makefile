@@ -20,7 +20,7 @@ ENDPOINT    ?= http://fujinet.online:9900/
 DEPLOY_HOST ?= thomc@irata.online
 DEPLOY_DIR  ?= apps.irata.online/mule
 DIST        = dist
-MEKKOGX_PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes
+MEKKOGX_PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms
 
 clients:
 	$(MAKE) -C clients/mekkogx ENDPOINT=$(ENDPOINT) $(MEKKOGX_PLATFORMS)
@@ -39,6 +39,7 @@ dist: clients
 	cp clients/mekkogx/r2r/atari/mule.atr $(DIST)/atari/
 	cp clients/mekkogx/r2r/lynx/mule.lnx $(DIST)/lynx/
 	cp clients/mekkogx/r2r/nes/mule.nes $(DIST)/nes/
+	cp clients/mekkogx/r2r/sms/mule.sms $(DIST)/sms/
 	cp clients/intv/mule.rom clients/intv/mule.bin clients/intv/mule.cfg $(DIST)/intv/
 	cp clients/astrocade/build/mule.bin $(DIST)/astrocade/
 	cp clients/atari-2600/build/mule2600.bin $(DIST)/atari-2600/

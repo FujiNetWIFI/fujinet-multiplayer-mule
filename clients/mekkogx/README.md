@@ -5,7 +5,7 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are eight platforms:
+There are nine platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
@@ -13,9 +13,10 @@ There are eight platforms:
 - the **MSX** (MSX1 and up), as a ROM the FujiNet cartridge runs, with its PSG;
 - the **Atari 400/800** with 48K (and the XL/XE), with the original's own graphics, music and sound effects, from its disk;
 - the **Atari Lynx**, as a cart image, with FujiNet-Lynx on ComLynx, and the Atari's music and effects on Mikey;
-- the **NES**, as an MMC3 image the FujiNet NES cartridge boots, with the Adam's pictures and effects on its pulse channel.
+- the **NES**, as an MMC3 image the FujiNet NES cartridge boots, with the Adam's pictures and effects on its pulse channel;
+- the **Sega Master System**, as an image the FujiNet SMS cartridge runs, with the Adam's pictures in Mode 4 and its effects on the SMS's own SN76489.
 
-The Adam and the MSX share their graphics code (`src/tms9918`): both have a TMS9918A.
+The Adam, the MSX and the SMS share their graphics code (`src/tms9918`): the first two have a TMS9918A, and the SMS shows the same cells in its own mode.
 
 The code is split so other MekkoGX targets can follow:
 
@@ -26,11 +27,12 @@ The code is split so other MekkoGX targets can follow:
 | `src/apple2/` | the Apple II implementation |
 | `src/coco/` | the CoCo 1/2 implementation (CMOC) |
 | `src/msdos/` | the PC / PCjr implementation (Open Watcom) |
-| `src/tms9918/` | the TMS9918A screen and sprites, for the Adam and the MSX (z88dk) |
+| `src/tms9918/` | the TMS9918A screen and sprites, for the Adam and the MSX (z88dk); the SMS draws with it too |
 | `src/adam/`, `src/msx/` | the rest of the Adam and MSX implementations |
 | `src/atari/` | the Atari implementation (cc65, much of it 6502 assembly) |
 | `src/lynx/` | the Lynx implementation (cc65; its sound is the Atari's `pokey.s`) |
 | `src/nes/` | the NES implementation (cc65; the screen is the TMS9918A's, in the PPU's terms) |
+| `src/sms/` | the Sega Master System implementation (z88dk; the TMS9918A's cells as Mode 4 tiles) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -269,7 +271,7 @@ How it gets there:
 **The screen** (`src/tms9918/gfx.c`). Both machines use Graphics II, a 256 x 192 bitmap in which each 8-pixel row of a cell has two colours.
 - **x is scaled 3/2 from the Atari's colour clocks, from 4 pixels in.** A plot's 16 clocks become exactly three cells, so plots are made whole, cell by cell. Lines are the Atari's own.
 - **Text** is the Namco arcade font the other Adam FujiNet games use (`tools/tms/namco.bin`, from fujinet-5cardstud), a whole cell a character: 32 columns. Big text is the same glyphs (the colour sets it apart). A character is written straight into its cell, pattern and colour, with no reading back. The shared screens lay themselves out by `TCOLS`, `BIGW` and `TX()` (`src/platform-specific/gfx.h`): `TX(c)` is the cell over the same spot as the 40-column cell `c`, for text on the art (the town's prices, the auction's). A centred line too wide for 32 columns goes on to the next row.
-- **Drawing** reads a cell's 8 pattern and 8 colour bytes, paints them and writes them back. A colour a row doesn't have replaces the one with fewer pixels left, and those pixels change colour: that is the colour clash.
+- **Drawing** reads a cell's 8 pattern and 8 colour bytes, paints them and writes them back. A colour a row doesn't have replaces the one with fewer pixels left, and those pixels change colour: that is the colour clash. Where the cells are kept is `vram_tms.h`'s business (the SMS's: `src/sms/vram_sms.h`).
 - **Plots** are worked out whole in `plotcell.asm` (the owner's layer, white or black, the river), under a frame each on the Adam: the whole map in about two thirds of a second. In C it took three frames a plot, and leaving the town froze a turn for over two seconds. The auction's dotted lines touch only their own line of each cell, and their dots are made once.
 - **The town** is converted cell by cell by `tools/mkgfx_tms.py`: each row keeps its two commonest colours, and the rest go to the nearer one (96 pixels in all).
 - **The colours** are the Atari's nearest, from TMS9918's 15. The players are light blue, magenta, green and orange (light red). The map is grey, with black mountains and a light green river.
@@ -535,6 +537,58 @@ The name is picked a letter at a time, as on the Lynx. Quitting says goodbye to 
 - **Live, in MAME:** the same device, with a fujinet-pc (`fujinet-pc-rs232`, BoIP on 127.0.0.1:9995, or `FUJINET_TCP`) and a server. Run it throttled: under `-nothrottle` the server's countdowns look frozen. To keep clear of other servers on :9902, run the server, a copy of fujinet-pc and MAME together in `unshare -rnm`, with a hosts file mapping fujinet.online to 127.0.0.1. Played that way: lobby, transport, summary, land grant, land auction, with no failed calls.
 - **The scanline interrupt's first line:** MAME's cartridge device clocks MMC3's counter from line 0. The hardware also clocks it on the pre-render line, one line earlier. `IRQ_EARLY` in `crt0.s` is 0 for MAME. On a real cartridge it may need to be 1: a one-line seam at the table switches would show it.
 
+## The SMS version
+
+An image for the Sega Master System on the FujiNet SMS cartridge (fujinet-firmware `pico/sms`, the `add-sms` branch): CONFIG pushes it into the cartridge's SRAM and starts it like any game. It draws the Adam's pictures (`src/tms9918`, `gen/tms9918/gfx.c`) with the Namco font at 32 columns, and plays the Adam's effects on the SMS's own SN76489.
+
+    make sms                                   # r2r/sms/mule.sms
+    make sms ENDPOINT=http://myhost:8080       # the server: its host, stream port 9902
+
+- **What it needs:** z88dk, as for the Adam (`tools/z80/z88dk`), and fujinet-lib-experimental's `add-sms` branch: the worktree `~/Workspace/fnlib-sms` (or `make FNLIB_SMS=/path`). `tools/z80/mkfnlib.sh` builds it with zsdcc into `build/fnlib-sms`.
+- **The image** (`src/sms/mule.asm`, `tools/sms/mkrom.py`): 144K, the Sega mapper.
+
+  | Range | Use |
+  |---|---|
+  | 0000h-7FD7h | banks 0-1, fixed in slots 0 and 1: the program |
+  | 7FDCh, 7FF0h | the "FUJI" claim (the cartridge keeps its mailbox on for a claimed image) and the SEGA header |
+  | 8000h-AFFFh | slot 2: the overlays (banks 2-6), the art (7) and the strings (8) take turns there, as on the MSX |
+  | B000h-BFFFh | the cartridge's mailbox, over slot 2 whatever its bank |
+  | C000h-DFEFh | RAM: the variables (about 6.3K), then the stack |
+
+  `mkrom.py` checks the sizes, stamps the claim and the header's checksum, and makes the cartridge's own mapper guess (it has no CRC for this image). The bank switches in `mule.asm` are each an `ld (FFFFh),a`, which says Sega; a stray `ld (3FFEh),a` would say 4 PAK. A failing image is deleted. The cartridge's RAM isn't used.
+
+**The screen: the TMS9918A's cells in Mode 4** (`src/sms/tiles.c`, `vram_sms.h`, `tileconv.asm`). The SMS can show Graphics II, but only in a fixed palette that turns the map's grey dark. Mode 4 has room for about 450 tiles of 16 colours, and no screen has more than about 120 different cells. So the painter (`src/tms9918/gfx.c`) works on a cell's patterns and colours as on the Adam, and the SMS keeps each different cell as one tile, shared by every cell that looks the same.
+- **Storing a cell:** its rows' two colours are spread over the four bit planes, and the tile is hashed. Tiles with the same hash are compared with VRAM. A tile no cell shows any more stays, for the next cell like it. The cell stored last is remembered, so a fill or the plains cost next to nothing.
+- **Reading a cell back** decodes its tile into a pattern and two colours (the left pixel's is the background).
+- **255 tiles for the cells, 160 for the sprites.** If the cells' run out, a cell keeps what it had and `tile_full` counts it; `tile_most` is the most on screen yet.
+- **Colours:** the TMS9918A's 15, as near as the SMS's 64 have them, in both palettes.
+- **Sprites:** a TMS sprite (16 x 16, one colour) is two of the SMS's 8 x 16 sprites, the colour drawn into their tiles, sent when the frame or the colour changes. Eight fit on a line; with a ninth, the order rotates. A half left of the screen isn't shown.
+
+**The clock and the sound.** z88dk's crt0 takes the frame interrupt and reads the VDP's status; `smsint.asm` counts the frame, keeps the status bits and times the sound effect. A 50 Hz console (found by timing a frame) counts every fifth frame twice, so the clock is in 60ths there too.
+
+**The network: stream mode, never waited on.** `src/sms/nstrans.c` is the NES's, on the same mailbox at B000h: registers at B500h+n, the request at B700h, the 1K reply at B000h. The open, the close and the appkeys are fujinet-lib's.
+
+**Controls** (pad 1, and the console's Pause):
+
+| Button | Does |
+|---|---|
+| pad | walk; up/down in auctions; left/right in the lobby |
+| 1 | the button |
+| 2 | rub out (the name), when let go |
+| Pause | end your turn, finish the name |
+| 2 held + Pause | leave the table (asks first in a game: 2 + Pause again leaves); at the table list, quit |
+| 1 held + Pause | sit this good out |
+| Reset (an SMS1's) | leave |
+
+Pause is the Z80's NMI and can't be held, so the button held when it comes says what it means. Button 2 counts when it is let go without a Pause meanwhile, so holding it for 2 + Pause does nothing else (pressed, it would end the "leave?" question before the Pause answered it). Button 1 counts when pressed, as it must for the land grant, and declare ignores it. The name is picked a letter at a time. Quitting says goodbye to the server and goes back to the cartridge's CONFIG.
+
+**Testing.**
+- **Offline, in MAME** (`tools/smssim/smssim.py`): the scenario language, with the image on the FujiNet SMS cartridge's MAME device (fujinet-firmware `pico/sms/emu`, grafted by its `apply.sh`), started without a BIOS. `SMSSIM_SYSTEM` picks the console: `sms` is the SMS2, `smspal` and `sms1pal` run at 50 Hz.
+
+      python3 tools/smssim/smssim.py r2r/sms/mule.sms r2r/sms/mule.map scenario.txt out/
+
+- **Live, in MAME:** as for the NES, the same device with a copy of fujinet-pc-rs232 and a server, together in `unshare -rnm`. An `AUTOPLAY=1` build played 25 minutes that way, to round 9 (land grants, auctions, development, production, the goods' auctions), with no failed or dropped call and at most 137 tiles in use. Leaving the table and quitting back to CONFIG were played with the pad and Pause.
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
@@ -552,7 +606,9 @@ The name is picked a letter at a time, as on the Lynx. Quitting says goodbye to 
 - **NES: untested on hardware.** No NES cartridge has been built yet. The MMC3 interrupt's line (`IRQ_EARLY`) and the drain budgets in `crt0.s` are set for MAME.
 - **NES: colour clash** by 16 x 16 block. Two colours that need different palettes in one block share the last one drawn. On the map, a plot is 3 cells wide, so every other plot shares a block column with its neighbour.
 - **NES: big redraws without a clear** (the summary's table, a scrolling message) go through the queue at about 280 bytes a frame. A message row being scrolled can show half its old position for a frame.
-- **TMS9918: colour clash.** Text or a sprite-free drawing next to another colour can recolour a few pixels of its cell's row.
+- **SMS: untested on hardware.** No SMS cartridge has been built yet (fujinet-hardware `SMS/FujiNet-SMS-Rev0`).
+- **SMS: `.sms` images** are taken for cartridge images only by the fujiversal-sms ESP32 firmware (the `fujiversal-sms-board` work); the `add-sms` branch takes `.ROM` and `.BIN`.
+- **TMS9918 (and the SMS, which keeps its cells): colour clash.** Text or a sprite-free drawing next to another colour can recolour a few pixels of its cell's row.
 - **MSX: fujinet-lib-experimental's MSX bus** needed fixes for zsdcc, all in `tools/z80/mkfnlib.sh`:
   - its port routines used IX and IY, which zsdcc keeps;
   - its variadic `fuji_bus_call` read 8-bit arguments with `va_arg(ap, uint8_t)`;

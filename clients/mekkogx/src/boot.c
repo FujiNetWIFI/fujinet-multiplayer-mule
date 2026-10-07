@@ -41,8 +41,8 @@ static void name_entry(void)
     char c;
     gfx_clear();
     text_center(6, "YOUR NAME?", C_WHITE);
-    text_center(16, "UP/DOWN A LETTER, A TAKES IT", C_WHITE);
-    text_center(18, "B RUBS OUT, " KEY_END_NAME " ENDS", C_WHITE);
+    text_center(16, "UP/DOWN A LETTER, " BUTTON_NAME " TAKES IT", C_WHITE);
+    text_center(18, BACK_KEY_NAME " RUBS OUT, " KEY_END_NAME " ENDS", C_WHITE);
     memset(sc_name, 0, sizeof(sc_name));
     for (;;) {
         frame_wait();

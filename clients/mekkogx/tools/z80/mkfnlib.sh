@@ -1,6 +1,6 @@
 #!/bin/sh
 # mkfnlib.sh SRC OUT PLATFORM -- build fujinet-lib-experimental (SRC) for a
-# z88dk platform (adam or msx) with zsdcc, the game's compiler, into
+# z88dk platform (adam, msx or sms) with zsdcc, the game's compiler, into
 # OUT/fujinet-PLATFORM.lib, headers in OUT/include. The released libs are
 # sccz80 builds. Sources are copied in first so the container can see them,
 # and the copies get these local fixes:
@@ -18,9 +18,14 @@
 #     OPEN copied from address 0 over RAM; a READ asked for 19750 bytes).
 #     Every aux argument is now passed as an int (ezvar.h, fujinet-endian.h)
 #     and read as (uint8_t) va_arg(ap, int).
-#   - msx: network_open sends the URL with its NUL (NETWORK_OPEN_LEN is
-#     strlen + 1): the firmware (rs232) takes the string without a length
-#     and ran on into what its buffer held before ("&bin=1=1").
+#   - msx, sms: network_open sends the URL with its NUL (NETWORK_OPEN_LEN
+#     is strlen + 1): the firmware (rs232) takes the string without a
+#     length and ran on into what its buffer held before ("&bin=1=1"). The
+#     SMS cartridge hands its requests to the same rs232 code. (Firmware
+#     that zeroes the buffer first trims the NUL.)
+#   - sms: SRC is the add-sms branch (fujinet-lib-experimental's worktree
+#     ~/Workspace/fnlib-sms); its bus is plain stores to the cartridge's
+#     mailbox, and fuji_bus_call has fixed arguments (no va_arg fix).
 #   - no <stdio.h> (debug only).
 set -e
 src=$1
@@ -29,6 +34,7 @@ plat=$3
 case $plat in
     adam) target="+coleco -subtype=adam"; define=BUILD_ADAM ;;
     msx)  target="+msx -subtype=rom";     define=BUILD_MSX ;;
+    sms)  target="+sms";                  define=BUILD_SMS ;;
     *) echo "mkfnlib.sh: unknown platform $plat" >&2; exit 1 ;;
 esac
 z88dk=$(dirname "$0")/z88dk
@@ -59,8 +65,6 @@ H
            -e 's/^\(  if (!NETCALL_B12_[RVD]*(.*, buffer, length)\);$/\1)\n    return 0;/' \
            -e 's/va_arg(ap, uint8_t)/(uint8_t) va_arg(ap, int)/' \
            "$out/src/fujinet-bus-msx.c"
-    sed -i 's/^#define NETWORK_OPEN_LEN strlen(devicespec)$/#define NETWORK_OPEN_LEN (strlen(devicespec) + 1)/' \
-        "$out/include/fujinet-network.h"
     python3 - "$out/include" <<'P'
 import re, sys
 d = sys.argv[1]
@@ -79,6 +83,12 @@ s = s.replace("  U16_LSB(U32_LSW(l)), U16_MSB(U32_LSW(l)),                      
               "    (int)U16_LSB(U32_MSW(l)), (int)U16_MSB(U32_MSW(l))")
 open(p, "w").write(s)
 P
+fi
+if [ "$plat" = msx ] || [ "$plat" = sms ]; then
+    sed -i 's/^#define NETWORK_OPEN_LEN strlen(devicespec)$/#define NETWORK_OPEN_LEN (strlen(devicespec) + 1)/' \
+        "$out/include/fujinet-network.h"
+    grep -q 'strlen(devicespec) + 1' "$out/include/fujinet-network.h" || {
+        echo "mkfnlib.sh: NETWORK_OPEN_LEN not patched" >&2; exit 1; }
 fi
 sed -i -e '/#include <stdio.h>/d' "$out"/src/*.c
 cmds=
