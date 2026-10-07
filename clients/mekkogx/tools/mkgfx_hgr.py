@@ -387,9 +387,25 @@ def town_hgr(atari):
             for yy in range(y * 16, (y + h) * 16):
                 for xx in range(x * 8, (x + w) * 8):
                     cols[yy][xx] = pal.get(bg, WHITE)
+    # 8 clocks -> 7 pixels: in each group of 8 the clock that goes is the
+    # one most like a neighbour (a copy loses nothing), then the one losing
+    # the fewest black pixels (the signs' strokes), then the one nearest
+    # clock 1 (cx_bias in gfx.c puts sprites there). A fixed clock 3 cut the
+    # smithore sign's pick handle and the energy sign's bolt; a fixed clock 1
+    # the crystite arrow's head.
+    def lost(x, n):
+        if n < 0 or n > 95:
+            return (999, 999)
+        d = [r[x] for r in cols if r[x] != r[n]]
+        return (len(d), d.count(BLACK))
+    drop = []
+    for g in range(12):
+        cost = [min(lost(g * 8 + k, g * 8 + k - 1), lost(g * 8 + k, g * 8 + k + 1)) for k in range(8)]
+        drop.append(min(range(8), key=lambda k: (cost[k], abs(k - 1))))
+    keep = [[g * 8 + k for k in range(8) if k != drop[g]] for g in range(12)]
     rows = []
     for r in cols:
-        px = [r[min(95, (j * 96 + 48) // 84)] for j in range(84)]
+        px = [r[keep[j // 7][j % 7]] for j in range(84)]
         enc = encode_row(px, 28)           # colour pixel 28 = byte 8
         rows.append([enc.get(8 + b, 0) for b in range(24)])
     return rows
