@@ -138,7 +138,7 @@ _spr_flush:
         inx
         cpx     #SLOTS
         bcc     @slot
-        jmp     flags
+        jmp     smooth
 @on:    ; the shape: data, h, size
         lda     _spr_shape,x
         asl     a
@@ -319,6 +319,36 @@ _spr_flush:
         inc     tmp1
         bcc     @sr
         jmp     @next
+
+; A player's rows without a piece take the next piece's position, size and
+; colour (its bytes there are 0: nothing shows). The DLI's writes land a
+; little into a row's first scanline, so a shape starting on that line was
+; drawn there with the row above's position and size (a stray dash above
+; the ship's hull); now that row changes nothing.
+smooth: ldx     #0
+@pl:    cpx     _spr_players
+        bcs     flags
+        stx     pl
+        lda     p_rows,x
+        clc
+        adc     #ROWS - 2
+        tay
+        lda     #ROWS - 1
+        sta     tmp1
+@r:     lda     own,y
+        bne     @u
+        lda     _row_hp+1,y
+        sta     _row_hp,y
+        lda     _row_sz+1,y
+        sta     _row_sz,y
+        lda     _row_cm+1,y
+        sta     _row_cm,y
+@u:     dey
+        dec     tmp1
+        bne     @r
+        ldx     pl
+        inx
+        bne     @pl
 
 flags:  lda     _sp_dirty
         ora     _pf_dirty
