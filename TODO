@@ -1,8 +1,7 @@
 * ATARI-2600: the colony plot view is completely blank on play (FujiNet Go 2600
   desktop). Not the client: the map is composed by the cart's blit 19
-  (FN_BLIT_MULEMAP), which the desktop's pinned Stella (65bd725e) lacks. The
-  sync is in ~/Workspace/stella (uncommitted, plus CartFUJI routing for blits
-  15/18; passes fn-2600's host_test render golden). Still to do: commit and
-  push stella add-fujinet-support, bump STELLA_COMMIT in
-  fujinet-go-atari2600-desktop (cmake/Dependencies.cmake, both flatpak yml),
-  rebuild.
+  (FN_BLIT_MULEMAP), which the desktop's old Stella pin (65bd725e) lacked.
+  Fixed in tschak909/stella add-fujinet-support 8bb59d1fa (pushed), and
+  fujinet-go-atari2600-desktop b067550 pins it (cmake + both flatpaks; local
+  build and its 11 tests pass). Still to do: push the desktop commit and
+  ship a release so installed copies get it.
