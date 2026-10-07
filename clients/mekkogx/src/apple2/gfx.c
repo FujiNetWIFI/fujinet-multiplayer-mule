@@ -402,27 +402,15 @@ static uint8_t ring(uint8_t st, uint8_t y)
     return (uint8_t)(y % (uint8_t)(SAVE_MAX / st)) * st;
 }
 
-/* Does drawn sprite j's rectangle meet (bx, n, y, h)? (All 8-bit: a
- * rectangle's right and bottom edges are at most 40 and 192.) */
-static uint8_t meets(uint8_t j, uint8_t bx, uint8_t n, uint8_t y, uint8_t h)
-{
-    uint8_t a = s_bx[j], e = bx + n, ae = a + s_n[j];
-    if (a >= e || bx >= ae)
-        return 0;
-    a = s_sy[j];
-    e = y + h;
-    ae = a + s_sh[j];
-    return a < e && y < ae;
-}
-
-/* Mark every drawn slot after i that meets the rectangle. */
+/* Mark every drawn slot after i that meets a rectangle (hires.s): slot
+ * i's drawn one, or its new one; or every slot meeting co_* (hit[] cleared
+ * first). (All 8-bit: a rectangle's right and bottom edges are at most 40
+ * and 192.) */
 uint8_t hit[SPR_SLOTS];                 /* (bit 1: taken off by spr_bg) */
-static void close_over(uint8_t i, uint8_t bx, uint8_t n, uint8_t y, uint8_t h)
-{
-    while (++i < SPR_SLOTS)
-        if (!hit[i] && s_drawn[i] && meets(i, bx, n, y, h))
-            hit[i] = 1;
-}
+extern uint8_t co_bx, co_n, co_y, co_h;
+void __fastcall__ close_s(uint8_t i);
+void __fastcall__ close_d(uint8_t i);
+void close_hits(void);
 
 /* Background drawing is about to change a rectangle: the sprites on it,
  * and any drawn after one of them over it (their saved backgrounds hold
@@ -433,12 +421,15 @@ static uint8_t bg_took;
 static void spr_bg(uint8_t bx, uint8_t n, uint8_t y, uint8_t h)
 {
     uint8_t i, nc = 0, y1 = y + h;
-    for (i = 0; i < SPR_SLOTS; ++i)
-        hit[i] = s_drawn[i] && meets(i, bx, n, y, h);
+    co_bx = bx;
+    co_n = n;
+    co_y = y;
+    co_h = h;
+    close_hits();
     for (i = 0; i < SPR_SLOTS; ++i)
         if (hit[i]) {
             frame_tick();
-            close_over(i, s_bx[i], s_n[i], s_sy[i], s_sh[i]);
+            close_s(i);
             g_cl[nc++] = i;
             d_show[i] = 0;      /* (only the old place counts here) */
             d_oo[i] = s_sy[i] >= y ? s_oo[i] : ring(s_st[i], y);
@@ -522,10 +513,10 @@ void spr_flush(void)
              * yet is: if it could, the old all come off first */
             if (d_show[i] && (d_st[i] != s_st[i] || e > (uint16_t)d_sy[i] + d_rows[i]))
                 pass = 0;
-            close_over(i, s_bx[i], s_n[i], s_sy[i], s_sh[i]);
+            close_s(i);
         }
         if (d_show[i])
-            close_over(i, d_bx[i], d_n[i], d_sy[i], d_sh[i]);
+            close_d(i);
     }
     if (part && nc) {
         /* nothing moved: save and draw again only what spr_bg took off */

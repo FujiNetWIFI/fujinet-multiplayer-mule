@@ -41,6 +41,7 @@
         .export         _hgr_rowlo, _hgr_rowhi, _hgr_cxb0, _hgr_cxb1
         .export         _spr_lines, _spr_one, _sl_cl, _sl_nc, _sl_y0, _sl_y1, _sl_pass
         .export         _src_of, _spr_groups, _d_no0, _g_cl, _g_nc, _g_y0, _g_y1, _g_pass
+        .export         _close_hits, _close_s, _close_d, _co_bx, _co_n, _co_y, _co_h
         .import         _s_on, _s_shape, _s_frame, _s_flags, _s_col
         .import         _s_xl, _s_xh, _s_yl, _s_yh, _hcol, _hgr_shapes, _d_rows
         .import         _s_drawn, _s_sy, _s_sh, _s_bx, _s_n, _s_st, _hit
@@ -113,6 +114,13 @@ wbm1:           .res 1
 cxs:            .res 1
 fsts:           .res 1
 same:           .res 1
+_co_bx:         .res 1                  ; close_*: the rectangle (bytes, lines)
+_co_n:          .res 1
+_co_y:          .res 1
+_co_h:          .res 1
+co_e:           .res 1                  ; its ends
+co_ye:          .res 1
+co_t:           .res 1
 putl:           .res 1
 ; src_of
 frm:            .res 1
@@ -1268,6 +1276,83 @@ hide2:  rts
         sta     _d_show,x
         rts
 .endproc
+
+; ---------------------------------------------------------------------------
+; Mark (hit[j] = 1) every drawn slot j after slot A, not marked yet, that
+; meets a rectangle: close_s / close_d slot A's drawn / new one;
+; close_hits co_bx, co_n bytes of lines co_y, co_h, over every slot, with
+; hit[] cleared first (gfx.c's spr_bg). In C, with its five arguments, a
+; slow machine spent much of a frame here as the auction's lines moved.
+.proc   _close_hits
+        ldx     #9
+        lda     #0
+:       sta     _hit,x
+        dex
+        bpl     :-
+        bmi     close_r                 ; (X 255: from slot 0 on)
+.endproc
+
+.proc   _close_s
+        tax
+        lda     _s_bx,x
+        sta     _co_bx
+        lda     _s_n,x
+        sta     _co_n
+        lda     _s_sy,x
+        sta     _co_y
+        lda     _s_sh,x
+        jmp     close_h
+.endproc
+
+.proc   _close_d
+        tax
+        lda     _d_bx,x
+        sta     _co_bx
+        lda     _d_n,x
+        sta     _co_n
+        lda     _d_sy,x
+        sta     _co_y
+        lda     _d_sh,x
+.endproc
+
+close_h:
+        sta     _co_h
+close_r:
+        lda     _co_bx
+        clc
+        adc     _co_n
+        sta     co_e
+        lda     _co_y
+        clc
+        adc     _co_h
+        sta     co_ye
+co_nx:  inx
+        cpx     #10
+        bcs     co_done
+        lda     _hit,x
+        bne     co_nx
+        lda     _s_drawn,x
+        beq     co_nx
+        lda     _s_bx,x                 ; meets: its bytes ...
+        cmp     co_e
+        bcs     co_nx
+        adc     _s_n,x                  ; (C clear)
+        sta     co_t
+        lda     _co_bx
+        cmp     co_t
+        bcs     co_nx
+        lda     _s_sy,x                 ; ... and its lines
+        cmp     co_ye
+        bcs     co_nx
+        adc     _s_sh,x
+        sta     co_t
+        lda     _co_y
+        cmp     co_t
+        bcs     co_nx
+        lda     #1
+        sta     _hit,x
+        bne     co_nx
+co_done: rts
 
 ; ---------------------------------------------------------------------------
 ; void spr_groups(void): the flush's sprites (g_cl, g_nc), lines g_y0 ..
