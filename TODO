@@ -1,2 +1,8 @@
-* MSDOS: make graphics routines fast! It's borderline too slow on IBM 5160 PC/XT, and WAY TOO SLOW on PCjr. Use lookup tables, stosw instruction, whatever will make it faster!
-
+* ATARI-2600: the colony plot view is completely blank on play (FujiNet Go 2600
+  desktop). Not the client: the map is composed by the cart's blit 19
+  (FN_BLIT_MULEMAP), which the desktop's pinned Stella (65bd725e) lacks. The
+  sync is in ~/Workspace/stella (uncommitted, plus CartFUJI routing for blits
+  15/18; passes fn-2600's host_test render golden). Still to do: commit and
+  push stella add-fujinet-support, bump STELLA_COMMIT in
+  fujinet-go-atari2600-desktop (cmake/Dependencies.cmake, both flatpak yml),
+  rebuild.
