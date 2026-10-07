@@ -30,6 +30,9 @@ void hgr_glyph2(void);
 void hgr_blit(void);
 void hgr_save(void);
 void hgr_spr(void);
+extern uint8_t sl_cl[SPR_SLOTS], sl_nc, sl_y0, sl_y1, sl_pass;
+void spr_lines(void);
+void spr_one(void);
 
 /* HGR colours as hires.s numbers them. */
 #define H_BLACK  0
@@ -39,7 +42,7 @@ void hgr_spr(void);
 #define H_BLUE   4
 #define H_ORANGE 5
 
-static const uint8_t hcol[16] = {
+const uint8_t hcol[16] = {     /* (hires.s too) */
     H_BLACK,    /* C_BLACK */
     H_WHITE,    /* C_WHITE */
     H_BLUE,     /* C_BLUE */
@@ -323,21 +326,20 @@ void gfx_town(void)
 #define SAVE_MAX 170
 
 uint8_t s_on[SPR_SLOTS], s_shape[SPR_SLOTS], s_frame[SPR_SLOTS];  /* (not static: tools/a2sim peeks) */
-static uint8_t s_col[SPR_SLOTS], s_flags[SPR_SLOTS];
-static uint8_t s_xl[SPR_SLOTS], s_xh[SPR_SLOTS], s_yl[SPR_SLOTS], s_yh[SPR_SLOTS];
+uint8_t s_col[SPR_SLOTS], s_flags[SPR_SLOTS];             /* (hires.s src_of too) */
+uint8_t s_xl[SPR_SLOTS], s_xh[SPR_SLOTS], s_yl[SPR_SLOTS], s_yh[SPR_SLOTS];
 uint8_t s_dirty[SPR_SLOTS];  /* needs (re)drawing */
 uint8_t s_drawn[SPR_SLOTS];  /* on the screen: the rectangle is valid */
-static uint8_t s_bx[SPR_SLOTS], s_n[SPR_SLOTS], s_sy[SPR_SLOTS], s_sh[SPR_SLOTS];
-/* The save buffers: seven above the overlay window (SPRSAVE, $B620: no
- * overlay reaches it, see mule-hgr.cfg), three in the core. */
+uint8_t s_bx[SPR_SLOTS], s_n[SPR_SLOTS], s_sy[SPR_SLOTS], s_sh[SPR_SLOTS];   /* (hires.s too) */
+/* The save buffers: above the overlay window (SPRSAVE, $B620: no overlay
+ * reaches it, see mule-hgr.cfg). */
 #pragma bss-name (push, "SPRSAVE")
-static uint8_t save_hi[7 * SAVE_MAX];
+static uint8_t save_hi[SPR_SLOTS * SAVE_MAX];
 #pragma bss-name (pop)
-static uint8_t save_lo[3 * SAVE_MAX];
-static uint8_t *const save_at[SPR_SLOTS] = {
+uint8_t *const save_at[SPR_SLOTS] = {
     save_hi, save_hi + SAVE_MAX, save_hi + 2 * SAVE_MAX, save_hi + 3 * SAVE_MAX,
     save_hi + 4 * SAVE_MAX, save_hi + 5 * SAVE_MAX, save_hi + 6 * SAVE_MAX,
-    save_lo, save_lo + SAVE_MAX, save_lo + 2 * SAVE_MAX,
+    save_hi + 7 * SAVE_MAX, save_hi + 8 * SAVE_MAX, save_hi + 9 * SAVE_MAX,
 };
 static uint8_t any_dirty;
 
@@ -386,28 +388,18 @@ void spr_hide_all(void)
  * flush then does each line at once, top to bottom -- put the old rows
  * back (last drawn first), save the new ones, draw -- and no sprite is
  * ever off the screen while the beam goes by. */
-static uint8_t s_st[SPR_SLOTS];         /* the ring's row length when drawn */
-static uint8_t lift_y0, lift_y1;        /* lines spr_bg took sprites off */
+extern uint8_t d_oo[SPR_SLOTS], d_oend[SPR_SLOTS], d_show[SPR_SLOTS];
+/* hires.s spr_groups: the flush's sprites (g_cl) drawn, alone or together */
+extern uint8_t g_cl[SPR_SLOTS], g_nc, g_y0, g_y1, g_pass;
+void spr_groups(void);
+uint8_t s_st[SPR_SLOTS];                /* the ring's row length when drawn */
+static uint8_t s_oo[SPR_SLOTS], s_oend[SPR_SLOTS];  /* its first line's row, its end */
+extern uint8_t d_no0[SPR_SLOTS];        /* (hires.s src_of: d_no before drawing) */
+uint8_t lift_y0, lift_y1;               /* lines spr_bg took sprites off */
 
 static uint8_t ring(uint8_t st, uint8_t y)
 {
     return (uint8_t)(y % (uint8_t)(SAVE_MAX / st)) * st;
-}
-
-static uint8_t ring_end(uint8_t st)
-{
-    return (uint8_t)(SAVE_MAX / st) * st;
-}
-
-/* Slot i's saved row (at off in its ring) back to line y. */
-static void put_row(uint8_t i, uint8_t y, uint8_t off)
-{
-    hg_bx = s_bx[i];
-    hg_n = s_n[i];
-    hg_y = y;
-    hg_h = 1;
-    hg_src = save_at[i] + off;
-    hgr_blit();
 }
 
 /* Does drawn sprite j's rectangle meet (bx, n, y, h)? (All 8-bit: a
@@ -424,7 +416,7 @@ static uint8_t meets(uint8_t j, uint8_t bx, uint8_t n, uint8_t y, uint8_t h)
 }
 
 /* Mark every drawn slot after i that meets the rectangle. */
-static uint8_t hit[SPR_SLOTS];          /* (bit 1: taken off by spr_bg) */
+uint8_t hit[SPR_SLOTS];                 /* (bit 1: taken off by spr_bg) */
 static void close_over(uint8_t i, uint8_t bx, uint8_t n, uint8_t y, uint8_t h)
 {
     while (++i < SPR_SLOTS)
@@ -440,31 +432,29 @@ static uint8_t bg_took;
 
 static void spr_bg(uint8_t bx, uint8_t n, uint8_t y, uint8_t h)
 {
-    uint8_t i, l, e, off, y1 = y + h;
+    uint8_t i, nc = 0, y1 = y + h;
     for (i = 0; i < SPR_SLOTS; ++i)
         hit[i] = s_drawn[i] && meets(i, bx, n, y, h);
     for (i = 0; i < SPR_SLOTS; ++i)
-        if (hit[i])
-            close_over(i, s_bx[i], s_n[i], s_sy[i], s_sh[i]);
-    for (i = SPR_SLOTS; i-- > 0;)
         if (hit[i]) {
-            l = s_sy[i] > y ? s_sy[i] : y;
-            e = s_sy[i] + s_sh[i];
-            if (e > y1)
-                e = y1;
-            if (l < e) {
-                off = ring(s_st[i], l);
-                for (; l < e; ++l) {
-                    put_row(i, l, off);
-                    if ((off += s_st[i]) >= ring_end(s_st[i]))
-                        off = 0;
-                }
-            }
+            frame_tick();
+            close_over(i, s_bx[i], s_n[i], s_sy[i], s_sh[i]);
+            g_cl[nc++] = i;
+            d_show[i] = 0;      /* (only the old place counts here) */
+            d_oo[i] = s_sy[i] >= y ? s_oo[i] : ring(s_st[i], y);
+            d_oend[i] = s_oend[i];
             s_dirty[i] |= 2;
             bg_took = any_dirty = 1;
         }
     lift_y0 = y;
     lift_y1 = y1;
+    if (nc) {
+        g_nc = nc;
+        g_y0 = y;
+        g_y1 = y1;
+        g_pass = 4;             /* only put back */
+        spr_groups();
+    }
 }
 
 /* After background drawing: the sprites it took off go straight back, so
@@ -478,68 +468,21 @@ static void bg_done(void)
 }
 
 /* Each sprite spr_flush draws: where (as s_bx.. will say once it is), the
- * picture's next row (in aux RAM), and where its rows go in the rings. */
-static const uint8_t *d_src[SPR_SLOTS];
-static uint8_t d_cx[SPR_SLOTS], d_bx[SPR_SLOTS], d_n[SPR_SLOTS], d_sy[SPR_SLOTS];
-static uint8_t d_sh[SPR_SLOTS], d_st[SPR_SLOTS], d_wb[SPR_SLOTS], d_show[SPR_SLOTS];
-static uint8_t d_no[SPR_SLOTS], d_nend[SPR_SLOTS], d_oo[SPR_SLOTS], d_oend[SPR_SLOTS];
+ * picture's next row (in aux RAM), where its rows go in the rings, and how
+ * hires.s draws it (colour; first colour pixel + 64; all of it on the
+ * screen): set by hires.s src_of. */
+const uint8_t *d_src[SPR_SLOTS];
+uint8_t d_bx[SPR_SLOTS], d_n[SPR_SLOTS], d_sy[SPR_SLOTS];
+uint8_t d_sh[SPR_SLOTS], d_st[SPR_SLOTS], d_wb[SPR_SLOTS], d_show[SPR_SLOTS];
+uint8_t d_no[SPR_SLOTS], d_nend[SPR_SLOTS], d_oo[SPR_SLOTS], d_oend[SPR_SLOTS];
+uint8_t d_col[SPR_SLOTS], d_cx[SPR_SLOTS], d_fast[SPR_SLOTS], d_rows[SPR_SLOTS];
 
-/* Where slot i would be drawn now (d_*[i]). */
-static void src_of(uint8_t i)
-{
-    const ShapeDef *d = &hgr_shapes[s_shape[i]];
-    uint8_t frame = s_frame[i], wb = d->wb, cx, st;
-    const uint8_t *src;
-    int16_t yy = (int16_t)(((uint16_t)s_yh[i] << 8) | s_yl[i]);
-    int16_t hh = d->h;
-    int16_t left, right;
-
-    d_show[i] = 0;
-    if (!s_on[i])
-        return;
-    if (s_flags[i] & SPR_FLIPX) {
-        if (s_shape[i] == SH_MULE)
-            frame += 4;
-        else if (s_shape[i] == SH_FIGURE && (frame % 10) < 2)
-            frame += 2;
-    }
-    src = d->data + (uint16_t)frame * (uint8_t)(wb * d->h);
-    if (yy < 0) {
-        src += (uint8_t)(-yy) * wb;
-        hh += yy;
-        yy = 0;
-    }
-    if (yy + hh > 192)
-        hh = 192 - yy;
-    cx = cx_bias((int16_t)(((uint16_t)s_xh[i] << 8) | s_xl[i]));
-    left = (int16_t)cx - 64;
-    right = left + d->w - 1;
-    if (hh <= 0 || right < 0 || left > 139)
-        return;
-    if (left < 0)
-        left = 0;
-    if (right > 139)
-        right = 139;
-    d_show[i] = 1;
-    d_src[i] = src;
-    d_cx[i] = cx;
-    d_wb[i] = wb;
-    d_bx[i] = hgr_cxb0[(uint8_t)left];
-    d_n[i] = hgr_cxb1[(uint8_t)right] - d_bx[i] + 1;
-    d_st[i] = st = (uint8_t)((d->w * 2 + 5) / 7) + 1;
-    d_nend[i] = ring_end(st);
-    if (hh > SAVE_MAX / st)
-        hh = SAVE_MAX / st;
-    d_sy[i] = (uint8_t)yy;
-    d_sh[i] = (uint8_t)hh;
-    d_no[i] = ring(st, (uint8_t)yy);
-}
+/* Where slot i would be drawn now (d_*[i]): hires.s src_of. */
+void src_of(uint8_t i);
 
 void spr_flush(void)
 {
-    static uint8_t cl[SPR_SLOTS];       /* the sprites redrawn, in order */
-    static uint8_t row[4];              /* a row of a picture, from aux RAM */
-    uint8_t i, k, l, y0, y1, pass, e, nc;
+    uint8_t i, k, y0, y1, pass, e, nc, part;
 
     if (!any_dirty)
         return;
@@ -553,10 +496,14 @@ void spr_flush(void)
     y1 = 0;
     nc = 0;
     pass = 2;                   /* each line at once */
+    part = 1;                   /* only spr_bg's lines (it put those back) */
     for (i = 0; i < SPR_SLOTS; ++i) {
         if (!hit[i])
             continue;
-        cl[nc++] = i;
+        frame_tick();           /* (planning a flush takes a while) */
+        if (hit[i] != 2)
+            part = 0;
+        g_cl[nc++] = i;
         src_of(i);
         if (d_show[i]) {
             if (d_sy[i] < y0)
@@ -565,65 +512,45 @@ void spr_flush(void)
                 y1 = e;
         }
         if (s_drawn[i]) {
-            d_oo[i] = ring(s_st[i], s_sy[i]);
-            d_oend[i] = ring_end(s_st[i]);
+            d_oo[i] = s_oo[i];
+            d_oend[i] = s_oend[i];
             if (s_sy[i] < y0)
                 y0 = s_sy[i];
             if ((e = s_sy[i] + s_sh[i]) > y1)
                 y1 = e;
             /* a line's new row must not land where an old row not put back
              * yet is: if it could, the old all come off first */
-            if (d_show[i] && (d_st[i] != s_st[i] ||
-                              e > (uint16_t)d_sy[i] + SAVE_MAX / d_st[i]))
+            if (d_show[i] && (d_st[i] != s_st[i] || e > (uint16_t)d_sy[i] + d_rows[i]))
                 pass = 0;
             close_over(i, s_bx[i], s_n[i], s_sy[i], s_sh[i]);
         }
         if (d_show[i])
             close_over(i, d_bx[i], d_n[i], d_sy[i], d_sh[i]);
     }
-    for (;;) {                  /* pass 2: both; 0: put back, then 1: draw */
-        for (l = y0; l < y1; ++l) {
-            if (pass != 1)
-                for (k = nc; k-- > 0;) {
-                    i = cl[k];
-                    if (s_drawn[i] && (uint8_t)(l - s_sy[i]) < s_sh[i]) {
-                        if (!((hit[i] & 2) && l >= lift_y0 && l < lift_y1))
-                            put_row(i, l, d_oo[i]);
-                        if ((d_oo[i] += s_st[i]) >= d_oend[i])
-                            d_oo[i] = 0;
-                    }
-                }
-            if (pass != 0)
-                for (k = 0; k < nc; ++k) {
-                    i = cl[k];
-                    if (d_show[i] && (uint8_t)(l - d_sy[i]) < d_sh[i]) {
-                        hg_bx = d_bx[i];
-                        hg_n = d_n[i];
-                        hg_y = l;
-                        hg_h = 1;
-                        hg_src = save_at[i] + d_no[i];
-                        hgr_save();
-                        if ((d_no[i] += d_st[i]) >= d_nend[i])
-                            d_no[i] = 0;
-                        aux_get(row, d_src[i], d_wb[i]);
-                        d_src[i] += d_wb[i];
-                        hg_src = row;
-                        hg_wb = d_wb[i];
-                        hg_h = 1;
-                        hg_x = d_cx[i];
-                        hg_y = l;
-                        hg_col = hcol[s_col[i]];
-                        hgr_spr();
-                    }
-                }
-            frame_tick();
-        }
-        if (pass)
-            break;
+    if (part && nc) {
+        /* nothing moved: save and draw again only what spr_bg took off */
         pass = 1;
+        if (y0 < lift_y0)
+            y0 = lift_y0;
+        if (y1 > lift_y1)
+            y1 = lift_y1;
+        for (k = 0; k < nc; ++k) {
+            i = g_cl[k];
+            if (d_show[i] && d_sy[i] < y0) {
+                d_src[i] += (uint8_t)(y0 - d_sy[i]) * d_wb[i];
+                d_no[i] = ring(d_st[i], y0);
+            }
+        }
+    }
+    if (y0 < y1) {
+        g_nc = nc;
+        g_y0 = y0;
+        g_y1 = y1;
+        g_pass = pass;
+        spr_groups();
     }
     for (k = 0; k < nc; ++k) {
-        i = cl[k];
+        i = g_cl[k];
         s_dirty[i] = 0;
         if ((s_drawn[i] = d_show[i]) != 0) {
             s_bx[i] = d_bx[i];
@@ -631,6 +558,8 @@ void spr_flush(void)
             s_sy[i] = d_sy[i];
             s_sh[i] = d_sh[i];
             s_st[i] = d_st[i];
+            s_oo[i] = d_no0[i];
+            s_oend[i] = d_nend[i];
         }
     }
     lift_y1 = 0;

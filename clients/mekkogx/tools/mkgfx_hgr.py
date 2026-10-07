@@ -28,6 +28,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "intv", "tools"))
 import mkgfx as intv  # noqa: E402  (stand-in art and the extraction offsets)
 
+# src/apple2/gfx.c's sprite save buffers: the rings' rows come from it
+SAVE_MAX = 170
+
 EXPECTED_CRC = 0xF76D2896
 
 # HGR colours (rendering for previews).
@@ -485,7 +488,11 @@ def main():
     src.append("#pragma rodata-name (pop)")
     src.append("const ShapeDef hgr_shapes[%d] = {" % len(shs))
     for s in shs:
-        src.append("    { sh_%s, %d, %d, %d }," % (s.name, (s.w + 7) // 8, s.w, s.h))
+        wb = (s.w + 7) // 8
+        st = (s.w * 2 + 5) // 7 + 1      # the bytes a row covers, at worst
+        assert wb * s.h <= 64       # hires.s spr_one fetches a frame into 64 bytes
+        src.append("    { sh_%s, %d, %d, %d, %d, %d, %d }," % (s.name, wb, s.w, s.h, wb * s.h, st,
+                                                            SAVE_MAX // st))
     src.append("};")
 
     # pictures (8 x 8, drawn at 2 lines a row)

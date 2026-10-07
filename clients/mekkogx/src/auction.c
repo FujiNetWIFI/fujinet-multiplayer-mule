@@ -98,6 +98,7 @@ static void au_draw(void)
 {
     uint8_t i, y, f;
     for (i = 0; i < 4; ++i) {
+        frame_tick();           /* (the Apple's clock: this takes a while) */
         if (au_role[i] == ROLE_NONE) {
             spr_hide(i);
             continue;
