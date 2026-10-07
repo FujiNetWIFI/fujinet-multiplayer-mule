@@ -637,15 +637,25 @@ static uint8_t bg_took;
 
 static uint8_t d_lo = 255, d_hi;        /* the lines drawn sprites are on */
 
+static void spr_lift(uint8_t c0, uint8_t n, uint8_t y, uint8_t h);
+
 static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
+{
+    uint16_t y1 = (uint16_t)y + h;
+    if (y >= d_hi || y1 <= d_lo)
+        return;                 /* (most text: nowhere near one) */
+    /* the lines that wait go first: here, not under spr_lift's jobs (a
+     * flush's on the stack as well would nearly fill it) */
+    if (hq_n && y <= hq_hi && y1 > hq_lo)
+        spr_flush();
+    spr_lift(c0, n, y, h);
+}
+
+static void spr_lift(uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
 {
     uint8_t i, nc = 0;
     uint16_t y1 = (uint16_t)y + h;
     SprJob jb[SPR_SLOTS];
-    if (y >= d_hi || y1 <= d_lo)
-        return;                 /* (most text: nowhere near one) */
-    if (hq_n && y <= hq_hi && y1 > hq_lo)
-        spr_flush();            /* the lines that wait go first */
     for (i = 0; i < SPR_SLOTS; ++i)
         hit[i] = s_drawn[i] && meets(i, c0, n, y, h);
     for (i = 0; i < SPR_SLOTS; ++i)
