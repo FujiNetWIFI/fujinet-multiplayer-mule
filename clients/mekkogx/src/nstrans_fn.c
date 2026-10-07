@@ -56,6 +56,7 @@ static uint8_t dwq[10];
 #ifdef __APPLE2__
 extern uint8_t sp_network;      /* fujinet-lib's SmartPort side */
 extern uint8_t sp_payload[];
+extern uint16_t sp_count;       /* what the call brought (X/Y) */
 int8_t sp_read(uint8_t dest, uint16_t len);
 #endif
 #ifdef PLAT_NET_GUARD
@@ -187,6 +188,11 @@ uint8_t nt_get(char *c)
 #elif defined(__APPLE2__)
     n = 0;
     if (sp_read(sp_network, bw) == 0) {
+        /* only the bytes it says it brought (the rest of sp_payload is an
+         * older reply's, and would garble the frame); a firmware that
+         * says nothing brought them all */
+        if (sp_count && sp_count < bw)
+            bw = sp_count;
         memcpy(rbuf, sp_payload, bw);
         n = (int16_t)bw;
     }

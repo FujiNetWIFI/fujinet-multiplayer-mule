@@ -47,6 +47,10 @@ extern uint8_t ns_fbuf[];
 #define RESYNC_GAP 30           /* frames between RESYNCs: the whole state is
                                  * 18 frames of the line, and one bad frame in
                                  * a burst mustn't ask for it again and again */
+#define RESEND_AFTER 180        /* frames before an unanswered action goes
+                                 * again (the same seq: answered, not applied
+                                 * twice): its answer was lost, and nothing
+                                 * else would ever let the next one go */
 
 #define DDEVIC (*(volatile uint8_t *)0x0300)
 #define DUNIT  (*(volatile uint8_t *)0x0301)
@@ -63,6 +67,7 @@ static uint8_t link, joined;    /* connected; HELLO sent for sc_table */
 static uint8_t seq, wait_seq, wait_act, credited, paused, resync_hold;
 static uint8_t resync_owed;     /* a bad frame came during the hold: ask after it */
 static uint8_t heard;           /* a frame since HELLO: it got there */
+static uint8_t wait_t;          /* frames the action's answer has been awaited */
 static uint16_t quiet;
 
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
@@ -325,7 +330,12 @@ uint8_t net_step(void)
         --resync_hold;
     else if (resync_owed)
         resync();
-    if (act != ACT_NONE && !wait_seq) {
+    if (wait_seq) {
+        if (++wait_t >= RESEND_AFTER) {
+            wait_t = 0;
+            send(SC_ACT, a, 5);
+        }
+    } else if (act != ACT_NONE) {
         if (++seq == 0)
             seq = 1;
         a[0] = seq;
@@ -337,6 +347,7 @@ uint8_t net_step(void)
         wait_seq = seq;
         wait_act = act;
         act = ACT_NONE;
+        wait_t = 0;
     }
     r = take();
     if ((uint8_t)(ns_taken - credited) >= 48)

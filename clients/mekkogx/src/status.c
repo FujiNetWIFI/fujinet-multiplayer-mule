@@ -46,7 +46,7 @@ extern const uint8_t fx_land[];
 #endif
 
 static uint8_t su_order[4];     /* seats by rank */
-static uint8_t su_drawn, su_pressed, su_land;
+static uint8_t su_drawn, su_land;
 
 /* the seats in rank order (rank 1 first); anyone without a rank last */
 static void su_rank(void)
@@ -152,7 +152,7 @@ static void su_begin(void)
     gfx_clear();
     ph_t0 = frame_count;
     scr_now = SCR_SUMMARY;
-    su_drawn = su_pressed = 0;
+    su_drawn = 0;
     su_rank();
     /* arriving late: straight to the table */
     if (pe_now() > 400 && rnd > 0) {
@@ -231,8 +231,9 @@ void summary_tick(void)
         su_table();
     if (su_drawn) {
         msg_tick();
-        if (ev_btn && !su_pressed && my_seat < 4) {
-            su_pressed = 1;
+        /* again while the server doesn't show us ready: a press it never
+         * got mustn't hold the whole table */
+        if (ev_btn && my_seat < 4 && !(PL(my_seat).flags & PF_READY)) {
             act_send(ACT_READY, 0);
             snd_play(SND_SELECT);
         }

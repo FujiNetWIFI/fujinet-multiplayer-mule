@@ -34,6 +34,11 @@
 #define RESYNC_GAP 30           /* frames between RESYNCs: one bad frame (an
                                  * echo of our own, a collision on the wire)
                                  * mustn't start a storm of them */
+#define RESEND_AFTER 180        /* frames before an unanswered action goes
+                                 * again: its answer was lost (a bad frame,
+                                 * or the RESYNC that followed emptied the
+                                 * server's queue) and nothing else would
+                                 * ever let the next one go */
 
 uint8_t ns_on;                  /* the link is up */
 uint16_t nt_dropped;            /* (nstrans.h) */
@@ -64,6 +69,7 @@ static uint8_t joined, heard;
 static uint8_t seq, wait_seq, wait_act, credited, hello_n, hello_t, resync_hold;
 static uint8_t resync_owed;     /* a bad frame came during the hold: ask after it */
 static uint8_t pending;         /* an action whose write failed: again, as it was */
+static uint8_t wait_t;          /* frames its answer has been awaited */
 static uint16_t quiet;
 
 typedef char mule_state_is_550_bytes[sizeof(MuleState) == 550 ? 1 : -1];
@@ -332,7 +338,7 @@ static uint8_t take(void)
             stage_get();
             if (wait_seq && fbuf[1] == wait_seq) {
                 act_sent = wait_act;
-                wait_seq = 0;
+                wait_seq = pending = 0;
                 return 1;
             }
             act_sent = ACT_STATE;
@@ -386,13 +392,18 @@ uint8_t net_step(void)
         send_hello();               /* the socket may not have been open */
     }
     if (pending) {
-        /* the write failed: the same frame again (the same seq: if it did
-         * go, the server answers it once more rather than act twice) */
+        /* the write failed, or its answer never came: the same frame again
+         * (the same seq: if it did go, the server answers it once more
+         * rather than act twice) */
         if (send(SC_ACT, a, 5)) {
             pending = 0;
             wait_seq = a[0];
+            wait_t = 0;
         }
-    } else if (act != ACT_NONE && !wait_seq) {
+    } else if (wait_seq) {
+        if (++wait_t >= RESEND_AFTER)
+            pending = 1;
+    } else if (act != ACT_NONE) {
         if (++seq == 0)
             seq = 1;
         a[0] = seq;
@@ -402,6 +413,7 @@ uint8_t net_step(void)
         a[4] = au_traded;       /* the units we have shown (ACT_PUSH) */
         wait_act = act;
         act = ACT_NONE;
+        wait_t = 0;
         if (send(SC_ACT, a, 5))
             wait_seq = seq;
         else
