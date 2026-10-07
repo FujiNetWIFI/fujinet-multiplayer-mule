@@ -336,9 +336,11 @@ $(NSOBJ)/src/auction.o:                       CFLAGS += --code-name OVERLAY4 --r
 $(NSOBJ)/src/develop.o:                       CFLAGS += --code-name OVERLAY5 --rodata-name OVERLAY5
 $(NSOBJ)/src/strings.o:                       CFLAGS += --rodata-name STRS
 $(NSOBJ)/gen/nes/gfx.o:                       CFLAGS += --rodata-name ART
-# R7's bank: the rest of the program, never switched out
+# R7's bank: the rest of the program, never switched out (fx.c's scripts
+# and text.c's tables with it: the fixed bank is full)
 $(NSOBJ)/src/nsnet.o $(NSOBJ)/src/net.o $(NSOBJ)/src/text.o $(NSOBJ)/src/map.o \
   $(NSOBJ)/src/test.o $(NSOBJ)/src/fx.o:      CFLAGS += --code-name CODE2
+$(NSOBJ)/src/text.o $(NSOBJ)/src/fx.o:        CFLAGS += --rodata-name CODE2
 
 # The claim, the vectors and no read-modify-write of the mailbox.
 nes/executable-post::
