@@ -43,6 +43,7 @@ static uint16_t au_lim;         /* land: 30 steps, how far a bid runs over the b
 static uint8_t au_role[4];
 static uint16_t au_pos[4], au_tgt[4], au_base;
 static uint8_t au_on, au_tick;
+static uint8_t au_ph;           /* steps taken: the walk frames and blinking */
 static uint8_t au_money_all;    /* the money fields were cleared: all again */
 static uint8_t au_push;         /* our stick as sent: 0 released, 1 up, 2 down */
 static uint8_t au_held;         /* frame (low byte) our line was let go */
@@ -93,7 +94,9 @@ static uint8_t price_y(uint16_t w)
     return AU_Y_BASE + (uint8_t)d * 2;
 }
 
-/* Place the players (every 8 frames while the lines move, and after a state). */
+/* Place the players (at each step of the lines, and after a state). The
+ * walk frames and the blinking go by the steps too, so a player is drawn
+ * once a step, with the price lines (a slow machine drew them twice). */
 static void au_draw(void)
 {
     uint8_t i, y, f;
@@ -107,13 +110,13 @@ static void au_draw(void)
             y = au_role[i] == ROLE_SELLER ? AU_Y_SELL : AU_Y_BOT;
         else
             y = price_y(au_pos[i]);
-        /* dealing: 16 frames on, 16 off */
-        if ((au_blink & (1 << i)) && (frame_count & 16)) {
+        /* dealing: two steps on, two off */
+        if ((au_blink & (1 << i)) && (au_ph & 2)) {
             spr_hide(i);
             continue;
         }
         f = (au_pl(i)->species & 7) * 11 + 5;
-        if (au_pos[i] != au_tgt[i] && (frame_count & 8))
+        if (au_pos[i] != au_tgt[i] && (au_ph & 1))
             ++f;
         spr_set(i, SH_SPECIES, f, col_x[i], (int16_t)y - 22, au_col(i), 0);
     }
@@ -142,12 +145,10 @@ void auction_isr(void)
     uint8_t i;
     if (!au_on)
         return;
-    if (++au_tick < 8) {
-        if ((frame_count & 7) == 0)
-            au_draw();          /* the walk frames and blinking */
+    if (++au_tick < 8)
         return;
-    }
     au_tick = 0;
+    ++au_ph;
     for (i = 0; i < 4; ++i)
         au_step(i);
     au_draw();
@@ -162,7 +163,7 @@ void auction_isr(void)
  * price / the bottom of the land scale). */
 static void au_lines(void)
 {
-    uint8_t i, j = 255, y;
+    uint8_t i, j = 255, y, k;
     uint16_t w;
     if (au_stage == STAGE_SHOW || (au_kind == 1 && au_stage < STAGE_LEAD))
         return;
@@ -186,16 +187,21 @@ static void au_lines(void)
         y = 255;
     if (j == au_ln1 && y == au_ln2)
         return;
-    if (au_ln1 != 255 && au_ln1 != j && au_ln1 != y)
-        gfx_hdots(LINE_X, au_ln1, LINE_W, C_BLACK);
-    if (au_ln2 != 255 && au_ln2 != j && au_ln2 != y)
-        gfx_hdots(LINE_X, au_ln2, LINE_W, C_BLACK);
+    /* the new lines first (a line that stays is not drawn again), then
+     * the old ones off: where a slow machine takes frames over the four,
+     * a line lingers rather than going missing */
+    i = au_ln1;
+    k = au_ln2;
     au_ln1 = j;
     au_ln2 = y;
-    if (j != 255)
+    if (j != 255 && j != i && j != k)
         gfx_hdots(LINE_X, j, LINE_W, C_WHITE);
-    if (y != 255)
+    if (y != 255 && y != i && y != k)
         gfx_hdots(LINE_X, y, LINE_W, C_WHITE);
+    if (i != 255 && i != j && i != y)
+        gfx_hdots(LINE_X, i, LINE_W, C_BLACK);
+    if (k != 255 && k != j && k != y)
+        gfx_hdots(LINE_X, k, LINE_W, C_BLACK);
 }
 
 /* Seat i's field on row 18 cleared; its first cell. */
@@ -209,12 +215,17 @@ static uint8_t au_field(uint8_t i)
 /* Row 18, over each player's money: BUY / SELL while the player stands at
  * its starting line, else the price it has moved to (as on the Atari).
  * One a frame: four at once, as the lines step together, held a slow
- * machine's loop for several frames. */
+ * machine's loop for several frames. They take turns (au_lbl_i), or on a
+ * machine that goes round fewer times than there are labels between two
+ * steps the last player's would never come. */
+static uint8_t au_lbl_i;
+
 static void au_lbl_tick(void)
 {
-    uint8_t i, x;
+    uint8_t i, n, x;
     uint16_t w;
-    for (i = 0; i < 4; ++i) {
+    for (n = 4; n; --n) {
+        i = au_lbl_i = (au_lbl_i + 1) & 3;
         if (au_role[i] == ROLE_NONE) {
             w = 1;
         } else if (au_stage < STAGE_LEAD) {
