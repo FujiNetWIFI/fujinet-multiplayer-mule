@@ -14,7 +14,14 @@ cp -r "$src"/include/. "$out/include/"
 objs=
 for c in "$src"/common/*.c "$src"/bus/nes/*.c; do
     o="$out/obj/$(basename "${c%.c}").o"
-    cl65 -t nes -O --cpu 6502 -DBUILD_NES \
+    # what only the game's boot calls (the appkeys, finding the cartridge)
+    # goes in its boot overlay's bank (mule-nes.cfg OVERLAY1): the fixed
+    # bank is full
+    seg=
+    case "$(basename "$c" .c)" in
+        appkey_nes|fuji_appkey|fuji_nes) seg="--code-name OVERLAY1 --rodata-name OVERLAY1" ;;
+    esac
+    cl65 -t nes -O --cpu 6502 -DBUILD_NES $seg \
          -I "$out/include" -I "$src/bus/nes" -c -o "$o" "$c"
     objs="$objs $o"
 done

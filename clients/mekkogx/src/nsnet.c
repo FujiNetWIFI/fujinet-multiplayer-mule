@@ -463,8 +463,9 @@ uint8_t net_sync(void)
     return net_have;
 }
 
-#ifdef __APPLE2__
-/* Only boot.c calls these: they live in its overlay (main RAM is full). */
+#if defined(__APPLE2__) || defined(__NES__)
+/* Only boot.c calls these: they live in its overlay (the Apple's main RAM,
+ * the NES's fixed bank and R7's are full). */
 #pragma code-name (push, "OVERLAY1")
 #pragma rodata-name (push, "OVERLAY1")
 #endif
@@ -507,7 +508,7 @@ uint8_t net_tables(uint8_t *buf, uint8_t max)
     return buf[0];
 }
 
-#ifdef __APPLE2__
+#if defined(__APPLE2__) || defined(__NES__)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 #endif

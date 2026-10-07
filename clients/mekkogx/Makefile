@@ -338,9 +338,12 @@ $(NSOBJ)/src/strings.o:                       CFLAGS += --rodata-name STRS
 $(NSOBJ)/gen/nes/gfx.o:                       CFLAGS += --rodata-name ART
 # R7's bank: the rest of the program, never switched out (fx.c's scripts
 # and text.c's tables with it: the fixed bank is full)
-$(NSOBJ)/src/nsnet.o $(NSOBJ)/src/net.o $(NSOBJ)/src/text.o $(NSOBJ)/src/map.o \
+$(NSOBJ)/src/nsnet.o $(NSOBJ)/src/text.o $(NSOBJ)/src/map.o \
   $(NSOBJ)/src/test.o $(NSOBJ)/src/fx.o:      CFLAGS += --code-name CODE2
 $(NSOBJ)/src/text.o $(NSOBJ)/src/fx.o:        CFLAGS += --rodata-name CODE2
+# net.c is only the appkeys here (stream mode), which only boot calls: its
+# overlay (so are the lib's appkeys, tools/nes/mkfnlib.sh)
+$(NSOBJ)/src/net.o:                           CFLAGS += --code-name OVERLAY1 --rodata-name OVERLAY1
 
 # The claim, the vectors and no read-modify-write of the mailbox.
 nes/executable-post::

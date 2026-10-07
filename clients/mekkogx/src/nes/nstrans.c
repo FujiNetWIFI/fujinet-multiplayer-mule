@@ -70,12 +70,14 @@ static uint8_t qbuf[96], qlen;  /* flushed frames, not yet written */
 static uint8_t tlen;            /* how many of them the write going has */
 
 /* The cartridge, and a FujiNet answering through it (the cartridge alone
- * answers "no link" after a wait). */
+ * answers "no link" after a wait). Only boot asks: its overlay. */
+#pragma code-name (push, "OVERLAY1")
 uint8_t nt_detect(void)
 {
     uint8_t s;
     return fuji_nes_present() && fuji_get_wifi_status(&s);
 }
+#pragma code-name (pop)
 
 /* A request goes: the registers, the parameter (a 16-bit one, when n16),
  * the data; then the launch. */
