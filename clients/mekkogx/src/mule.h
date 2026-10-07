@@ -120,7 +120,6 @@ void text_center(uint8_t ty, const char *s, uint8_t col);
 void big_center(uint8_t ty, const char *s, uint8_t col);
 void put_num(uint8_t tx, uint8_t ty, uint16_t v, uint8_t w, uint8_t col);  /* right aligned */
 void big_num(uint8_t tx, uint8_t ty, uint16_t v, uint8_t w, uint8_t col);
-void big_num32(uint8_t tx, uint8_t ty, uint32_t v, uint8_t w, uint8_t col);
 uint8_t fmt_num(char *dst, uint16_t v);
 
 /* ---- the map (map.c) -------------------------------------------------- */

@@ -45,6 +45,37 @@ extern const uint8_t fx_land[];
 #define LB_HELP_ROW  20         /* (it may take two rows) */
 #endif
 
+/* big_num for the colony's total, which can pass 65535: in 16 bits, as
+ * q * 10000 + r (a 32-bit division is a library routine of its own on most
+ * of these machines, and slow on all of them). Only this screen needs it. */
+static void big_num32(uint8_t tx, uint8_t ty, uint32_t v, uint8_t w, uint8_t col)
+{
+    char buf[10];
+    uint16_t h = (uint16_t)(v >> 16), q = (uint16_t)v / 10000, r = (uint16_t)v % 10000;
+    uint8_t i = w, k;
+    while (h--) {               /* 65536 = 6 * 10000 + 5536 */
+        q += 6;
+        if ((r += 5536) >= 10000) {
+            r -= 10000;
+            ++q;
+        }
+    }
+    buf[w] = 0;
+    for (k = 0; k < 4 && i; ++k) {      /* the low four digits */
+        buf[--i] = '0' + (uint8_t)(r % 10);
+        r /= 10;
+        if (!r && !q)
+            break;
+    }
+    while (q && i) {
+        buf[--i] = '0' + (uint8_t)(q % 10);
+        q /= 10;
+    }
+    while (i)
+        buf[--i] = ' ';
+    gfx_big(tx, ty, buf, col);
+}
+
 static uint8_t su_order[4];     /* seats by rank */
 static uint8_t su_drawn, su_land;
 

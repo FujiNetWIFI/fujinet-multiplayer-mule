@@ -206,7 +206,9 @@ static uint8_t au_field(uint8_t i)
 }
 
 /* Row 18, over each player's money: BUY / SELL while the player stands at
- * its starting line, else the price it has moved to (as on the Atari). */
+ * its starting line, else the price it has moved to (as on the Atari).
+ * One a frame: four at once, as the lines step together, held a slow
+ * machine's loop for several frames. */
 static void au_lbl_tick(void)
 {
     uint8_t i, x;
@@ -233,6 +235,7 @@ static void au_lbl_tick(void)
             gfx_big(x + BIGW, ROW_LBL, str_word(au_role[i] == ROLE_SELLER ? W_SELL : W_BUY), au_col(i));
         else if (w > 1)
             big_num(x, ROW_LBL, w, 5, au_col(i));
+        break;
     }
 }
 

@@ -33,22 +33,21 @@ extern uint8_t plat_pal;        /* plat.c: 0 CGA, 1 EGA/VGA, 2 PCjr registers */
 /* The screen. CGA's is at B800. The PCjr's 16-colour one is 32K of main
  * RAM (its CPU page, 16K units): its B800 window is only 16K wide, so the
  * upper two banks would wrap onto the lower two there. */
-static uint8_t __far *vram_p;
+uint8_t __far *vram_p;          /* (gfxa.asm too) */
 #define VRAM vram_p
 #define TOP 4                   /* the Atari's line 0 is the screen's 4 */
 
-static uint16_t rowoff[192];
+uint16_t rowoff[192];           /* each line's first byte (gfxa.asm too) */
 /* Four colour clocks (a nibble of a 1-bit picture, MSB left) as screen
  * byte masks: on CGA two bytes (one word), on the PCjr four (two words).
- * Words are little-endian: the left byte is the low one. */
-static uint16_t cga_w[16];
-static uint16_t jr_w[16][2];
+ * Words are little-endian: the left byte is the low one. cga_w is also
+ * four PCjr pixels. Made by gfx_init (gfxinit.c). */
+uint16_t cga_w[16];
+uint16_t jr_w[16][2];
 static uint8_t bgpat;           /* what "black" is: the background */
 
-/* Masks: two units (CGA clocks, PCjr pixels) -> a byte; four CGA pixels
- * -> a byte. */
-static const uint8_t m2[4] = { 0x00, 0x0F, 0xF0, 0xFF };
-static const uint8_t m4[16] = {
+/* Masks: four CGA pixels -> a byte. */
+const uint8_t m4[16] = {
     0x00, 0x03, 0x0C, 0x0F, 0x30, 0x33, 0x3C, 0x3F,
     0xC0, 0xC3, 0xCC, 0xCF, 0xF0, 0xF3, 0xFC, 0xFF,
 };
@@ -119,7 +118,7 @@ static uint8_t preg(uint8_t c)
     return plat_pal == 2 ? c : (uint8_t)((c & 7) | ((c & 8) << 1));
 }
 
-static void set_preg(uint8_t reg, uint8_t c)
+void set_preg(uint8_t reg, uint8_t c)
 {
     union REGS r;
     r.w.ax = 0x1000;
@@ -129,7 +128,7 @@ static void set_preg(uint8_t reg, uint8_t c)
 }
 
 /* Colour 0 (CGA: the background register). */
-static void set_bg(uint8_t c)
+void set_bg(uint8_t c)
 {
     union REGS r;
     if (plat_jr)
@@ -142,44 +141,6 @@ static void set_bg(uint8_t c)
     r.h.bh = 0;
     r.h.bl = 0x10 | c;          /* bit 4: the bright palette */
     int86(0x10, &r, &r);
-}
-
-void gfx_init(void)
-{
-    union REGS r;
-    uint8_t y;
-    uint16_t line;
-
-    r.w.ax = plat_jr ? 0x0009 : 0x0004;
-    int86(0x10, &r, &r);
-    vram_p = MK_FP(0xB800, 0);
-    if (plat_jr) {
-        r.w.ax = 0x0580;        /* PCjr: read the CRT/CPU page registers */
-        int86(0x10, &r, &r);
-        vram_p = MK_FP((uint16_t)r.h.bl << 10, 0);   /* 16K pages */
-    }
-    for (y = 0; y < 16; ++y) {
-        cga_w[y] = (uint16_t)m2[y >> 2] | (uint16_t)m2[y & 3] << 8;
-        jr_w[y][0] = (y & 8 ? 0x00FF : 0) | (y & 4 ? 0xFF00 : 0);
-        jr_w[y][1] = (y & 2 ? 0x00FF : 0) | (y & 1 ? 0xFF00 : 0);
-    }
-    for (y = 0; y < 192; ++y) {
-        line = y + TOP;
-        rowoff[y] = plat_jr ? (line & 3) * 0x2000u + (line >> 2) * 160u
-                            : (line & 1) * 0x2000u + (line >> 1) * 80u;
-    }
-    if (!plat_jr) {
-        r.h.ah = 0x0B;          /* palette 1: cyan, magenta, white */
-        r.h.bh = 1;
-        r.h.bl = 1;
-        int86(0x10, &r, &r);
-        set_bg(0);
-        if (plat_pal) {         /* nearer the Atari's blue and purple */
-            set_preg(1, 9);
-            set_preg(2, 13);
-            set_preg(3, 15);
-        }
-    }
 }
 
 static void clear_all(uint8_t v)
@@ -196,19 +157,43 @@ void gfx_clear(void)
     clear_all(0);
 }
 
-/* ---- spans -------------------------------------------------------------- */
-/* Pixels px0 .. px1 - 1 of Atari line y become pattern pt. */
-static void span(uint8_t y, uint16_t px0, uint16_t px1, uint8_t pt)
+/* ---- gfxa.asm's drawing ------------------------------------------------- */
+/* gx_cells: gx_n cells of a 1-bit picture, opaque, from byte gx_off of
+ * line gx_y on, gx_rows lines (16: each picture row twice). Cell i's rows
+ * are at gx_gb + 8 * gx_gc[i]; gx_kind 0 draws a bit a pixel (text), 1 a
+ * colour clock (big text, pictures). Lit pixels take gx_fg0 (even lines)
+ * or gx_fg1 (odd), the rest gx_bgp. */
+uint8_t gx_gc[40];
+uint16_t gx_gb, gx_off;
+uint8_t gx_n, gx_rows, gx_y, gx_fg0, gx_fg1, gx_bgp, gx_kind;
+void __near gx_cells(void);
+#pragma aux gx_cells "*_" parm [] modify [ax bx cx dx si di es]
+
+/* gx_rect: gx_rows lines from gx_y on, from byte gx_off: through mask
+ * gx_lm (0: none), gx_mid whole bytes, through gx_rm (0: none), in gx_fg0
+ * or gx_fg1. */
+uint8_t gx_mid, gx_lm, gx_rm;
+void __near gx_rect(void);
+#pragma aux gx_rect "*_" parm [] modify [ax bx cx dx si di es]
+
+static void fg(uint8_t col)
 {
-    uint8_t __far *row;
+    gx_fg0 = pat(col, 0);
+    gx_fg1 = pat(col, 1);
+}
+
+/* Pixels px0 .. px1 - 1 of lines y .. y + h - 1 in col. */
+static void rect(uint16_t px0, uint16_t px1, uint8_t y, uint8_t h, uint8_t col)
+{
     uint16_t b0, b1;
-    uint8_t lm, rm, m;
+    uint8_t lm, rm, mid;
 
     if (px1 > 320)
         px1 = 320;
-    if (px0 >= px1 || y >= 192)
+    if (px0 >= px1 || y >= 192 || !h)
         return;
-    row = VRAM + rowoff[y];
+    if ((uint16_t)y + h > 192)
+        h = 192 - y;
     if (plat_jr) {
         b0 = px0 >> 1;
         b1 = (px1 - 1) >> 1;
@@ -220,136 +205,73 @@ static void span(uint8_t y, uint16_t px0, uint16_t px1, uint8_t pt)
         lm = 0xFF >> ((px0 & 3) * 2);
         rm = 0xFF << ((3 - ((px1 - 1) & 3)) * 2);
     }
+    mid = 0;
     if (b0 == b1) {
-        m = lm & rm;
-        row[b0] = (row[b0] & ~m) | (pt & m);
-        return;
-    }
-    row[b0] = (row[b0] & ~lm) | (pt & lm);
-    if (b1 > b0 + 1)
-        _fmemset(row + b0 + 1, pt, b1 - b0 - 1);
-    row[b1] = (row[b1] & ~rm) | (pt & rm);
-}
-
-/* A word of pattern pt through mask m. */
-#define PUTW(d, m, pt) (*(d) = (*(d) & ~(m)) | ((pt) & (m)))
-
-/* One row of a 1-bit picture, a bit a colour clock (MSB left, wb bytes),
- * its left clock at x (either edge may be off the screen): lit clocks
- * become pattern pt, the rest are left alone. */
-static void clk_row(uint8_t y, int16_t x, const uint8_t *src, uint8_t wb, uint8_t pt)
-{
-    uint8_t __far *row = VRAM + rowoff[y];
-    uint16_t pw = pt * 0x101u, m;
-    int16_t b;
-    uint8_t i, k, v, sh, prev, cur;
-
-    if (plat_jr) {              /* a clock is a byte */
-        if (x >= 0 && x + wb * 8 <= 160) {
-            uint16_t __far *d = (uint16_t __far *)(row + x);
-            for (i = 0; i < wb; ++i, d += 4) {
-                v = src[i];
-                if (!v)
-                    continue;
-                if ((m = jr_w[v >> 4][0]) != 0) PUTW(d, m, pw);
-                if ((m = jr_w[v >> 4][1]) != 0) PUTW(d + 1, m, pw);
-                if ((m = jr_w[v & 15][0]) != 0) PUTW(d + 2, m, pw);
-                if ((m = jr_w[v & 15][1]) != 0) PUTW(d + 3, m, pw);
-            }
-            return;
-        }
-        for (i = 0; i < wb; ++i, x += 8) {
-            v = src[i];
-            for (k = 0; v; ++k, v <<= 1)
-                if ((v & 0x80) && (uint16_t)(x + k) < 160)
-                    row[x + k] = pt;
-        }
-        return;
-    }
-    /* CGA: two clocks a byte. An odd x puts a clock of nothing in front:
-     * the stream's byte i is then the source's bytes i-1, i shifted one
-     * right, and one byte more comes out. */
-    sh = (uint8_t)x & 1;
-    prev = 0;
-    b = (x - sh) / 2;           /* (even: exact however it rounds) */
-    if (b >= 0 && b + (wb + sh) * 4 <= 80) {
-        uint16_t __far *d = (uint16_t __far *)(row + b);
-        for (i = 0; i <= wb; ++i, d += 2) {
-            if (i == wb && !sh)
-                break;
-            cur = i < wb ? src[i] : 0;
-            v = sh ? (uint8_t)((prev << 7) | (cur >> 1)) : cur;
-            prev = cur;
-            if (!v)
-                continue;
-            if ((m = cga_w[v >> 4]) != 0) PUTW(d, m, pw);
-            if ((m = cga_w[v & 15]) != 0) PUTW(d + 1, m, pw);
-        }
-        return;
-    }
-    for (i = 0; i <= wb; ++i, b += 4) {
-        if (i == wb && !sh)
-            break;
-        cur = i < wb ? src[i] : 0;
-        v = (uint8_t)((((uint16_t)prev << 8) | cur) >> sh);
-        prev = cur;
-        for (k = 0; v; ++k, v <<= 2) {
-            m = m2[v >> 6];
-            if (m && (uint16_t)(b + k) < 80)
-                row[b + k] = (row[b + k] & ~m) | (pt & m);
+        lm &= rm;
+        rm = 0;
+    } else {
+        mid = (uint8_t)(b1 - b0 - 1);
+        if (rm == 0xFF) {       /* whole bytes go in the middle */
+            rm = 0;
+            ++mid;
         }
     }
+    if (lm == 0xFF) {
+        lm = 0;
+        ++mid;
+    }
+    gx_off = b0;
+    gx_y = y;
+    gx_rows = h;
+    gx_lm = lm;
+    gx_rm = rm;
+    gx_mid = mid;
+    fg(col);
+    gx_rect();
 }
 
 /* ---- text ------------------------------------------------------------- */
-static const uint8_t *glyph_of(char c)
+static uint8_t glyph_ix(char c)
 {
     if (c >= 'a' && c <= 'z')
         c -= 32;
     if (c < 32 || c > 95)
         c = '?';
-    return dos_font + ((uint8_t)(c - 32) << 3);
+    return (uint8_t)(c - 32);
 }
 
-/* A glyph in cell tx, line y, opaque: lit pixels in col, the rest the
- * background. */
-static void glyph(uint8_t tx, uint8_t y, char c, uint8_t col)
+/* gx_cells over gx_n cells: column tx (big: two a cell), line y. */
+static void cells(uint8_t kind, uint8_t tx, uint8_t y, uint8_t col)
 {
-    const uint8_t *g = glyph_of(c);
-    uint8_t __far *p;
-    uint8_t r, v, pt;
-    for (r = 0; r < 8; ++r) {
-        v = g[r];
-        pt = pat(col, y + r);
-        p = VRAM + rowoff[y + r];
-        if (plat_jr) {
-            p += tx * 4;
-            p[0] = (bgpat & ~m2[v >> 6]) | (pt & m2[v >> 6]);
-            p[1] = (bgpat & ~m2[(v >> 4) & 3]) | (pt & m2[(v >> 4) & 3]);
-            p[2] = (bgpat & ~m2[(v >> 2) & 3]) | (pt & m2[(v >> 2) & 3]);
-            p[3] = (bgpat & ~m2[v & 3]) | (pt & m2[v & 3]);
-        } else {
-            p += tx * 2;
-            p[0] = (bgpat & ~m4[v >> 4]) | (pt & m4[v >> 4]);
-            p[1] = (bgpat & ~m4[v & 15]) | (pt & m4[v & 15]);
-        }
-    }
+    gx_kind = kind;
+    gx_gb = (uint16_t)dos_font;
+    gx_off = plat_jr ? tx * 4 : tx * 2;
+    gx_y = y;
+    gx_rows = 8;
+    gx_bgp = bgpat;
+    fg(col);
+    gx_cells();
 }
 
 void gfx_char(uint8_t tx, uint8_t ty, char c, uint8_t col)
 {
     if (tx > 39 || ty > 23)
         return;
-    glyph(tx, ty << 3, c, col);
+    gx_gc[0] = glyph_ix(c);
+    gx_n = 1;
+    cells(0, tx, ty << 3, col);
 }
 
 void gfx_textn(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
 {
+    uint8_t k = 0;
     if (ty > 23)
         return;
     spr_bg(tx << 2, n << 2, ty << 3, 8);
-    while (n-- && *s && tx < 40)
-        glyph(tx++, ty << 3, *s++, col);
+    while (n-- && *s && tx + k < 40)
+        gx_gc[k++] = glyph_ix(*s++);
+    gx_n = k;
+    cells(0, tx, ty << 3, col);
     bg_done();
 }
 
@@ -360,14 +282,12 @@ void gfx_text(uint8_t tx, uint8_t ty, const char *s, uint8_t col)
 
 void gfx_clear_text(uint8_t tx, uint8_t ty, uint8_t w)
 {
-    uint8_t r;
     if (tx >= 40 || ty > 23)
         return;
     if (tx + w > 40)
         w = 40 - tx;
     spr_bg(tx << 2, w << 2, ty << 3, 8);
-    for (r = 0; r < 8; ++r)
-        span((ty << 3) + r, tx * 8u, (tx + w) * 8u, bgpat);
+    rect(tx * 8u, (tx + w) * 8u, ty << 3, 8, C_BLACK);
     bg_done();
 }
 
@@ -375,21 +295,16 @@ void gfx_clear_text(uint8_t tx, uint8_t ty, uint8_t w)
  * opaque. */
 void gfx_bign(uint8_t tx, uint8_t ty, const char *s, uint8_t n, uint8_t col)
 {
-    const uint8_t *g;
-    uint8_t r, y = ty << 3;
+    uint8_t k = 0;
     char c;
     tx &= 0xFE;
     if (ty > 23)
         return;
-    spr_bg(tx << 2, n << 3, y, 8);
-    while (n-- && (c = *s++) != 0 && tx < 40) {
-        g = glyph_of(c);
-        for (r = 0; r < 8; ++r) {
-            span(y + r, tx * 8u, tx * 8u + 16, bgpat);
-            clk_row(y + r, tx * 4, g + r, 1, pat(col, y + r));
-        }
-        tx += 2;
-    }
+    spr_bg(tx << 2, n << 3, ty << 3, 8);
+    while (n-- && (c = *s++) != 0 && tx + 2 * k < 40)
+        gx_gc[k++] = glyph_ix(c);
+    gx_n = k;
+    cells(1, tx, ty << 3, col);
     bg_done();
 }
 
@@ -401,32 +316,49 @@ void gfx_big(uint8_t tx, uint8_t ty, const char *s, uint8_t col)
 /* ---- rectangles ------------------------------------------------------- */
 void gfx_fill(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t col)
 {
-    uint8_t r;
     spr_bg(x, w, y, h);
-    for (r = 0; r < h && y + r < 192; ++r)
-        span(y + r, x * 2u, (x + w) * 2u, pat(col, y + r));
+    rect(x * 2u, (x + w) * 2u, y, h, col);
     bg_done();
 }
 
+/* A dot every other colour clock (gfxa.asm's gx_hdots: gx_n of them from
+ * byte gx_off of line gx_y, in gx_fg0): on the PCjr every other byte, on
+ * CGA the same half (gx_lm) of each byte. */
+void __near gx_hdots(void);
+#pragma aux gx_hdots "*_" parm [] modify [ax bx cx dx di es]
+
 void gfx_hdots(uint8_t x, uint8_t y, uint8_t w, uint8_t col)
 {
-    uint8_t pt = pat(col, y), c;
+    uint8_t n;
+    if (y >= 192 || x >= 160)
+        return;
     spr_bg(x, w, y, 1);
-    for (c = 0; c < w; c += 2)
-        span(y, (x + c) * 2u, (x + c) * 2u + 2, pt);
+    n = (w + 1) >> 1;
+    if (n > (uint8_t)((161 - x) >> 1))
+        n = (161 - x) >> 1;
+    gx_y = y;
+    gx_n = n;
+    gx_fg0 = pat(col, y);
+    gx_off = plat_jr ? x : x >> 1;
+    gx_lm = (x & 1) ? 0x0F : 0xF0;
+    gx_hdots();
     bg_done();
 }
 
 void gfx_pic(uint8_t x, uint8_t y, uint8_t pic, uint8_t col)
 {
-    uint8_t r, pt;
     spr_bg(x, 8, y, 16);
-    /* the picture replaces what was there */
-    for (r = 0; r < 16; ++r) {
-        pt = pat(col, y + r);
-        span(y + r, x * 2u, x * 2u + 16, bgpat);
-        clk_row(y + r, x, &dos_pics[pic][r >> 1], 1, pt);
-    }
+    /* the picture replaces what was there: a cell of 8 rows, each twice */
+    gx_kind = 1;
+    gx_gc[0] = 0;
+    gx_n = 1;
+    gx_gb = (uint16_t)dos_pics[pic];
+    gx_off = plat_jr ? x : x >> 1;
+    gx_y = y;
+    gx_rows = 16;
+    gx_bgp = bgpat;
+    fg(col);
+    gx_cells();
     bg_done();
 }
 
@@ -444,41 +376,30 @@ void gfx_map_frame(void)
 
 static const uint8_t zeros[64];
 static uint8_t dots[64];
-static uint16_t pl_r, pl_w, pl_bg;      /* the river's, white's, the plains' */
 
-/* A word of a plot: white (mw) over the owner's (mo, in pattern po) over
- * the river (mr) over the plains. */
-static void plot_word(uint16_t __far *d, uint16_t mw, uint16_t mo, uint16_t mr, uint8_t po)
-{
-    uint16_t t;
-    if (!(mw | mo | mr)) {
-        *d = pl_bg;
-        return;
-    }
-    mo &= ~mw;
-    t = mw | mo;
-    mr &= ~t;
-    t |= mr;
-    *d = (pl_bg & ~t) | (pl_w & mw) | ((po * 0x101u) & mo) | (pl_r & mr);
-}
+/* gx_plot: a plot's 32 lines from line pl_y0, byte pl_x on, opaque. Its
+ * layers are 64 bytes, 2 a line (16 clocks): white (pl_wh, in pl_w) over
+ * the owner's (pl_o1 | pl_o2 | pl_o3, in pl_p0 / pl_p1 by line) over the
+ * river (pl_rv, in pl_r) over the plains (pl_bg). */
+const uint8_t *pl_o1, *pl_o2, *pl_o3, *pl_wh, *pl_rv;
+uint16_t pl_r, pl_w, pl_bg, pl_x;
+uint8_t pl_y0, pl_p0, pl_p1;
+void __near gx_plot(void);
+#pragma aux gx_plot "*_" parm [] modify [ax bx cx dx si di es]
 
-/* A plot: 32 lines of 16 clocks, opaque. On each: white (mountains, the
- * store) over the owner's (border, icon, dots) over the river, over the
- * plains. */
 uint16_t gfx_nplot;              /* (tools/dossim peeks it) */
 void gfx_plot(uint8_t p, const PlotLook *look)
 {
-    const uint8_t *o1 = zeros, *o2 = zeros, *o3 = zeros, *wh = zeros, *rv = zeros;
-    uint8_t i, r, k, x0, y0, y, po, ob, rb, wb;
-    uint16_t __far *d;
+    uint8_t i, r, x0;
 
+    pl_o1 = pl_o2 = pl_o3 = pl_wh = pl_rv = zeros;
     if (look->store) {
-        wh = plot_parts[PP_STORE];
+        pl_wh = plot_parts[PP_STORE];
     } else {
         if (look->owned) {
-            o1 = plot_parts[PP_BORDER];
+            pl_o1 = plot_parts[PP_BORDER];
             if (look->icon)
-                o2 = plot_parts[PP_ICON + look->icon - 1];
+                pl_o2 = plot_parts[PP_ICON + look->icon - 1];
             if (look->dots) {
                 memset(dots, 0, 64);
                 for (i = 0; i < look->dots && i < 8; ++i) {
@@ -486,46 +407,31 @@ void gfx_plot(uint8_t p, const PlotLook *look)
                     dots[r] |= 0x80 >> (plot_dots[i][1] & 7);
                     dots[r + 2] |= 0x80 >> (plot_dots[i][1] & 7);
                 }
-                o3 = dots;
+                pl_o3 = dots;
             }
         }
         if (look->mountains)
-            wh = plot_parts[PP_MOUNT + look->mountains - 1];
+            pl_wh = plot_parts[PP_MOUNT + look->mountains - 1];
         if (look->river)
-            rv = plot_parts[PP_RIVER];
+            pl_rv = plot_parts[PP_RIVER];
     }
     ++gfx_nplot;
     x0 = PLOT_X(p);
-    y0 = PLOT_Y(p);
-    spr_bg(x0, 16, y0, 32);
+    pl_y0 = PLOT_Y(p);
+    spr_bg(x0, 16, pl_y0, 32);
     if (plat_jr) {
         pl_r = JR_RIVER * 0x1111u;
         pl_w = (look->mountains && !look->store) ? 0x0000 : 0xFFFF;   /* black mountains */
+        pl_x = x0;
     } else {
         pl_r = 0x5555;          /* cyan (light blue on EGA/VGA), the nearest to blue */
         pl_w = 0xFFFF;
+        pl_x = x0 >> 1;
     }
     pl_bg = bgpat * 0x101u;
-    for (r = 0; r < 32; ++r) {
-        y = y0 + r;
-        k = r * 2;
-        po = pat(look->col, y);
-        d = (uint16_t __far *)(VRAM + rowoff[y] + (plat_jr ? x0 : x0 >> 1));
-        for (i = 0; i < 2; ++i, ++k) {
-            ob = o1[k] | o2[k] | o3[k];
-            rb = rv[k];
-            wb = wh[k];
-            if (plat_jr) {
-                plot_word(d++, jr_w[wb >> 4][0], jr_w[ob >> 4][0], jr_w[rb >> 4][0], po);
-                plot_word(d++, jr_w[wb >> 4][1], jr_w[ob >> 4][1], jr_w[rb >> 4][1], po);
-                plot_word(d++, jr_w[wb & 15][0], jr_w[ob & 15][0], jr_w[rb & 15][0], po);
-                plot_word(d++, jr_w[wb & 15][1], jr_w[ob & 15][1], jr_w[rb & 15][1], po);
-            } else {
-                plot_word(d++, cga_w[wb >> 4], cga_w[ob >> 4], cga_w[rb >> 4], po);
-                plot_word(d++, cga_w[wb & 15], cga_w[ob & 15], cga_w[rb & 15], po);
-            }
-        }
-    }
+    pl_p0 = pat(look->col, 0);
+    pl_p1 = pat(look->col, 1);
+    gx_plot();
     bg_done();
 }
 
@@ -533,51 +439,27 @@ void gfx_plot(uint8_t p, const PlotLook *look)
 /* 144 lines from line 16, clocks 32..127, unpacked as it is drawn
  * (tools/mkgfx_dos.py rle): a byte a clock, RGBI in both nibbles, as the
  * PCjr shows it. CGA takes the clocks two at a time into its palette, the
- * corral's grey inside its edge black (white would swamp the screen). */
+ * corral's grey inside its edge black (white would swamp the screen):
+ * gx_town, with the corral's inside in gx_cx0..gx_cy1 (exclusive) and
+ * cga2[], an RGBI's CGA pixel pair. */
+const uint8_t __far *gx_tsrc;
+uint8_t gx_cx0, gx_cy0, gx_cx1, gx_cy1;
+uint8_t cga2[16];
+void __near gx_town(void);
+#pragma aux gx_town "*_" parm [] modify [ax bx cx dx si di es]
+
 void gfx_town(void)
 {
-    const uint8_t __far *src = town_jr;
-    uint8_t __far *d;
-    uint8_t line = 0, x = 0, n, v = 0, lit = 0, run = 0, c, cga = 0;
-    uint8_t cx0 = town_corral[0] + 1, cy0 = town_corral[1] + 1;
-    uint8_t cx1 = town_corral[2] - 1, cy1 = town_corral[3] - 1;
-    uint16_t left = 144u * 96;
-
+    uint8_t i;
+    for (i = 0; i < 16; ++i)
+        cga2[i] = rgbi_cga[i] | rgbi_cga[i] << 2;
+    gx_tsrc = town_jr;
+    gx_cx0 = town_corral[0] + 1;
+    gx_cy0 = town_corral[1] + 1;
+    gx_cx1 = town_corral[2] - 1;
+    gx_cy1 = town_corral[3] - 1;
     spr_bg(32, 96, 16, 144);
-    d = VRAM + rowoff[16] + (plat_jr ? 32 : 16);
-    while (left) {
-        if (!lit && !run) {
-            n = *src++;
-            if (n >= 128)
-                run = n - 125, v = *src++;
-            else
-                lit = n + 1;
-        }
-        if (run) {
-            --run;
-        } else {
-            --lit;
-            v = *src++;
-        }
-        --left;
-        if (plat_jr) {
-            *d++ = v;
-        } else {
-            c = rgbi_cga[v & 15];
-            if (v == 0x88 && x > cx0 && x < cx1 && line > cy0 && line < cy1)
-                c = 0;
-            c |= c << 2;        /* a clock: two pixels */
-            if (x & 1)
-                *d++ = cga | c;
-            else
-                cga = c << 4;
-        }
-        if (++x == 96) {
-            x = 0;
-            if (++line < 144)
-                d = VRAM + rowoff[16 + line] + (plat_jr ? 32 : 16);
-        }
-    }
+    gx_town();
     bg_done();
 }
 
@@ -639,16 +521,59 @@ void spr_hide_all(void)
  * back (last drawn first), save the new ones, draw -- and no sprite is
  * ever off the screen while the beam goes by. */
 static uint16_t s_st[SPR_SLOTS];        /* the ring's row length when drawn */
-static uint8_t lift_y0, lift_y1;        /* lines spr_bg took sprites off */
+uint8_t lift_y0, lift_y1;               /* lines spr_bg took sprites off */
 
 static uint16_t ring(uint16_t st, uint8_t y)
 {
     return (y % (SAVE_MAX / st)) * st;
 }
 
-static void put_row(uint8_t i, uint8_t y, uint16_t off)
+/* A sprite as gfxa.asm's gx_sprlines puts it back, saves and draws it, a
+ * line at a time (its J_* offsets: keep the two in step). */
+typedef struct {
+    uint8_t *save;              /* 0  its save buffer */
+    const uint8_t *src;         /* 2  the picture's next row */
+    int16_t x;                  /* 4  its left clock (either edge may be off) */
+    uint16_t no, nst, nend;     /* 6  the new rows' ring: offset, row, end */
+    uint16_t oo, ost, oend;     /* 12 the old rows' */
+    uint8_t show, sy, sh, bx, n, wb, pt0, pt1;  /* 18 where it goes */
+    uint8_t drawn, osy, osh, obx, on, lifted;   /* 26 where it was */
+    uint8_t same, put;          /* 32 alone, in the same bytes: a line put
+                                 * back (put: the last) is already saved */
+    uint8_t c0, cn, slot;       /* 34 (C's) */
+} SprJob;
+typedef char sprjob_is_37_bytes[sizeof(SprJob) == 37 ? 1 : -1];
+
+SprJob *gx_jp[SPR_SLOTS];       /* gx_sprlines: the sprites, in slot order */
+uint8_t gx_nc, gx_y0, gx_y1, gx_pass;   /* how many; lines y0..y1-1; 0 put
+                                         * back, 1 save and draw, 2 both */
+void __near gx_sprlines(void);
+#pragma aux gx_sprlines "*_" parm [] modify [ax bx cx dx si di es]
+
+static void lines(uint8_t nc, uint8_t y0, uint8_t y1, uint8_t pass)
 {
-    _fmemcpy(VRAM + rowoff[y] + s_bx[i], save[i] + off, s_n[i]);
+    gx_nc = nc;
+    gx_y0 = y0;
+    gx_y1 = y1;
+    gx_pass = pass;
+    gx_sprlines();
+}
+
+/* Where drawn slot i is, from line y on, into t. */
+static void old_job(uint8_t i, uint8_t y, SprJob *t)
+{
+    t->save = save[i];
+    t->drawn = 1;
+    t->osy = s_sy[i];
+    t->osh = s_sh[i];
+    t->obx = s_bx[i];
+    t->on = s_n[i];
+    t->ost = s_st[i];
+    t->oend = SAVE_MAX / t->ost * t->ost;
+    t->oo = ring(t->ost, y > t->osy ? y : t->osy);
+    t->lifted = 0;
+    t->same = 0;
+    t->put = 255;
 }
 
 /* Does drawn sprite j's rectangle meet clocks c0.. (n of them), lines y..? */
@@ -678,34 +603,29 @@ static void close_over(uint8_t i, uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
  * them back over the new background. */
 static uint8_t bg_took;
 
+static uint8_t d_lo = 255, d_hi;        /* the lines drawn sprites are on */
+
 static void spr_bg(uint8_t c0, uint8_t n, uint8_t y, uint8_t h)
 {
-    uint8_t i, l, e;
-    uint16_t y1 = (uint16_t)y + h, off;
+    uint8_t i, nc = 0;
+    uint16_t y1 = (uint16_t)y + h;
+    SprJob jb[SPR_SLOTS];
+    if (y >= d_hi || y1 <= d_lo)
+        return;                 /* (most text: nowhere near one) */
     for (i = 0; i < SPR_SLOTS; ++i)
         hit[i] = s_drawn[i] && meets(i, c0, n, y, h);
     for (i = 0; i < SPR_SLOTS; ++i)
-        if (hit[i])
-            close_over(i, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
-    for (i = SPR_SLOTS; i-- > 0;)
         if (hit[i]) {
-            l = s_sy[i] > y ? s_sy[i] : y;
-            e = s_sy[i] + s_sh[i];
-            if (e > y1)
-                e = (uint8_t)y1;
-            if (l < e) {
-                off = ring(s_st[i], l);
-                for (; l < e; ++l) {
-                    put_row(i, l, off);
-                    if ((off += s_st[i]) >= SAVE_MAX / s_st[i] * s_st[i])
-                        off = 0;
-                }
-            }
+            close_over(i, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
+            gx_jp[nc] = &jb[nc];
+            old_job(i, y, &jb[nc++]);
             s_dirty[i] |= 2;
             bg_took = any_dirty = 1;
         }
     lift_y0 = y;
     lift_y1 = y1 > 255 ? 255 : (uint8_t)y1;
+    if (nc)
+        lines(nc, y, lift_y1, 0);
 }
 
 static void bg_done(void)
@@ -716,25 +636,21 @@ static void bg_done(void)
     }
 }
 
-/* A sprite being drawn by spr_flush: where (as s_bx.. will say once it
- * is), the picture's next row, and where its rows are in the rings. */
-typedef struct {
-    const uint8_t *src;
-    int16_t x;
-    uint8_t bx, n, sy, sh, c0, cn, wb, pt0, pt1, show;
-    uint16_t st, rows, no, oo;
-} Draw;
-
 /* Where slot i would be drawn now, into t. */
-static void src_of(uint8_t i, Draw *t)
+static void src_of(uint8_t i, SprJob *t)
 {
     const ShapeDef *d = &dos_shapes[s_shape[i]];
     uint8_t frame = s_frame[i];
-    uint16_t sz = (uint16_t)d->wb * d->h;
+    uint16_t sz = (uint16_t)d->wb * d->h, rows;
     const uint8_t *src;
     int16_t yy = s_y[i], hh = d->h, left, right;
 
+    t->save = save[i];
+    t->slot = i;
     t->show = 0;
+    t->drawn = 0;
+    t->same = 0;
+    t->put = 255;
     if (!s_on[i])
         return;
     if (s_flags[i] & SPR_FLIPX) {
@@ -765,15 +681,16 @@ static void src_of(uint8_t i, Draw *t)
     if (plat_jr) {
         t->bx = (uint8_t)left;
         t->n = (uint8_t)(right - left + 1);
-        t->st = d->w;
+        t->nst = d->w;
     } else {
         t->bx = (uint8_t)(left >> 1);
         t->n = (uint8_t)(right >> 1) - t->bx + 1;
-        t->st = (d->w >> 1) + 1;
+        t->nst = (d->w >> 1) + 1;
     }
-    t->rows = SAVE_MAX / t->st;
-    if (hh > (int16_t)t->rows)
-        hh = t->rows;
+    rows = SAVE_MAX / t->nst;
+    t->nend = rows * t->nst;
+    if (hh > (int16_t)rows)
+        hh = rows;
     t->sy = (uint8_t)yy;
     t->sh = (uint8_t)hh;
     t->c0 = (uint8_t)left;
@@ -781,14 +698,42 @@ static void src_of(uint8_t i, Draw *t)
     t->wb = d->wb;
     t->pt0 = pat(s_col[i], 0);
     t->pt1 = pat(s_col[i], 1);
-    t->no = ring(t->st, t->sy);
+    t->no = ring(t->nst, t->sy);
+}
+
+/* Each job's rectangle, old and new together: lines lo..hi-1 (within
+ * y0..y1-1), bytes xl..xh-1. */
+static uint8_t lo[SPR_SLOTS], hi[SPR_SLOTS], xl[SPR_SLOTS], xh[SPR_SLOTS], grp[SPR_SLOTS];
+
+static void rect_of(uint8_t k, SprJob *t, uint8_t y0, uint8_t y1)
+{
+    uint8_t a = 255, b = 0, l = 255, r = 0, e;
+    if (t->show) {
+        a = t->sy;
+        b = t->sy + t->sh;
+        l = t->bx;
+        r = t->bx + t->n;
+    }
+    if (t->drawn) {
+        if (t->osy < a)
+            a = t->osy;
+        if ((e = t->osy + t->osh) > b)
+            b = e;
+        if (t->obx < l)
+            l = t->obx;
+        if ((e = t->obx + t->on) > r)
+            r = e;
+    }
+    lo[k] = a < y0 ? y0 : a;
+    hi[k] = b > y1 ? y1 : b;
+    xl[k] = l;
+    xh[k] = r;
 }
 
 void spr_flush(void)
 {
-    uint8_t i, k, l, y0, y1, pass, e, nc;
-    uint8_t cl[SPR_SLOTS];      /* the sprites redrawn, in order */
-    Draw dr[SPR_SLOTS], *t;
+    uint8_t i, j, k, y0, y1, pass, e, nc, part, n;
+    SprJob jb[SPR_SLOTS], *t;
 
     if (!any_dirty)
         return;
@@ -802,11 +747,13 @@ void spr_flush(void)
     y1 = 0;
     nc = 0;
     pass = 2;                   /* each line at once */
+    part = 1;                   /* only spr_bg's lines (it put those back) */
     for (i = 0; i < SPR_SLOTS; ++i) {
         if (!hit[i])
             continue;
-        cl[nc++] = i;
-        t = &dr[i];
+        if (hit[i] != 2)
+            part = 0;
+        t = &jb[nc++];
         src_of(i, t);
         if (t->show) {
             if (t->sy < y0)
@@ -815,53 +762,77 @@ void spr_flush(void)
                 y1 = e;
         }
         if (s_drawn[i]) {
-            t->oo = ring(s_st[i], s_sy[i]);
+            old_job(i, 0, t);
+            t->lifted = hit[i] & 2;
             if (s_sy[i] < y0)
                 y0 = s_sy[i];
             if ((e = s_sy[i] + s_sh[i]) > y1)
                 y1 = e;
             /* a line's new row must not land where an old row not put back
              * yet is: if it could, the old all come off first */
-            if (t->show && (t->st != s_st[i] || e > (uint16_t)t->sy + t->rows))
+            if (t->show && (t->nst != t->ost || e > (uint16_t)t->sy + t->nend / t->nst))
                 pass = 0;
             close_over(i, s_c0[i], s_cn[i], s_sy[i], s_sh[i]);
         }
         if (t->show)
             close_over(i, t->c0, t->cn, t->sy, t->sh);
     }
-    for (;;) {                  /* pass 2: both; 0: put back, then 1: draw */
-        for (l = y0; l < y1; ++l) {
-            if (pass != 1)
-                for (k = nc; k-- > 0;) {
-                    i = cl[k];
-                    t = &dr[i];
-                    if (s_drawn[i] && (uint8_t)(l - s_sy[i]) < s_sh[i]) {
-                        if (!((hit[i] & 2) && l >= lift_y0 && l < lift_y1))
-                            put_row(i, l, t->oo);
-                        if ((t->oo += s_st[i]) >= SAVE_MAX / s_st[i] * s_st[i])
-                            t->oo = 0;
-                    }
-                }
-            if (pass != 0)
-                for (k = 0; k < nc; ++k) {
-                    i = cl[k];
-                    t = &dr[i];
-                    if (t->show && (uint8_t)(l - t->sy) < t->sh) {
-                        _fmemcpy(save[i] + t->no, VRAM + rowoff[l] + t->bx, t->n);
-                        if ((t->no += t->st) >= t->rows * t->st)
-                            t->no = 0;
-                        clk_row(l, t->x, t->src, t->wb, (l & 1) ? t->pt1 : t->pt0);
-                        t->src += t->wb;
-                    }
-                }
-        }
-        if (pass)
-            break;
+    if (part && nc) {
+        /* nothing moved: save and draw again only what spr_bg took off */
         pass = 1;
+        if (y0 < lift_y0)
+            y0 = lift_y0;
+        if (y1 > lift_y1)
+            y1 = lift_y1;
+        for (k = 0; k < nc; ++k) {
+            t = &jb[k];
+            if (t->show && t->sy < y0) {
+                t->src += (uint8_t)(y0 - t->sy) * t->wb;
+                t->no = ring(t->nst, y0);
+            }
+        }
+    }
+    /* Those whose rectangles (old and new) meet are done together, a line
+     * at a time, in order; the rest each alone, on its lines (a line then
+     * looks only at it). */
+    for (k = 0; k < nc; ++k) {
+        rect_of(k, &jb[k], y0, y1);
+        grp[k] = k;
+        for (j = 0; j < k; ++j)
+            if (lo[j] < hi[k] && lo[k] < hi[j] && xl[j] < xh[k] && xl[k] < xh[j] &&
+                grp[j] != grp[k]) {
+                n = grp[k];
+                for (i = 0; i <= k; ++i)
+                    if (grp[i] == n)
+                        grp[i] = grp[j];
+            }
     }
     for (k = 0; k < nc; ++k) {
-        i = cl[k];
-        t = &dr[i];
+        if (grp[k] != k)
+            continue;           /* (a group's first is its own) */
+        n = 0;
+        y0 = 255;
+        y1 = 0;
+        for (j = k; j < nc; ++j)
+            if (grp[j] == k && lo[j] < hi[j]) {
+                gx_jp[n++] = &jb[j];
+                if (lo[j] < y0)
+                    y0 = lo[j];
+                if (hi[j] > y1)
+                    y1 = hi[j];
+            }
+        if (n) {
+            t = gx_jp[0];
+            t->same = n == 1 && t->show && t->drawn && t->bx == t->obx && t->n == t->on &&
+                      t->nst == t->ost;
+            lines(n, y0, y1, pass);
+            if (!pass)
+                lines(n, y0, y1, 1);
+        }
+    }
+    for (k = 0; k < nc; ++k) {
+        t = &jb[k];
+        i = t->slot;
         s_dirty[i] = 0;
         if ((s_drawn[i] = t->show) != 0) {
             s_bx[i] = t->bx;
@@ -870,9 +841,17 @@ void spr_flush(void)
             s_sh[i] = t->sh;
             s_c0[i] = t->c0;
             s_cn[i] = t->cn;
-            s_st[i] = t->st;
+            s_st[i] = t->nst;
         }
     }
     lift_y1 = 0;
+    d_lo = 255;
+    d_hi = 0;
+    for (i = 0; i < SPR_SLOTS; ++i)
+        if (s_drawn[i]) {
+            if (s_sy[i] < d_lo)
+                d_lo = s_sy[i];
+            if ((e = s_sy[i] + s_sh[i]) > d_hi)
+                d_hi = e;
+        }
 }
-

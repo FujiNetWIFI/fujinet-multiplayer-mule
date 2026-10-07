@@ -64,20 +64,6 @@ void big_num(uint8_t tx, uint8_t ty, uint16_t v, uint8_t w, uint8_t col)
     gfx_big(tx, ty, buf, col);
 }
 
-void big_num32(uint8_t tx, uint8_t ty, uint32_t v, uint8_t w, uint8_t col)
-{
-    char buf[10];
-    uint8_t i = w;
-    buf[w] = 0;
-    do {
-        buf[--i] = '0' + (uint8_t)(v % 10);
-        v /= 10;
-    } while (v && i);
-    while (i)
-        buf[--i] = ' ';
-    gfx_big(tx, ty, buf, col);
-}
-
 /* ---- expanding and showing -------------------------------------------- */
 char txt[128];
 uint8_t msg_row = 22, msg_col = C_WHITE, msg_scroll;

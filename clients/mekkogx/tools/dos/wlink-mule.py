@@ -10,9 +10,9 @@ medium-model fujinet-lib, the map, the stack, and runs the real wlink
 
 The overlay groups mirror the Apple's (Makefile, A2OBJ):
   1 boot, teststart   2 status   3 grant, events   4 auction   5 develop
-with two more that only the PC has, for room on a 128K PCjr: net.c's
-appkeys (only boot.c calls them) go with boot, and lobby.c (LEAVE's way
-back to the lobby, once) is an overlay of its own.
+with more that only the PC has, for room on a 128K PCjr: net.c's appkeys
+(only boot.c calls them) and gfxinit.c (once, at the start) go with boot,
+and lobby.c (LEAVE's way back to the lobby, once) is an overlay of its own.
 """
 import os
 import re
@@ -21,7 +21,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OW = os.path.join(HERE, "ow")
-OVERLAYS = [["boot", "teststart", "net"], ["status"], ["grant", "events"],
+OVERLAYS = [["boot", "teststart", "net", "gfxinit"], ["status"], ["grant", "events"],
             ["auction"], ["develop"], ["lobby"]]
 FNLIB = os.environ.get("MULE_FNLIB", "build/fnlib-msdos/fujinet-msdos.lib")
 MAP = "build/mule-msdos.map"
