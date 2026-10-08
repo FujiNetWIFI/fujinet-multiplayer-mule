@@ -443,12 +443,15 @@ static uint8_t au_need(uint8_t i, uint8_t r)
 #define BAR_BOT 112             /* bars stand clear of the players' heads */
 #define BAR_MAX 80              /* 4 lines a unit, at most 20 units */
 
-static void au_bar_draw(uint8_t i)
+/* Bar i, which was `was` lines high, now au_bar[i]: only the lines between
+ * change (the stage began with the area clear). */
+static void au_bar_draw(uint8_t i, uint8_t was)
 {
-    uint8_t x = col_x[i] + 1;
-    gfx_fill(x, BAR_BOT - BAR_MAX, 8, BAR_MAX - au_bar[i], C_BLACK);
-    if (au_bar[i])
-        gfx_fill(x, BAR_BOT - au_bar[i], 8, au_bar[i], au_col(i));
+    uint8_t x = col_x[i] + 1, n = au_bar[i];
+    if (n > was)
+        gfx_fill(x, BAR_BOT - n, 8, n - was, au_col(i));
+    else if (n < was)
+        gfx_fill(x, BAR_BOT - was, 8, was - n, C_BLACK);
 }
 
 static void au_status_targets(void)
@@ -546,14 +549,15 @@ static void au_status_tick(void)
     }
     /* bars move a line every frame (the Atari's pixel every other) */
     for (i = 0; i < 4; ++i) {
-        if (au_bar[i] < au_bar_t[i]) {
+        k = au_bar[i];
+        if (k < au_bar_t[i]) {
             au_bar[i] += 2;
             if (au_bar[i] > au_bar_t[i])
                 au_bar[i] = au_bar_t[i];
-            au_bar_draw(i);
-        } else if (au_bar[i] > au_bar_t[i]) {
-            au_bar[i] = au_bar[i] >= au_bar_t[i] + 2 ? au_bar[i] - 2 : au_bar_t[i];
-            au_bar_draw(i);
+            au_bar_draw(i, k);
+        } else if (k > au_bar_t[i]) {
+            au_bar[i] = k >= au_bar_t[i] + 2 ? k - 2 : au_bar_t[i];
+            au_bar_draw(i, k);
         }
     }
 }
