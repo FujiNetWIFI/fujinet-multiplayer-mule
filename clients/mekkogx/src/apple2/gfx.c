@@ -268,6 +268,13 @@ void gfx_plot(uint8_t p, const PlotLook *look)
 {
     uint8_t i, b, c = hcol[look->col];
 
+    /* sprites off first: putting their rows back uses hgr_plot's layer
+     * pointers (hires.s SVP/AUXP/DP) and sets hg_ (its own rectangle) */
+    b = 2 + (p % 9) * 4;
+    i = 16 + (p / 9) * 32;
+    spr_bg(b, 4, i, 32);
+    hg_bx = b;
+    hg_y = i;
     pl_own1 = pl_own2 = pl_own3 = pl_white = pl_river = zeros;
     if (look->store) {
         pl_white = plot_parts[PP_STORE];
@@ -296,12 +303,6 @@ void gfx_plot(uint8_t p, const PlotLook *look)
     pl_om[0] = pl_om[2] = mask_even[c];
     pl_om[1] = pl_om[3] = mask_odd[c];
     pl_hi = pal_hi[c];
-    /* sprites off first: taking one off sets hg_ (its own rectangle) */
-    b = 2 + (p % 9) * 4;
-    i = 16 + (p / 9) * 32;
-    spr_bg(b, 4, i, 32);
-    hg_bx = b;
-    hg_y = i;
     hgr_plot();
     bg_done();
 }

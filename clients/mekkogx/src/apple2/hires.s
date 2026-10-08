@@ -582,7 +582,7 @@ rows:   jsr     _frame_tick
 ; first, unless spr_bg put one back already (hit bit 1, the line in
 ; lift_y0 .. lift_y1 - 1); then (1 or 2) the new rows saved and drawn, in
 ; order. The rings' offsets and the pictures' rows move on in gfx.c's d_*.
-SVP     = _pl_own2                      ; (hgr_plot's: not in use)
+SVP     = _pl_own2                      ; (hgr_plot's: gfx_plot sets them after spr_bg)
 AUXP    = _pl_own3
 DP      = _pl_white
 
