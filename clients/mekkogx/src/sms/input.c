@@ -21,10 +21,6 @@
 __sfr __at 0xDC PAD_A;          /* 0 = down: up down left right 1 2 */
 __sfr __at 0xDD PAD_B;          /* bit 4: Reset (an SMS1's), 0 = down */
 
-#define J_UP    0x01
-#define J_DOWN  0x02
-#define J_LEFT  0x04
-#define J_RIGHT 0x08
 #define J_1     0x10
 #define J_2     0x20
 #define J_RESET 0x10
@@ -36,6 +32,17 @@ uint8_t inp_hook, inp_hook_dir, inp_hook_btn, inp_hook_key;
 static uint8_t prev_j, prev_r, pause_seen, btn_prev, btn_latch, key_latch;
 static uint8_t two_paused;      /* a Pause came while 2 was held */
 
+/* Port DCh's bits 0-3 (up, down, left, right) as DIR_ bits. (A table:
+ * zsdcc -SO3 dropped the stores of "if (j & ..) dir |= .." one after
+ * another here, and only up counted.) */
+static const uint8_t dir_of[16] = {
+    0, DIR_UP, DIR_DOWN, DIR_UP | DIR_DOWN,
+    DIR_LEFT, DIR_LEFT | DIR_UP, DIR_LEFT | DIR_DOWN, DIR_LEFT | DIR_UP | DIR_DOWN,
+    DIR_RIGHT, DIR_RIGHT | DIR_UP, DIR_RIGHT | DIR_DOWN, DIR_RIGHT | DIR_UP | DIR_DOWN,
+    DIR_RIGHT | DIR_LEFT, DIR_RIGHT | DIR_LEFT | DIR_UP, DIR_RIGHT | DIR_LEFT | DIR_DOWN,
+    DIR_RIGHT | DIR_LEFT | DIR_UP | DIR_DOWN,
+};
+
 void input_init(void)
 {
     prev_j = ~PAD_A;
@@ -45,14 +52,11 @@ void input_init(void)
 
 void input_poll(void)
 {
-    uint8_t j = ~PAD_A, r = ~PAD_B & J_RESET, p = pause_flag, dir = 0, btn, up;
+    uint8_t j = ~PAD_A, r = ~PAD_B & J_RESET, p = pause_flag, dir, btn, up;
 
     up = prev_j & ~j;                   /* let go */
     prev_j = j;
-    if (j & J_UP)    dir |= DIR_UP;
-    if (j & J_DOWN)  dir |= DIR_DOWN;
-    if (j & J_LEFT)  dir |= DIR_LEFT;
-    if (j & J_RIGHT) dir |= DIR_RIGHT;
+    dir = dir_of[j & 15];
     btn = (j & J_1) != 0;
     if (up & J_2) {
         if (!two_paused)

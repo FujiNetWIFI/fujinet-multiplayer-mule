@@ -16,6 +16,8 @@ line; times are in frames of the game's clock:
     wait N                      let N frames pass
     snap NAME                   save OUTDIR/NAME.png
     hold DIRS                   hold directions: any of u d l r (or 'none')
+    pad KEYS                    hold pad 1 itself (MAME's input, not the test
+                                hook): any of u d l r 1 2 (or 'none')
     press                       tap the button
     key CHAR|NUM                type a key (RETURN = 13, ESC = 27)
     peek SYMBOL [N]             print N bytes at a symbol (from the map)
@@ -24,7 +26,8 @@ line; times are in frames of the game's clock:
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
     poke SYMBOL VALUE
 
-The input goes through the game's test hook (inp_hook in input.c), the
+The input goes through the game's test hook (inp_hook in input.c), but
+for `pad`, which goes through port DCh as a player's would; the
 addresses come from z88dk's map (public symbols: a static name may be in
 more than one file). SMSWAV=out.wav records the sound; SMSSIM_SYSTEM picks
 the console (sms1 by default; sms is the SMS2, smspal and sms1pal 50 Hz).
@@ -74,6 +77,8 @@ def main():
             bits = 0 if w[1] == "none" else sum(DIRBITS[ch] for ch in w[1])
             steps.append(("poke", sym("inp_hook"), 1))
             steps.append(("poke", sym("inp_hook_dir"), bits))
+        elif c == "pad":
+            steps.append(("pad", "" if w[1] == "none" else w[1]))
         elif c == "press":
             steps.append(("poke", sym("inp_hook"), 1))
             steps.append(("poke", sym("inp_hook_btn"), 1))
@@ -116,6 +121,8 @@ def main():
             lua.append('{"trace", "%s"},' % f)
         elif s[0] == "test":
             lua.append('{"test", %d, %d, %d, %d},' % s[1:])
+        elif s[0] == "pad":
+            lua.append('{"pad", "%s"},' % s[1])
     lua.append("}")
     lua.append("""
 local fc = %d
@@ -128,6 +135,14 @@ local last_fc = 0
 local frames = 0
 local pcdump = 0
 local asked = false
+local pad = {}
+for pname, port in pairs(manager.machine.ioport.ports) do
+  if pname == ":ctrl1:mspad:JOYPAD" then
+    for fname, field in pairs(port.fields) do pad[fname] = field end
+  end
+end
+local padkeys = {u = "P1 Up", d = "P1 Down", l = "P1 Left", r = "P1 Right",
+                 ["1"] = "P1 Button 1", ["2"] = "P1 Button 2"}
 emu.register_frame_done(function()
   frames = frames + 1
   if frames > 60 * 600 then manager.machine:exit() end
@@ -162,6 +177,11 @@ emu.register_frame_done(function()
       if ((now - wait_until) & 0xFFFF) < 0x8000 then wait_until = nil; i = i + 1 else return end
     elseif s[1] == "poke" then
       mem:write_u8(s[2], s[3]); i = i + 1
+    elseif s[1] == "pad" then
+      for k, name in pairs(padkeys) do
+        pad[name]:set_value(s[2]:find(k, 1, true) and 1 or 0)
+      end
+      i = i + 1
     elseif s[1] == "snap" then
       manager.machine.video:snapshot()
       print("SNAP " .. s[2] .. " game frame " .. now .. " mame frame " .. frames)
