@@ -406,7 +406,7 @@ gen/config.h: FORCE
 	@cmp -s gen/config.h.new gen/config.h || mv gen/config.h.new gen/config.h
 	@rm -f gen/config.h.new
 
-gen/apple2/gfx.c: tools/mkgfx_hgr.py $(ATR)
+gen/apple2/gfx.c: tools/mkgfx_hgr.py tools/tms/namco.bin $(ATR)
 	@mkdir -p gen/apple2
 	@if [ -z "$(ATR)" ]; then \
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi

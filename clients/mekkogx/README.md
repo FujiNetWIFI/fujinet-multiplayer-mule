@@ -48,6 +48,7 @@ A new platform is a `src/<platform>/` directory implementing those headers, plus
 
 **Graphics.**
 - **From the disk.** The font, map characters, mountains, species, map figures, town, ships and event sprites are converted from the original Atari disk (CRC32 F76D2896) by `tools/mkgfx_hgr.py`. The disk comes from `ATR=`, or from a `mule.atr` next to the Makefile.
+- **The font** is the Namco arcade font of the other clients (`tools/tms/namco.bin`), narrowed to 6 pixels and a gap so that a character is one HGR byte; the glyphs that would keep lone (coloured) pixels are redrawn with 2-pixel strokes (`FONT_FIX`).
 - **Copyright.** The converted graphics belong to their copyright holders. They are written only to `gen/`, which is ignored by git; never commit them.
 - **Without the disk** the build uses stand-in art and warns you. It plays, but it looks nothing like M.U.L.E.
 - **Previews.** The conversion also writes NTSC-style previews of the town and the plots to `gen/preview/`.

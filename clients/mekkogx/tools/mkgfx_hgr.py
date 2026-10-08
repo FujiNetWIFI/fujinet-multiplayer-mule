@@ -3,12 +3,14 @@
 
 usage: mkgfx_hgr.py [--atr "M.U.L.E. (1983)(Electronic Arts)(US).atr"] [--preview dir] out.c
 
-With --atr the font, map characters, mountains, species, map figures, town,
-ships and event sprites are converted from the original Atari 8-bit disk
+With --atr the map characters, mountains, species, map figures, town, ships
+and event sprites are converted from the original Atari 8-bit disk
 (CRC32 F76D2896). Those graphics belong to their copyright holders; the
 generated file must not be committed. Without --atr, stand-in art is used
 (the Intellivision client's, clients/intv/tools/mkgfx.py), so the game
 always builds -- but it looks nothing like M.U.L.E., so the Makefile warns.
+The font is the Namco arcade font of the other clients (tools/tms/namco.bin)
+either way.
 
 HGR, briefly: 280 x 192, 7 pixels a byte (bit 0 leftmost, bit 7 picks the
 palette). Two neighbouring pixels make one colour pixel: 140 across. With
@@ -110,15 +112,12 @@ def render_hgr(screen, path, scale=3):
 
 # ---------------------------------------------------------------------------
 class Atari(intv.Atari):
-    def font(self):
-        return [self.main[0x1800 + c * 8:0x1800 + c * 8 + 8] for c in range(64)]
-
     def mapchar_bytes(self, c):
         return self.main[0x1C00 + c * 8:0x1C00 + c * 8 + 8]
 
 
 STANDIN_FONT = {
-    # 5x7 glyphs as 7 rows of 5 bits (MSB left)
+    # 5x7 glyphs as 7 rows of 5 bits (MSB left): mkgfx_atari.py's, without a disk
     'A': [14, 17, 17, 31, 17, 17, 17], 'B': [30, 17, 17, 30, 17, 17, 30], 'C': [14, 17, 16, 16, 16, 17, 14],
     'D': [30, 17, 17, 17, 17, 17, 30], 'E': [31, 16, 16, 30, 16, 16, 31], 'F': [31, 16, 16, 30, 16, 16, 16],
     'G': [14, 17, 16, 23, 17, 17, 15], 'H': [17, 17, 17, 31, 17, 17, 17], 'I': [14, 4, 4, 4, 4, 4, 14],
@@ -141,31 +140,75 @@ STANDIN_FONT = {
 }
 
 
-def font_hgr(atari):
+# ---------------------------------------------------------------------------
+# Font: the Namco arcade font of the other clients (tools/tms/namco.bin),
+# 8 x 8 with the glyphs in columns 0..6. A cell here is a byte, 7 pixels, so
+# a glyph is narrowed to 6 and column 6 is the gap: of the merges of two
+# neighbouring columns and the drops of one, the first that closes no gap
+# and adds the fewest lone pixels (a lone pixel shows in colour, two side by
+# side white). FONT_FIX redraws, with 2-pixel strokes, the glyphs still left
+# with lone pixels and the symbols the game prints; M and W keep all 7
+# columns and touch the next cell, as the Atari font's did.
+# ---------------------------------------------------------------------------
+FONT_FIX = {    # 6 columns, rows 0..6
+    "#": ["......", ".##.##", "######", ".##.##", "######", ".##.##", "......"],
+    "$": ["..##..", ".#####", "##....", ".####.", "....##", "#####.", "..##.."],
+    "'": [".##...", ".##...", "##....", "......", "......", "......", "......"],
+    "*": ["......", "##..##", ".####.", "######", ".####.", "##..##", "......"],
+    ",": ["......", "......", "......", "......", ".##...", ".##...", "##...."],
+    "/": ["....##", "....##", "...##.", "..##..", ".##...", "##....", "##...."],
+    "0": ["..##..", ".####.", "##..##", "##..##", "##..##", ".####.", "..##.."],
+    "8": [".####.", "##..##", "##..##", ".####.", "##..##", "##..##", ".####."],
+    "@": [".####.", "##..##", "##.###", "##.###", "##.##.", "##....", ".####."],
+    "A": ["..##..", ".####.", "##..##", "##..##", "######", "##..##", "##..##"],
+    "K": ["##..##", "##.##.", "####..", "###...", "####..", "##.##.", "##..##"],
+    "Q": [".####.", "##..##", "##..##", "##..##", "##.###", ".####.", "....##"],
+    "V": ["##..##", "##..##", "##..##", "##..##", ".####.", ".####.", "..##.."],
+    "X": ["##..##", "##..##", ".####.", "..##..", ".####.", "##..##", "##..##"],
+}
+FONT_FULL = "MW"
+
+
+def runs(row):
+    """The lengths of a row's runs of lit pixels."""
+    out, n = [], 0
+    for v in row + [0]:
+        if v:
+            n += 1
+        elif n:
+            out.append(n)
+            n = 0
+    return out
+
+
+def narrow(rows):
+    """7 columns -> 6 (see above)."""
+    cands = [[r[:k] + [r[k] | r[k + 1]] + r[k + 2:] for r in rows] for k in range(6)]
+    cands += [[r[:k] + r[k + 1:] for r in rows] for k in range(7)]
+
+    def score(c):
+        s = 0
+        for a, b in zip(rows, c):
+            ra, rb = runs(a), runs(b)
+            s += 100 * (len(ra) == len(rb)) - 10 * max(0, rb.count(1) - ra.count(1))
+        return s
+    return max(cands, key=score)
+
+
+def namco_font():
     """64 glyphs (ASCII 32..95) x 8 rows of HGR bytes (7 pixels, bit 0 left)."""
+    with open(os.path.join(HERE, "tms", "namco.bin"), "rb") as f:
+        d = f.read()
     out = []
-    if atari:
-        f = atari.font()
-        for c in range(64):
-            g = []
-            for b in f[c]:
-                v = 0
-                for x in range(7):              # Atari bits 6..0 (bit 7 is always blank)
-                    if b >> (6 - x) & 1:
-                        v |= 1 << x
-                g.append(v)
-            out.append(g)
-    else:
-        for c in range(64):
-            rows = STANDIN_FONT.get(chr(32 + c), [0] * 7)
-            g = [0]
-            for r in rows:
-                v = 0
-                for x in range(5):
-                    if r >> (4 - x) & 1:
-                        v |= 1 << (x + 1)
-                g.append(v)
-            out.append(g)
+    for c in range(64):
+        ch = chr(32 + c)
+        if ch in FONT_FIX:
+            rows = [[int(p == "#") for p in r] for r in FONT_FIX[ch]] + [[0] * 6]
+        else:
+            rows = [[(b >> (7 - x)) & 1 for x in range(7)] for b in d[c * 8:c * 8 + 8]]
+            if ch not in FONT_FULL:
+                rows = narrow(rows)
+        out.append([sum(1 << x for x, p in enumerate(r) if p) for r in rows])
     return out
 
 
@@ -448,7 +491,7 @@ def main():
            "#include <stdint.h>", '#include "../../src/apple2/gfxdata.h"', ""]
 
     # font
-    font = font_hgr(atari)
+    font = namco_font()
     src.append('#pragma rodata-name (push, "LOWDATA")')
     src.append("const uint8_t hgr_font[64 * 8] = {")
     src.append(c_bytes([b for g in font for b in g]))
