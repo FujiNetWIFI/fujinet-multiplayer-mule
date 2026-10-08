@@ -293,10 +293,15 @@ void gfx_fill(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t col)
 
 /* Line y, pixels px0 .. px1 - 1: pic's pixels become colour c. Only that
  * line's pattern and colour byte of each cell is read and written where
- * the VDP allows (row_load/row_store; op() moves all 16 of every cell). */
+ * the VDP allows (row_load/row_store; op() moves all 16 of every cell), or
+ * the backend does the whole line (VRAM_LINE: the SMS). */
 static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, uint8_t c)
 {
+#ifdef VRAM_LINE
+    uint8_t cx0, cx1, cy, lm, rm, r = y & 7;
+#else
     uint8_t cx, cx0, cx1, cy, lm, rm, m, r = y & 7;
+#endif
     if (px1 > 256)
         px1 = 256;
     if (y >= 192 || px0 >= px1)
@@ -306,6 +311,9 @@ static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, u
     lm = 0xFF >> (px0 & 7);
     rm = 0xFF << (7 - ((px1 - 1) & 7));
     cy = y >> 3;
+#ifdef VRAM_LINE
+    line_cells(cx0, cx1, cy, r, pic, lm, rm, c);    /* the backend's own */
+#else
     for (cx = cx0; cx <= cx1; ++cx) {
         m = pic[cx];
         if (cx == cx0)
@@ -319,6 +327,7 @@ static void op_line(uint16_t px0, uint16_t px1, uint8_t y, const uint8_t *pic, u
         paint(r, m, c);
         row_store(r);
     }
+#endif
 }
 
 /* The dots are made again only for another x or width (the auction's
@@ -384,6 +393,12 @@ void gfx_plot(uint8_t p, const PlotLook *look)
     uint8_t *o;
     uint8_t i, k, t, cx, cy, cx0, cy0, c1, bare;
 
+#ifdef PLOT_MEMO
+    if (plot_memo_show(p, (const uint8_t *)look, bgc)) {
+        ++gfx_nplot;
+        return;
+    }
+#endif
     ART_BEGIN();
     memset(pl_trip, 0, 96);
     if (look->store) {
@@ -438,6 +453,9 @@ void gfx_plot(uint8_t p, const PlotLook *look)
             cell_at(cx0 + cx, cy0 + cy);
             cell_put(o);
         }
+#ifdef PLOT_MEMO
+    plot_memo_keep(p, (const uint8_t *)look, bgc);
+#endif
 }
 
 /* ---- the town ----------------------------------------------------------- */
@@ -495,6 +513,9 @@ static uint8_t s_sent_shape[SPR_SLOTS], s_sent_frame[SPR_SLOTS];
 static uint8_t s_sent_col[SPR_SLOTS];
 #endif
 static uint8_t any_dirty, rot;
+#ifdef SPR_CACHE
+static uint8_t send_shape;      /* send()'s shape, for the backend's cache */
+#endif
 
 static void spr_init(void)
 {
@@ -562,6 +583,12 @@ static void send(uint8_t i, const ShapeDef *d, uint8_t f, uint8_t cols, uint8_t 
     part = 0;
     for (gr = 0; gr < rows; ++gr) {
         for (gc = 0; gc < cols; ++gc, ++part) {
+#ifdef SPR_CACHE
+            if (spr_cache_get(send_shape, f, part, pat)) {
+                spr_pattern(i * PARTS + part, pat, c);
+                continue;
+            }
+#endif
             for (l = 0; l < 16; ++l) {
                 row = (gr << 4) + l;
                 pat[l] = pat[16 + l] = 0;
@@ -582,6 +609,9 @@ static void send(uint8_t i, const ShapeDef *d, uint8_t f, uint8_t cols, uint8_t 
                 pat[l] = line[gc * 2];
                 pat[16 + l] = line[gc * 2 + 1];
             }
+#ifdef SPR_CACHE
+            spr_cache_put(send_shape, f, part, pat);
+#endif
             spr_pattern(i * PARTS + part, pat, c);
         }
     }
@@ -623,6 +653,9 @@ void spr_flush(void)
             s_sent_col[i] = c;
 #else
         if (s_sent_shape[i] != shape || s_sent_frame[i] != f) {
+#endif
+#ifdef SPR_CACHE
+            send_shape = shape;
 #endif
             send(i, &tms_shapes[shape], f, cols, rows, c);
             s_sent_shape[i] = shape;

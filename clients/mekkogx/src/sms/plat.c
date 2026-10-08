@@ -8,8 +8,10 @@
 #include "mule.h"
 #include "vdp.h"
 #include "fujinet-sms.h"
+#include "tiles.h"
 
 uint16_t frame_count;
+uint16_t fw_calls;              /* (for the harness: frames a loop pass) */
 extern uint8_t sms_pal;
 static uint16_t seed = 0x1234;
 
@@ -22,7 +24,7 @@ const char *plat_init(void)
     sms_int_init();
     gfx_init();
     sms_pal = sms_pal_probe();
-    return 0;
+    return tiles_ok ? 0 : "THE CARTRIDGE'S RAM IS MISSING";
 }
 
 /* Back to the cartridge's CONFIG (its loader page, out of the way of
@@ -47,6 +49,7 @@ void frame_wait(void)
         ;
     seen = frame_count;
     seed += frame_count;
+    ++fw_calls;
 }
 
 void frame_tick(void)

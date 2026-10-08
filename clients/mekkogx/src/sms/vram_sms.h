@@ -4,8 +4,7 @@
  *
  * Included by gfx.c only, as src/tms9918/vram_tms.h is on the TMS9918A:
  * the same functions, on gfx.c's cell (cp/cc, ca = its number), bgc and
- * text buffer. A cell is read and written whole: a line of it (op_line) is
- * the whole cell here.
+ * text buffer. A line across cells (op_line) is tileline.asm's.
  *
  * Sprites: a VDP sprite of the TMS9918A's (16 x 16, one colour) is two of
  * the SMS's side by side, each 8 x 16 (two tiles), the colour drawn into
@@ -30,16 +29,22 @@ static void cell_store(void)
     tile_store(ca, cp, cc);
 }
 
-static void row_load(uint8_t r)
+/* op_line's cells cx0..cx1 of cell row cy, their line r: the pixels in
+ * pic[cx] (masked by lm in the first, rm in the last) become colour c. */
+#define VRAM_LINE 1
+static void line_cells(uint8_t cx0, uint8_t cx1, uint8_t cy, uint8_t r,
+                       const uint8_t *pic, uint8_t lm, uint8_t rm, uint8_t c)
 {
-    (void)r;
-    cell_load();
-}
-
-static void row_store(uint8_t r)
-{
-    (void)r;
-    cell_store();
+    if (!tiles_ok)
+        return;
+    hl_cell = ((uint16_t)cy << 5) | cx0;
+    hl_n = cx1 - cx0 + 1;
+    hl_r = r;
+    hl_pic = pic + cx0;
+    hl_lm = lm;
+    hl_rm = rm;
+    hl_c = c;
+    tile_hline();
 }
 
 static void cell_put(const uint8_t *o)
@@ -57,12 +62,19 @@ static void vram_clear(void)
     tiles_clear(bgc);
 }
 
+/* A plot drawn before is drawn by its tiles' names (tiles.c). */
+#define PLOT_MEMO 1
+
 /* ---- text --------------------------------------------------------------- */
 static void text_cells(uint8_t tx, uint8_t ty, uint8_t k, uint8_t c, uint8_t chars)
 {
     uint8_t i;
     memset(cc, (uint8_t)(c << 4) | bgc, 8);
     memset(cp, 0, 8);
+    if (!chars) {
+        tile_run(((uint16_t)ty << 5) + tx, k, cp, cc);
+        return;
+    }
     for (i = 0; i < k; ++i) {
         if (chars) {
             ART_BEGIN();
@@ -87,26 +99,17 @@ static void town_row(uint8_t cy, const uint8_t *pat, const uint8_t *col)
 
 /* TMS sprite n's pattern (the left column's 16 lines, then the right's) in
  * colour c: its four tiles, which follow one another in VRAM in the same
- * order (left top, left bottom, right top, right bottom). */
+ * order (left top, left bottom, right top, right bottom). sprout.asm. */
 static void spr_pattern(uint8_t n, const uint8_t *pat, uint8_t col)
 {
-    uint8_t i, v, m0, m1, m2, m3;
-    uint16_t a = SV_SPR + ((uint16_t)n << 7);
-    m0 = col & 1 ? 0xFF : 0;
-    m1 = col & 2 ? 0xFF : 0;
-    m2 = col & 4 ? 0xFF : 0;
-    m3 = col & 8 ? 0xFF : 0;
-    VDP_LOCK();
-    VDP_WADDR(a);
-    for (i = 0; i < 32; ++i) {
-        v = *pat++;
-        VDP_DATA = v & m0;
-        VDP_DATA = v & m1;
-        VDP_DATA = v & m2;
-        VDP_DATA = v & m3;
-    }
-    VDP_UNLOCK();
+    so_addr = SV_SPR + ((uint16_t)n << 7);
+    so_pat = pat;
+    so_col = col;
+    spr_out();
 }
+
+/* A frame's pattern, made once (gfx.c's send: tiles.c keeps them). */
+#define SPR_CACHE 1
 
 #define HW_SPR 64
 static uint8_t sat_y[HW_SPR], sat_xt[HW_SPR * 2], sat_n;
