@@ -25,13 +25,16 @@
         PUBLIC  _tile_hline
         EXTERN  _hl_cell, _hl_n, _hl_r, _hl_pic, _hl_lm, _hl_rm, _hl_c
         EXTERN  _hl_p, _hl_cc, _hl_old, _tile_row_miss
-        EXTERN  _rm_old, _rm_r, _rm_p, _rm_c, _rm_new
         EXTERN  _tile_live, _tile_most, _popc, _made
 
         defc    T_SRC = $8000   ; tiles.c's layout of the cartridge's RAM
         defc    T_NAME = $9000
         defc    T_REF = $9300
-        defc    RM = 64         ; tiles.c's row memo entries
+        defc    RM_OLD = $9800  ; tiles.c's row memo, 256 of each
+        defc    RM_R = $9900
+        defc    RM_P = $9A00
+        defc    RM_C = $9B00
+        defc    RM_NEW = $9C00
         defc    VDP_DATA = $BE
         defc    VDP_CTRL = $BF
         defc    SV_NAME_W = $3800 | $4000
@@ -136,7 +139,7 @@ hl_full:
         ld      a,(_hl_old)
         jp      hl_seen
 hl_changed:
-        ; the memo's entry: (old + (r << 3) + p + (c << 1) + (c >> 3)) & (RM - 1)
+        ; the memo's entry: old + (r << 3) + p + (c << 1) + (c >> 3)
         ld      a,(_hl_r)
         rlca
         rlca
@@ -155,32 +158,25 @@ hl_changed:
         rrca
         and     $1F
         add     a,e
-        and     RM - 1
-        ld      e,a
-        ld      d,0
-        ld      hl,_rm_new
-        add     hl,de
+        ld      l,a
+        ld      h,RM_NEW >> 8
         ld      a,(hl)
         cp      $FF
         jr      z,hl_miss
         ld      (tile),a
-        ld      hl,_rm_old
-        add     hl,de
+        ld      h,RM_OLD >> 8
         ld      a,(_hl_old)
         cp      (hl)
         jr      nz,hl_miss
-        ld      hl,_rm_r
-        add     hl,de
+        ld      h,RM_R >> 8
         ld      a,(_hl_r)
         cp      (hl)
         jr      nz,hl_miss
-        ld      hl,_rm_p
-        add     hl,de
+        ld      h,RM_P >> 8
         ld      a,b
         cp      (hl)
         jr      nz,hl_miss
-        ld      hl,_rm_c
-        add     hl,de
+        ld      h,RM_C >> 8
         ld      a,c
         cp      (hl)
         jr      nz,hl_miss

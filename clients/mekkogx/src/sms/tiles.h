@@ -43,6 +43,10 @@ void spr_cache_put(uint8_t shape, uint8_t f, uint8_t part, const uint8_t *pat);
  * long way is remembered. */
 uint8_t plot_memo_show(uint8_t p, const uint8_t *look, uint8_t bgc);
 void plot_memo_keep(uint8_t p, const uint8_t *look, uint8_t bgc);
+/* A character (glyph g, colours col) written before: its tile on cell (1:
+ * done); else, once the cell is stored, remembered. */
+uint8_t tile_glyph(uint16_t cell, uint8_t g, uint8_t col);
+void tile_glyph_keep(uint16_t cell, uint8_t g, uint8_t col);
 /* gfx.c's TOWN_MEMO: the town the same way. */
 uint8_t town_memo_show(uint8_t bgc);
 void town_memo_keep(uint8_t bgc);

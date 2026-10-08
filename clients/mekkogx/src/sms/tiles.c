@@ -20,8 +20,8 @@
  *     by comparing them, not by reading and decoding VRAM.
  *   - T_NAME: each cell's tile (the name table's, which is written too).
  *   - T_HASH, B_HEAD, T_NEXT: the tiles by a hash of their 16 bytes.
- *   - T_INRM, T_INPM: the row memo's and the plot and town memos' entries
- *     naming each tile (a tile made again is taken out of them; 255
+ *   - T_INRM, T_INPM: the row memo's and the plot, town and glyph memos'
+ *     entries naming each tile (a tile made again is taken out of them; 255
  *     sticks: always look).
  *   - T_REF: the cells showing each tile. A tile no cell shows any more
  *     keeps its pixels and its place among the hashes, to be shown again
@@ -60,7 +60,8 @@
 #define NTILES 255              /* 0..254; 255 is NONE */
 
 #define CART_RAM (*(volatile uint8_t *)0xFFFC)
-#define CR_ON()  (CART_RAM = 0x08)
+#define CR_ON()  (CART_RAM = 0x08)      /* its first 16K (bit 2 the half) */
+#define CR_ON1() (CART_RAM = 0x0C)      /* its second */
 #define CR_OFF() (CART_RAM = 0)
 
 #define T_SRC  ((uint8_t *)0x8000)      /* 16 a tile (tileconv.asm) */
@@ -70,12 +71,21 @@
 #define T_NEXT ((uint8_t *)0x9500)      /* t itself: in no chain */
 #define B_HEAD ((uint8_t *)0x9600)
 #define T_INRM ((uint8_t *)0x9700)      /* row memo entries naming it */
-#define S_TAG  ((uint8_t *)0x9800)      /* sprite patterns: 128 x (shape, */
-#define S_PAT  ((uint8_t *)0x9A00)      /* frame, part), 128 x 32 bytes */
-#define P_MEMO ((uint8_t *)0xAA00)      /* plots: PM x PM_SIZE */
-#define T_INPM ((uint8_t *)0xAC00)      /* plot and town memos naming it */
-#define TM_NAME ((uint8_t *)0xAD00)     /* the town's tiles (TOWN_MEMO) */
+#define RM_OLD ((uint8_t *)0x9800)      /* the row memo (tileline.asm): */
+#define RM_R   ((uint8_t *)0x9900)      /* 256 of each */
+#define RM_P   ((uint8_t *)0x9A00)
+#define RM_C   ((uint8_t *)0x9B00)
+#define RM_NEW ((uint8_t *)0x9C00)
+#define P_MEMO ((uint8_t *)0x9D00)      /* plots: PM x PM_SIZE */
+#define T_INPM ((uint8_t *)0x9F00)      /* the plot, town and glyph memos */
+#define TM_NAME ((uint8_t *)0xA100)     /* the town's tiles (TOWN_MEMO) */
+#define GC_G   ((uint8_t *)0xA300)      /* the glyph memo: 64 x glyph, */
+#define GC_COL ((uint8_t *)0xA340)      /* colours, tile */
+#define GC_T   ((uint8_t *)0xA380)
 #define T_TEST ((volatile uint8_t *)0xAF00)
+/* the second half (CR_ON1) */
+#define S_TAG  ((uint8_t *)0x8100)      /* sprite patterns: 128 x (shape, */
+#define S_PAT  ((uint8_t *)0x8400)      /* frame, part), 128 x 32 bytes */
 
 static uint8_t t_scan;
 uint8_t tw[32];                 /* the tile being made (tileconv.asm) */
@@ -86,10 +96,8 @@ uint8_t made;                   /* the tile tile_make made last (tileline.asm) *
 
 /* A line of a cell (tileline.asm, gfx.c's op_line: the auction's dotted
  * lines): a tile with row r made (p, c) is always the same tile, so it is
- * kept, by a hash of the four, in a few of these; a tile made again is
- * taken out (its old pixels are no longer what either side says). */
-#define RM 64                   /* (tileline.asm too) */
-uint8_t rm_old[RM], rm_r[RM], rm_p[RM], rm_c[RM], rm_new[RM];
+ * kept, by a hash of the four, in the RM_ tables (256); a tile made again
+ * is taken out (its old pixels are no longer what either side says). */
 
 /* tile_hline's line: hl_n cells from hl_cell, row hl_r, the pixels from
  * hl_pic (the first cell's masked by hl_lm, the last's by hl_rm), colour
@@ -245,12 +253,25 @@ static void remember(uint8_t t, const uint8_t *pat, const uint8_t *col)
     m_t = t;
 }
 
+/* A memo's count of entries naming tile t (255 sticks: always look). */
+static void in_up(uint8_t *n)
+{
+    if (*n != 255)
+        ++*n;
+}
+
+static void in_down(uint8_t *n)
+{
+    if (*n != 255)
+        --*n;
+}
+
 /* Row memo entry k forgotten. */
 static void rm_drop(uint8_t k)
 {
-    --T_INRM[rm_old[k]];
-    --T_INRM[rm_new[k]];
-    rm_new[k] = NONE;
+    in_down(&T_INRM[RM_OLD[k]]);
+    in_down(&T_INRM[RM_NEW[k]]);
+    RM_NEW[k] = NONE;
 }
 
 /* ---- the plot memo -------------------------------------------------- */
@@ -258,19 +279,10 @@ static void rm_drop(uint8_t k)
 #define PM_SIZE 24              /* look (7), bgc, 12 tiles, in use, spare */
 #define PM_IN 20
 #define TM_N (TOWN_CW * TOWN_CH)
-static uint8_t pm_next, pm_full, tm_ok, tm_bg;
+static uint8_t pm_next, pm_full, tm_ok, tm_bg, gc_full;
 
-static void inpm_up(uint8_t t)
-{
-    if (T_INPM[t] != 255)
-        ++T_INPM[t];
-}
-
-static void inpm_down(uint8_t t)
-{
-    if (T_INPM[t] != 255)
-        --T_INPM[t];
-}
+#define inpm_up(t)   in_up(&T_INPM[t])
+#define inpm_down(t) in_down(&T_INPM[t])
 
 static void pm_drop(uint8_t *e)
 {
@@ -310,6 +322,11 @@ static void pm_forget(uint8_t t)
                 tm_drop();
                 break;
             }
+    for (k = 0; k < 64; ++k)
+        if (GC_T[k] == t) {
+            inpm_down(t);
+            GC_T[k] = NONE;
+        }
 }
 
 /* Plot p's top left cell. */
@@ -431,15 +448,60 @@ void town_memo_keep(uint8_t bgc)
     CR_OFF();
 }
 
+/* ---- the glyph memo ------------------------------------------------- */
+/* A character, glyph g in colours col (f << 4 | b), is always the same
+ * tile: vram_sms.h's text_cells asks here first (the labels and the money
+ * are written again and again). */
+static uint8_t gc_at(uint8_t g, uint8_t col)
+{
+    return (uint8_t)(g + (col << 2) + col) & 63;
+}
+
+uint8_t tile_glyph(uint16_t cell, uint8_t g, uint8_t col)
+{
+    uint8_t k, t, ok = 0;
+    if (!tiles_ok)
+        return 0;
+    k = gc_at(g, col);
+    CR_ON();
+    t = GC_T[k];
+    if (t != NONE && GC_G[k] == g && GC_COL[k] == col) {
+        show(cell, t);
+        ok = 1;
+    }
+    CR_OFF();
+    gc_full = tile_full;
+    return ok;
+}
+
+/* ... and the cell it wasn't there for, stored, remembered. */
+void tile_glyph_keep(uint16_t cell, uint8_t g, uint8_t col)
+{
+    uint8_t k, t;
+    if (!tiles_ok || tile_full != gc_full)
+        return;
+    k = gc_at(g, col);
+    CR_ON();
+    t = GC_T[k];
+    if (t != NONE)
+        inpm_down(t);
+    t = T_NAME[cell];
+    GC_G[k] = g;
+    GC_COL[k] = col;
+    GC_T[k] = t;
+    inpm_up(t);
+    CR_OFF();
+}
+
 /* Tile t becomes ns, hash h: its pixels sent, its bytes kept. */
 static void tile_make(uint8_t t, uint8_t h)
 {
     uint8_t k = 0;
     if (T_INRM[t]) {
         do {
-            if (rm_new[k] != NONE && (rm_old[k] == t || rm_new[k] == t))
+            if (RM_NEW[k] != NONE && (RM_OLD[k] == t || RM_NEW[k] == t))
                 rm_drop(k);
-        } while (++k < RM);
+        } while (++k);
     }
     if (T_INPM[t])
         pm_forget(t);
@@ -555,18 +617,18 @@ void tile_row_miss(void)
     tile_store(hl_cell, pc, pc + 8);
     if (tile_full != full || made == old)
         return;                         /* no tile, or the old one made over */
-    k = (uint8_t)(old + (r << 3) + hl_p + (hl_cc << 1) + (hl_cc >> 3)) & (RM - 1);
+    k = (uint8_t)(old + (r << 3) + hl_p + (hl_cc << 1) + (hl_cc >> 3));
     CR_ON();
-    if (rm_new[k] != NONE)
+    if (RM_NEW[k] != NONE)
         rm_drop(k);
     t = T_NAME[hl_cell];
-    rm_old[k] = old;
-    rm_r[k] = r;
-    rm_p[k] = hl_p;
-    rm_c[k] = hl_cc;
-    rm_new[k] = t;
-    ++T_INRM[old];
-    ++T_INRM[t];
+    RM_OLD[k] = old;
+    RM_R[k] = r;
+    RM_P[k] = hl_p;
+    RM_C[k] = hl_cc;
+    RM_NEW[k] = t;
+    in_up(&T_INRM[old]);
+    in_up(&T_INRM[t]);
     CR_OFF();
 }
 
@@ -583,8 +645,8 @@ void tiles_clear(uint8_t bg)
         vram_out(0, tw, 32);
         return;
     }
-    memset(rm_new, NONE, RM);
     CR_ON();
+    memset(RM_NEW, NONE, 256);
     memset(T_INRM, 0, 256);
     memset(T_REF, 0, NTILES);
     tile_live = 0;
@@ -614,8 +676,10 @@ static void tiles_reset(void)
     } while (++t);
     memset(T_INPM, 0, 256);
     memset(P_MEMO, 0, PM * PM_SIZE);
-    memset(S_TAG, 0xFF, 128 * 3);       /* no sprite patterns kept */
+    memset(GC_T, NONE, 64);
     memset(T_REF, 0, NTILES);
+    CR_ON1();
+    memset(S_TAG, 0xFF, 128 * 3);       /* no sprite patterns kept */
     CR_OFF();
     t_scan = NTILES - 1;                /* (tile 0 first) */
     pm_next = 0;
@@ -639,7 +703,7 @@ uint8_t spr_cache_get(uint8_t shape, uint8_t f, uint8_t part, uint8_t *pat)
     uint8_t *t;
     if (!tiles_ok)
         return 0;
-    CR_ON();
+    CR_ON1();
     t = s_tag(shape, f, part, &k);
     if (t[0] == shape && t[1] == f && t[2] == part) {
         memcpy(pat, S_PAT + ((uint16_t)k << 5), 32);
@@ -655,7 +719,7 @@ void spr_cache_put(uint8_t shape, uint8_t f, uint8_t part, const uint8_t *pat)
     uint8_t *t;
     if (!tiles_ok)
         return;
-    CR_ON();
+    CR_ON1();
     t = s_tag(shape, f, part, &k);
     t[0] = shape;
     t[1] = f;

@@ -70,20 +70,25 @@ static void vram_clear(void)
 /* ---- text --------------------------------------------------------------- */
 static void text_cells(uint8_t tx, uint8_t ty, uint8_t k, uint8_t c, uint8_t chars)
 {
-    uint8_t i;
-    memset(cc, (uint8_t)(c << 4) | bgc, 8);
+    uint8_t i, g, col = (uint8_t)(c << 4) | bgc;
+    uint16_t cell = ((uint16_t)ty << 5) + tx;
+    const uint8_t *gl;
+    memset(cc, col, 8);
     memset(cp, 0, 8);
     if (!chars) {
-        tile_run(((uint16_t)ty << 5) + tx, k, cp, cc);
+        tile_run(cell, k, cp, cc);
         return;
     }
-    for (i = 0; i < k; ++i) {
-        if (chars) {
-            ART_BEGIN();
-            memcpy(cp, glyph_of(tbuf[i]), 8);
-            ART_END();
-        }
-        tile_store(((uint16_t)ty << 5) + tx + i, cp, cc);
+    for (i = 0; i < k; ++i, ++cell) {
+        gl = glyph_of(tbuf[i]);
+        g = (uint8_t)((gl - tms_font) >> 3);
+        if (tile_glyph(cell, g, col))
+            continue;               /* written before: its tile */
+        ART_BEGIN();
+        memcpy(cp, gl, 8);
+        ART_END();
+        tile_store(cell, cp, cc);
+        tile_glyph_keep(cell, g, col);
     }
 }
 
