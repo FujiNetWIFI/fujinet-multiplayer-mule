@@ -21,6 +21,10 @@ line; times are in frames of the game's clock:
     press                       tap the button
     key CHAR|NUM                type a key (RETURN = 13, ESC = 27)
     peek SYMBOL [N]             print N bytes at a symbol (from the map)
+    log FRAMES SYMBOL...        from now on, for FRAMES of MAME's frames, print
+                                each symbol's 16-bit value once a frame (LOG
+                                lines), while the steps after it go on
+    vram FILE                   save the VDP's 16K of VRAM to OUTDIR/FILE
     pc N                        print the CPU's PC for N frames, then quit
     trace FILE | trace off      log every instruction to OUTDIR/FILE (slow)
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
@@ -93,6 +97,10 @@ def main():
             steps.append(("peek", w[1], sym(w[1]), int(w[2]) if len(w) > 2 else 1))
         elif c == "dump":
             steps.append(("dump", int(w[1], 16), int(w[2], 16), w[3]))
+        elif c == "log":
+            steps.append(("log", int(w[1]), [sym(x) for x in w[2:]]))
+        elif c == "vram":
+            steps.append(("vram", w[1]))
         elif c == "trace":
             steps.append(("trace", w[1]))
         elif c == "pc":
@@ -116,6 +124,10 @@ def main():
             lua.append('{"pc", %d},' % s[1])
         elif s[0] == "dump":
             lua.append('{"dump", %d, %d, "%s"},' % (s[1], s[2], os.path.join(out, s[3])))
+        elif s[0] == "log":
+            lua.append('{"log", %d, {%s}},' % (s[1], ", ".join(str(a) for a in s[2])))
+        elif s[0] == "vram":
+            lua.append('{"vram", "%s"},' % os.path.join(out, s[1]))
         elif s[0] == "trace":
             f = "off" if s[1] == "off" else os.path.join(out, s[1])
             lua.append('{"trace", "%s"},' % f)
@@ -135,6 +147,8 @@ local last_fc = 0
 local frames = 0
 local pcdump = 0
 local asked = false
+local logn = 0
+local logat = {}
 local pad = {}
 for pname, port in pairs(manager.machine.ioport.ports) do
   if pname == ":ctrl1:mspad:JOYPAD" then
@@ -147,7 +161,8 @@ emu.register_frame_done(function()
   frames = frames + 1
   if frames > 60 * 600 then manager.machine:exit() end
   if pcdump > 0 then
-    print(string.format("PC %%04X", manager.machine.devices[":maincpu"].state["PC"].value))
+    print(string.format("PC %%04X %%02X %%02X", manager.machine.devices[":maincpu"].state["PC"].value,
+                        mem:read_u8(0xDFFF), mem:read_u8(0xDFFC)))
     pcdump = pcdump - 1
     if pcdump == 0 then manager.machine:exit() end
     return
@@ -170,6 +185,12 @@ emu.register_frame_done(function()
     elseif frames > 60 * 25 then started = true
     else return end
   end
+  if logn > 0 then
+    local t = {}
+    for k = 1, #logat do t[#t + 1] = tostring(mem:read_u16(logat[k])) end
+    print("LOG " .. frames .. " " .. table.concat(t, " "))
+    logn = logn - 1
+  end
   while i <= #steps do
     local s = steps[i]
     if s[1] == "wait" then
@@ -191,6 +212,13 @@ emu.register_frame_done(function()
     elseif s[1] == "dump" then
       local f = io.open(s[4], "wb")
       for a = s[2], s[3] do f:write(string.char(mem:read_u8(a))) end
+      f:close(); i = i + 1
+    elseif s[1] == "log" then
+      logn = s[2]; logat = s[3]; i = i + 1
+    elseif s[1] == "vram" then
+      local v = manager.machine.devices[":sms_vdp"].spaces["videoram"]
+      local f = io.open(s[2], "wb")
+      for a = 0, 0x3FFF do f:write(string.char(v:read_u8(a))) end
       f:close(); i = i + 1
     elseif s[1] == "trace" then
       if s[2] == "off" then manager.machine.debugger:command("trace off")
@@ -228,7 +256,7 @@ end, "smssim")
     env.setdefault("FUJINET_TCP", "127.0.0.1:1")
     r = subprocess.run(cmd, cwd=MAME, capture_output=True, text=True, timeout=900, env=env)
     for line in r.stdout.splitlines():
-        if line.startswith(("PEEK", "SNAP", "PC ")):
+        if line.startswith(("PEEK", "SNAP", "PC ", "LOG ")):
             print(line)
     if r.returncode:
         print(r.stdout[-2000:], r.stderr[-2000:])

@@ -41,6 +41,13 @@
                                  * ever let the next one go */
 
 uint8_t ns_on;                  /* the link is up */
+#ifdef __SMS__
+/* (for the harness) states taken, bad frames, RESYNCs sent, links lost */
+uint8_t ns_cnt[4];
+#define NS_COUNT(i) (++ns_cnt[i])
+#else
+#define NS_COUNT(i)
+#endif
 uint16_t nt_dropped;            /* (nstrans.h) */
 static uint8_t ns_taken;        /* bytes taken, mod 256 (SC_CREDIT) */
 static uint8_t fbuf[FMAX];
@@ -198,6 +205,7 @@ static void resync(void)
 {
     resync_owed = 1;
     if (!resync_hold) {
+        NS_COUNT(2);
         send(SC_RESYNC, 0, 0);
         resync_hold = RESYNC_GAP;
         resync_owed = 0;
@@ -278,6 +286,7 @@ static uint8_t connect(void)
  * transport that can open it again does, at the next net_begin. */
 static void link_down(void)
 {
+    NS_COUNT(3);
     joined = 0;
     net_have = 0;
     if (nt_close())
@@ -322,6 +331,7 @@ static uint8_t take(void)
         quiet = 0;
         heard = 1;
         if (n == 255) {
+            NS_COUNT(1);
             resync();
             continue;
         }
@@ -343,6 +353,7 @@ static uint8_t take(void)
             }
             act_sent = ACT_STATE;
             got = 1;
+            NS_COUNT(0);
             break;
         case CS_ERROR:
             st.h.err = fbuf[1];

@@ -66,6 +66,8 @@ static uint8_t fbuf[32];        /* the frame being put */
 static uint8_t flen, fover;
 static uint8_t qbuf[96], qlen;  /* flushed frames, not yet written */
 static uint8_t tlen;            /* how many of them the write going has */
+uint8_t nt_cnt[4];              /* (for the harness) calls failed, the longest
+                                 * in frames, writes, reads */
 
 /* The cartridge, and a FujiNet answering through it (the cartridge alone
  * answers "no link" after a wait). */
@@ -102,9 +104,15 @@ static void request(uint8_t cmd, uint8_t n16, uint16_t v, const uint8_t *data, u
 /* 0 not done yet, 1 an ACK, 2 failed (or no answer in time). */
 static uint8_t collect(void)
 {
+    uint16_t t = frame_count - started;
     if (MB_ACKSEQ != seq)
-        return (uint16_t)(frame_count - started) < WAIT_MAX ? 0 : 2;
-    return (MB_ERR == 0 && MB_REPLYCMD == ACK) ? 1 : 2;
+        return t < WAIT_MAX ? 0 : (++nt_cnt[0], 2);
+    if (t > nt_cnt[1])
+        nt_cnt[1] = t > 255 ? 255 : (uint8_t)t;
+    if (MB_ERR == 0 && MB_REPLYCMD == ACK)
+        return 1;
+    ++nt_cnt[0];
+    return 2;
 }
 
 static uint16_t reply_len(void)
@@ -114,6 +122,7 @@ static uint16_t reply_len(void)
 
 static void start_write(void)
 {
+    ++nt_cnt[2];
     request(C_WRITE, 1, tlen, qbuf, tlen);
     state = T_WRITE;
 }
@@ -143,6 +152,7 @@ static void step(void)
             if (want && !hold) {
                 if (want > sizeof(rbuf))
                     want = sizeof(rbuf);
+                ++nt_cnt[3];
                 request(C_READ, 1, want, 0, 0);
                 state = T_READ;
                 return;
