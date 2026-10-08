@@ -20,8 +20,9 @@
  *     by comparing them, not by reading and decoding VRAM.
  *   - T_NAME: each cell's tile (the name table's, which is written too).
  *   - T_HASH, B_HEAD, T_NEXT: the tiles by a hash of their 16 bytes.
- *   - T_INRM, T_INPM: the row memo's and the plot memo's entries naming
- *     each tile (a tile made again is taken out of them).
+ *   - T_INRM, T_INPM: the row memo's and the plot and town memos' entries
+ *     naming each tile (a tile made again is taken out of them; 255
+ *     sticks: always look).
  *   - T_REF: the cells showing each tile. A tile no cell shows any more
  *     keeps its pixels and its place among the hashes, to be shown again
  *     for nothing, until it is wanted for another. 255 sticks (the cleared
@@ -29,8 +30,9 @@
  *
  * A clear keeps the tiles (their pixels, bytes and hashes; only who shows
  * them is forgotten), so a screen drawn again finds its tiles made, and the
- * plot memo (gfx.c's PLOT_MEMO: a plot's look -> its 12 tiles) draws a map
- * seen before with names alone. A tile wanted for new pixels is one no
+ * plot memo (gfx.c's PLOT_MEMO: a plot's look -> its 12 tiles) and the town
+ * memo (TOWN_MEMO: its 342) draw a map or the town seen before with names
+ * alone. A tile wanted for new pixels is one no
  * memo names, if there is one.
  *
  * m_pc, m_t: the cell stored last and its tile, for the next that is the
@@ -52,6 +54,7 @@
 #include "mule.h"
 #include "vdp.h"
 #include "tiles.h"
+#include "gfxdata.h"
 
 #define NONE 255
 #define NTILES 255              /* 0..254; 255 is NONE */
@@ -70,7 +73,8 @@
 #define S_TAG  ((uint8_t *)0x9800)      /* sprite patterns: 128 x (shape, */
 #define S_PAT  ((uint8_t *)0x9A00)      /* frame, part), 128 x 32 bytes */
 #define P_MEMO ((uint8_t *)0xAA00)      /* plots: PM x PM_SIZE */
-#define T_INPM ((uint8_t *)0xAC00)      /* plot memo entries naming it */
+#define T_INPM ((uint8_t *)0xAC00)      /* plot and town memos naming it */
+#define TM_NAME ((uint8_t *)0xAD00)     /* the town's tiles (TOWN_MEMO) */
 #define T_TEST ((volatile uint8_t *)0xAF00)
 
 static uint8_t t_scan;
@@ -253,20 +257,43 @@ static void rm_drop(uint8_t k)
 #define PM 16
 #define PM_SIZE 24              /* look (7), bgc, 12 tiles, in use, spare */
 #define PM_IN 20
-static uint8_t pm_next, pm_full;
+#define TM_N (TOWN_CW * TOWN_CH)
+static uint8_t pm_next, pm_full, tm_ok, tm_bg;
+
+static void inpm_up(uint8_t t)
+{
+    if (T_INPM[t] != 255)
+        ++T_INPM[t];
+}
+
+static void inpm_down(uint8_t t)
+{
+    if (T_INPM[t] != 255)
+        --T_INPM[t];
+}
 
 static void pm_drop(uint8_t *e)
 {
     uint8_t i;
     for (i = 8; i < 20; ++i)
-        --T_INPM[e[i]];
+        inpm_down(e[i]);
     e[PM_IN] = 0;
 }
 
-/* Tile t is being made again: the plots that have it are forgotten. */
+static void tm_drop(void)
+{
+    uint16_t i;
+    for (i = 0; i < TM_N; ++i)
+        inpm_down(TM_NAME[i]);
+    tm_ok = 0;
+}
+
+/* Tile t is being made again: the plots, and the town, that have it are
+ * forgotten. */
 static void pm_forget(uint8_t t)
 {
     uint8_t k, i;
+    uint16_t j;
     uint8_t *e = P_MEMO;
     for (k = 0; k < PM; ++k, e += PM_SIZE) {
         if (!e[PM_IN])
@@ -277,6 +304,12 @@ static void pm_forget(uint8_t t)
                 break;
             }
     }
+    if (tm_ok)
+        for (j = 0; j < TM_N; ++j)
+            if (TM_NAME[j] == t) {
+                tm_drop();
+                break;
+            }
 }
 
 /* Plot p's top left cell. */
@@ -351,9 +384,50 @@ void plot_memo_keep(uint8_t p, const uint8_t *look, uint8_t bgc)
         for (cx = 0; cx < 3; ++cx, ++i, ++cell) {
             t = T_NAME[cell];
             e[i] = t;
-            ++T_INPM[t];
+            inpm_up(t);
         }
     e[PM_IN] = 1;
+    CR_OFF();
+}
+
+/* gfx.c's gfx_town: the town, seen before on this background, by its
+ * tiles' names. 1: done. */
+uint8_t town_memo_show(uint8_t bgc)
+{
+    uint8_t x, y;
+    const uint8_t *e = TM_NAME;
+    uint16_t cell = (TOWN_CY << 5) + TOWN_CX;
+    if (!tiles_ok || !tm_ok || tm_bg != bgc) {
+        pm_full = tile_full;
+        return 0;
+    }
+    CR_ON();
+    for (y = 0; y < TOWN_CH; ++y, cell += 32 - TOWN_CW)
+        for (x = 0; x < TOWN_CW; ++x)
+            show(cell++, *e++);
+    CR_OFF();
+    return 1;
+}
+
+/* ... and drawn the long way, remembered. */
+void town_memo_keep(uint8_t bgc)
+{
+    uint8_t x, y, t;
+    uint8_t *e = TM_NAME;
+    uint16_t cell = (TOWN_CY << 5) + TOWN_CX;
+    if (!tiles_ok || tile_full != pm_full)
+        return;
+    CR_ON();
+    if (tm_ok)
+        tm_drop();
+    for (y = 0; y < TOWN_CH; ++y, cell += 32 - TOWN_CW)
+        for (x = 0; x < TOWN_CW; ++x) {
+            t = T_NAME[cell++];
+            *e++ = t;
+            inpm_up(t);
+        }
+    tm_ok = 1;
+    tm_bg = bgc;
     CR_OFF();
 }
 
@@ -545,6 +619,7 @@ static void tiles_reset(void)
     CR_OFF();
     t_scan = NTILES - 1;                /* (tile 0 first) */
     pm_next = 0;
+    tm_ok = 0;
 }
 
 /* ---- sprites' patterns ------------------------------------------------- */

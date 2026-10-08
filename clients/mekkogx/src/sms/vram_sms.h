@@ -62,8 +62,10 @@ static void vram_clear(void)
     tiles_clear(bgc);
 }
 
-/* A plot drawn before is drawn by its tiles' names (tiles.c). */
+/* A plot, or the town, drawn before is drawn by its tiles' names
+ * (tiles.c). */
 #define PLOT_MEMO 1
+#define TOWN_MEMO 1
 
 /* ---- text --------------------------------------------------------------- */
 static void text_cells(uint8_t tx, uint8_t ty, uint8_t k, uint8_t c, uint8_t chars)

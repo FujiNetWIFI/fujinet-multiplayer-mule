@@ -491,6 +491,10 @@ void gfx_town(void)
 {
     static uint8_t buf[TOWN_CW * 8];
     uint8_t cy;
+#ifdef TOWN_MEMO
+    if (town_memo_show(bgc))
+        return;
+#endif
     rl_src = town_rle;
     rl_lit = rl_run = 0;
     for (cy = 0; cy < TOWN_CH; ++cy) {
@@ -500,6 +504,9 @@ void gfx_town(void)
         ART_END();
         town_row(cy, buf, pl_trip);
     }
+#ifdef TOWN_MEMO
+    town_memo_keep(bgc);
+#endif
 }
 
 /* ---- sprites ------------------------------------------------------------ */

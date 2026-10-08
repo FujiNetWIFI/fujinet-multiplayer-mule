@@ -43,6 +43,9 @@ void spr_cache_put(uint8_t shape, uint8_t f, uint8_t part, const uint8_t *pat);
  * long way is remembered. */
 uint8_t plot_memo_show(uint8_t p, const uint8_t *look, uint8_t bgc);
 void plot_memo_keep(uint8_t p, const uint8_t *look, uint8_t bgc);
+/* gfx.c's TOWN_MEMO: the town the same way. */
+uint8_t town_memo_show(uint8_t bgc);
+void town_memo_keep(uint8_t bgc);
 
 extern uint8_t tile_full, tile_live, tile_most;
 extern uint8_t tiles_ok;        /* 0: the cartridge's RAM didn't answer */
