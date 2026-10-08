@@ -45,6 +45,7 @@ void grant_enter(void)
         gr_depart = 1;
         title_show(T_TRANSPORT, 0);
         msg_show(M_DEPART, 0, 0);
+        fx_flag = 0;            /* (the summary's landing left it 1) */
         fx_start(0, fx_depart);
     } else {
         title_show(T_LANDGRANT, 0);
@@ -52,6 +53,18 @@ void grant_enter(void)
         if (my_seat < 4)
             snd_play(SND_ALERT);
     }
+}
+
+/* The ship has gone: the grant proper begins. */
+static void depart_done(void)
+{
+    gr_depart = 0;
+    fx_stop_all();
+    title_show(T_LANDGRANT, 0);
+    msg_show(M_SELECT, 0, 0);
+    if (my_seat < 4)
+        snd_play(SND_ALERT);
+    g_show = 1;
 }
 
 /* The free plot after p (NUM_PLOTS past the last). */
@@ -93,6 +106,10 @@ void grant_state(void)
     } else if (w < g_next) {
         g_next = (uint8_t)w;
     }
+    /* the server's cursor has started: our ship (which set out late, after
+     * the map) has gone too, or the first plots would pass unseen */
+    if (gr_depart && k < NUM_PLOTS)
+        depart_done();
     if (!gr_depart)
         g_show = 1;
     if (my_seat < 4) {
@@ -158,16 +175,8 @@ void grant_tick(void)
     uint8_t k;
     msg_tick();
     if (gr_depart) {
-        if (fx_flag == 1 || !fx[0].st) {
-            /* the ship has gone: the grant proper begins */
-            gr_depart = 0;
-            fx_stop_all();
-            title_show(T_LANDGRANT, 0);
-            msg_show(M_SELECT, 0, 0);
-            if (my_seat < 4)
-                snd_play(SND_ALERT);
-            g_show = 1;
-        }
+        if (fx_flag == 1 || !fx[0].st)
+            depart_done();
         return;
     }
     if (ev_btn) {
