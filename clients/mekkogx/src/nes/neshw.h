@@ -11,10 +11,11 @@
  *   CHR  three 4K pattern tables, one for each third of the screen (a
  *        bitmap: every cell its own tile, as the TMS9918A's Graphics II),
  *        and the sprites' 4K. MMC3's scanline interrupt switches the
- *        background's table at each third (crt0.s).
+ *        background's banks a half table at a time (crt0.s).
  *
  * The screen is the TMS9918A clients' 256 x 192, on name table rows 2..25
- * (lines 16..207); above and below, the background is off.
+ * (lines 16..207); above and below, the margins show the sprites' first
+ * tile (pair 0's top), which stays blank.
  */
 #ifndef NESHW_H
 #define NESHW_H
@@ -73,6 +74,12 @@ extern volatile uint8_t spr_ovf;        /* bit 5: a ninth sprite on a line */
 #pragma zpsym ("spr_ovf")
 void __fastcall__ ppu_drain(uint8_t budget);    /* crt0.s: 255 = all */
 
-extern uint8_t oam[256];                /* the sprites, sent each frame */
+/* The sprites, sent each frame: two pages, the game making the one the
+ * NMI doesn't send (oam_show) and naming it in oam_next when it is whole.
+ * (A page is named by its address's high byte.) */
+extern uint8_t oam[256], oam2[256];
+extern volatile uint8_t oam_show, oam_next;
+#pragma zpsym ("oam_show")
+#pragma zpsym ("oam_next")
 
 #endif

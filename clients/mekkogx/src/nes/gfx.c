@@ -124,7 +124,7 @@ static void q_copy(uint8_t third, uint16_t a, const uint8_t *s, uint8_t n)
     q_end();
 }
 
-/* (a fill costs the drain half a unit a byte: 120 is within a frame's
+/* (a fill costs the drain 9/16 of a unit a byte: 120 is within the NMI's
  * budget; with the display off, the drain takes all there is) */
 static void q_fill(uint8_t third, uint16_t a, uint16_t n, uint8_t v)
 {
@@ -258,14 +258,16 @@ void gfx_init(void)
     static uint8_t row[32];
     uint8_t r, c;
     direct();
-    q_fill(Q_NOBANK, 0x2000, 64, 0);            /* rows 0-1 */
+    q_fill(Q_NOBANK, 0x2000, 64, 0x80);         /* rows 0-1: R1's first tile
+                                                 * (crt0.s: the blank one) */
     for (r = 0; r < 24; ++r) {
         for (c = 0; c < 32; ++c)
             row[c] = (uint8_t)(((r & 7) << 5) | c);
         q_copy(Q_NOBANK, 0x2040 + ((uint16_t)r << 5), row, 32);
     }
-    q_fill(Q_NOBANK, 0x2340, 128, 0);           /* rows 26-29 */
-    q_fill(Q_NOBANK, 0x1000, 0x1000, 0);        /* the sprites' patterns */
+    q_fill(Q_NOBANK, 0x2340, 128, 0);           /* rows 26-29: R0's first */
+    q_fill(Q_NOBANK, 0x1000, 0x1000, 0);        /* the sprites' patterns (and
+                                                 * the margins' blank tile) */
     pset = PS_NORMAL;
     clear_all();
     river_init();
@@ -667,8 +669,10 @@ void gfx_town(void)
 
 /* ---- sprites ------------------------------------------------------------ */
 #define PAIRS 6                 /* 8 x 16 sprites a slot */
-#define RIVER_PAIRS 4           /* the river's: 2 across, 2 down */
-#define PAIR_OF(i) (RIVER_PAIRS + (i) * PAIRS)
+#define RIVER_PAIR 1            /* the river's: 2 across, 2 down (pair 0 is
+                                 * the margins' blank tile, crt0.s) */
+#define RIVER_PAIRS 4
+#define PAIR_OF(i) (RIVER_PAIR + RIVER_PAIRS + (i) * PAIRS)
 
 static uint8_t s_on[SPR_SLOTS], s_shape[SPR_SLOTS], s_frame[SPR_SLOTS];
 static uint8_t s_col[SPR_SLOTS], s_flags[SPR_SLOTS];
@@ -801,7 +805,7 @@ static void river_init(void)
     if (x0 > 8)
         x0 = 8;
     river_x0 = x0;
-    pair = 0;
+    pair = RIVER_PAIR;
     for (gr = 0; gr < 2; ++gr) {
         for (gc = 0; gc < 2; ++gc, ++pair) {
             for (l = 0; l < 16; ++l) {
@@ -819,7 +823,7 @@ static void river_init(void)
 void spr_flush(void)
 {
     const ShapeDef *d;
-    uint8_t *o;
+    uint8_t *o, *page;
     uint8_t i, k, f, cols, rows, gc, gr, n, shape, h, w, sc, ci, at, pair, p, ovf;
     int16_t x, y;
 
@@ -831,7 +835,9 @@ void spr_flush(void)
         rot = rot + 1 < SPR_SLOTS ? rot + 1 : 0;
     any_dirty = 0;
     n = 0;
-    o = oam;
+    /* the page the NMI isn't sending (and won't, until it is named) */
+    oam_next = 0;
+    page = o = oam_show == (uint8_t)((uint16_t)oam >> 8) ? oam2 : oam;
     for (k = 0; k < SPR_SLOTS; ++k) {
         i = k + rot;
         if (i >= SPR_SLOTS)
@@ -886,7 +892,7 @@ void spr_flush(void)
                     if (n >= 64)
                         break;
                     o[0] = (uint8_t)((2 + 4 * (p / 9)) * 8 + (gr << 4) + 16 - 1);
-                    o[1] = ((gr * 2 + gc) << 1) | 1;
+                    o[1] = ((RIVER_PAIR + gr * 2 + gc) << 1) | 1;
                     o[2] = 0x20 | (RIVER_SPR >> 2);
                     o[3] = (uint8_t)((2 + 3 * (p % 9)) * 8 + river_x0 + (gc << 3));
                     o += 4;
@@ -896,4 +902,5 @@ void spr_flush(void)
     }
     for (; n < 64; ++n, o += 4)
         o[0] = 0xF8;
+    oam_next = (uint8_t)((uint16_t)page >> 8);
 }

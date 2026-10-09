@@ -19,6 +19,12 @@ scenario, one command a line; times are in frames of the game's clock:
     key CHAR|NUM                type a key (RETURN = 13, ESC = 27)
     peek SYMBOL [N]             print N bytes at a symbol (from the map)
     pc N                        print the CPU's PC for N frames, then quit
+    ppuwatch N                  for N frames, where the CPU writes the PPU and
+                                MMC3's pattern banks (PPUW lines): the line
+                                rendering comes on at, PPU writes while it
+                                shows (should be none), each switch's lines,
+                                and the interrupts' drains: cycles taken
+                                beyond 16 a unit of budget spent (crt0.s)
     trace FILE | trace off      log every instruction to OUTDIR/FILE (slow)
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
     type TEXT                   type on the real keyboard (\\n RETURN, \\s space)
@@ -96,6 +102,8 @@ def main():
             steps.append(("pc", int(w[1]) if len(w) > 1 else 1))
         elif c == "poke":
             steps.append(("poke", sym(w[1]), int(w[2], 0)))
+        elif c == "ppuwatch":
+            steps.append(("ppuwatch", int(w[1])))
         else:
             sys.exit("unknown command: " + line)
 
@@ -111,6 +119,8 @@ def main():
             lua.append('{"peek", "%s", %d, %d},' % (s[1], s[2], s[3]))
         elif s[0] == "pc":
             lua.append('{"pc", %d},' % s[1])
+        elif s[0] == "ppuwatch":
+            lua.append('{"ppuwatch", %d},' % s[1])
         elif s[0] == "dump":
             lua.append('{"dump", %d, %d, "%s"},' % (s[1], s[2], os.path.join(out, s[3])))
         elif s[0] == "type":
@@ -132,6 +142,111 @@ local last_fc = 0
 local frames = 0
 local pcdump = 0
 local asked = false
+-- ppuwatch: the debugger logs the cycle count of the NMI's first
+-- instruction and of every write to PPUMASK and MMC3's bank registers; a
+-- write's line is 241 (the NMI's) + its cycles since / 113.667 (+10 for
+-- the NMI's entry), past 261 the next frame's
+local cpu = manager.machine.devices[":maincpu"]
+local dbg = manager.machine.debugger
+local tap = nil
+local ws = nil
+local rend, trend, sel, nmi_c, seen = 0, 0, 0, nil, 0
+local function bump(t, k) t[k] = (t[k] or 0) + 1 end
+local function watch_on()
+  ws = {on = {}, late = 0, bad = 0, chr = {}, nmis = 0, drains = 0, over = -99999, most = 0}
+  seen = #dbg.consolelog
+  cpu.debug:bpset(mem:read_u16(0xFFFA), "1", 'printf "PW N %%d",totalcycles; g')
+  -- the drain's budget is crt0.s's zero page byte 4, in_drain byte 7
+  cpu.debug:bpset(%d, "1", 'printf "PW D %%d %%d",totalcycles,a; g')
+  cpu.debug:wpset(mem, "w", 7, 1, "1", 'printf "PW I %%d %%d %%d",totalcycles,wpdata,b@4; g')
+  cpu.debug:wpset(mem, "w", 0x2001, 1, "1", 'printf "PW M %%d %%d %%d",totalcycles,wpdata,b@4; g')
+  cpu.debug:wpset(mem, "w", 0x8000, 2, "1", 'printf "PW B %%d %%d %%d",totalcycles,wpaddr,wpdata; g')
+  if tap == nil then
+    tap = mem:install_write_tap(0x2000, 0x2007, "ppuw", function(off, data, mask)
+      if ws == nil then return end
+      local r = off & 7
+      if r == 1 then trend = data & 0x18
+      elseif r >= 5 and trend ~= 0 then ws.bad = ws.bad + 1 end
+    end)
+  end
+end
+local function line_of(c)
+  local d = c - nmi_c + 10
+  local l = 241 + d // 113.6667
+  local dot = math.floor((d %% 113.6667) * 3)
+  if l >= 262 then l = l - 262 end
+  return math.floor(l), dot
+end
+local nmi_drain, irq_drain = nil, nil
+local function drained(c0, c1, used)
+  local d = c1 - c0
+  ws.drains = ws.drains + 1
+  if d > ws.most then ws.most = d end
+  if d - 16 * used > ws.over then ws.over = d - 16 * used end
+end
+local function watch_read()
+  local log = dbg.consolelog
+  local n = #log
+  for k = seen + 1, n do
+    local w = {}
+    for x in string.gmatch(log[k] or "", "%%S+") do w[#w + 1] = x end
+    if w[1] == "PW" then
+      local c = tonumber(w[3])
+      if w[2] == "N" then nmi_c = c; ws.nmis = ws.nmis + 1
+      elseif w[2] == "D" then
+        -- the NMI's drain: done when show turns the display on, 81 cycles
+        -- later (rts, jsr show, show to its PPUMASK write)
+        if tonumber(w[4]) == 90 then nmi_drain = c else nmi_drain = nil end
+      elseif w[2] == "I" then
+        -- the IRQ's: between in_drain's writes (and 16 cycles of its own)
+        if tonumber(w[4]) == 1 then irq_drain = c
+        elseif irq_drain ~= nil then drained(irq_drain + 16, c, 250 - tonumber(w[5])); irq_drain = nil end
+      elseif nmi_c ~= nil and w[2] == "M" then
+        local v = tonumber(w[4])
+        if nmi_drain ~= nil and (v & 0x18) ~= 0 then
+          drained(nmi_drain + 81, c, 90 - tonumber(w[5])); nmi_drain = nil
+        end
+        if (v & 0x18) ~= 0 and rend == 0 then
+          local l, dot = line_of(c)
+          bump(ws.on, l)
+          -- on by the pre-render line's dot 280 (v is copied from t then)
+          if not ((l >= 241 and l < 261) or (l == 261 and dot < 280)) then ws.late = ws.late + 1 end
+        end
+        rend = v & 0x18
+      elseif nmi_c ~= nil and w[2] == "B" then
+        local a, v = tonumber(w[4]), tonumber(w[5])
+        if a == 0x8000 then sel = v & 7
+        elseif sel <= 1 and rend ~= 0 then
+          local l = line_of(c)
+          local key = string.format("R%%d=%%2d", sel, v)
+          local e = ws.chr[key]
+          if e == nil then ws.chr[key] = {l, l, 1}
+          else e[1] = math.min(e[1], l); e[2] = math.max(e[2], l); e[3] = e[3] + 1 end
+        end
+      end
+    end
+  end
+  seen = n
+end
+local function watch_report()
+  watch_read()
+  cpu.debug:bpclear()
+  cpu.debug:wpclear()
+  local t = {}
+  for k, n in pairs(ws.on) do t[#t + 1] = {k, n} end
+  table.sort(t, function(x, y) return x[1] < y[1] end)
+  local u = {}
+  for _, e in ipairs(t) do u[#u + 1] = string.format("%%d:%%d", e[1], e[2]) end
+  print("PPUW frames " .. ws.nmis .. "  rendering on at line " .. table.concat(u, " ") .. "  late " .. ws.late)
+  print("PPUW writes-while-showing " .. ws.bad)
+  print("PPUW drains " .. ws.drains .. "  longest " .. ws.most .. " cycles  most beyond 16 a unit " .. ws.over)
+  t = {}
+  for k, e in pairs(ws.chr) do t[#t + 1] = string.format("%%s lines %%3d-%%3d x%%d", k, e[1], e[2], e[3]) end
+  table.sort(t)
+  for _, l in ipairs(t) do print("PPUW switch " .. l) end
+  ws = nil
+end
+local watch_until = nil
 emu.register_frame_done(function()
   frames = frames + 1
   if frames > 60 * 600 then manager.machine:exit() end
@@ -184,6 +299,12 @@ emu.register_frame_done(function()
       i = i + 1
     elseif s[1] == "pc" then
       pcdump = s[2]; i = i + 1; return
+    elseif s[1] == "ppuwatch" then
+      if watch_until == nil then watch_on(); watch_until = now + s[2] end
+      watch_read()
+      if ((now - watch_until) & 0xFFFF) < 0x8000 then
+        watch_report(); watch_until = nil; i = i + 1
+      else return end
     elseif s[1] == "peek" then
       local t = {}
       for k = 0, s[4] - 1 do t[#t + 1] = string.format("%%02X", mem:read_u8(s[3] + k)) end
@@ -193,7 +314,7 @@ emu.register_frame_done(function()
   end
   manager.machine:exit()
 end, "nessim")
-""" % (sym("frame_count"), out))
+""" % (sym("frame_count"), out, syms.get("_ppu_drain", 0)))
     luafile = os.path.join(out, "scenario.lua")
     open(luafile, "w").write("\n".join(lua))
     snapdir = os.path.join(out, "raw")
@@ -203,7 +324,7 @@ end, "nessim")
            "-video", "none", "-sound", "none", "-nothrottle", "-snapshot_directory", snapdir,
            "-cfg_directory", cfg, "-nvram_directory", cfg,
            "-autoboot_script", luafile, "-skip_gameinfo"]
-    if any(x[0] == "trace" for x in steps):
+    if any(x[0] in ("trace", "ppuwatch") for x in steps):
         cmd[2:2] = ["-debug", "-debugger", "none"]
     if os.environ.get("NESWAV"):        # record the sound: NESWAV=out.wav
         i = cmd.index("-sound")
@@ -213,7 +334,7 @@ end, "nessim")
     env.setdefault("FUJINET_TCP", "127.0.0.1:1")
     r = subprocess.run(cmd, cwd=MAME, capture_output=True, text=True, timeout=900, env=env)
     for line in r.stdout.splitlines():
-        if line.startswith(("PEEK", "SNAP", "PC ")):
+        if line.startswith(("PEEK", "SNAP", "PC ", "PPUW")):
             print(line)
     if r.returncode:
         print(r.stdout[-2000:], r.stderr[-2000:])

@@ -4,25 +4,40 @@
 ;
 ; The screen is a bitmap of 768 cells, each its own tile, as the TMS9918A's
 ; Graphics II: a third of the screen (8 rows, 256 tiles) to each of three
-; 4K pattern tables in CHR-RAM. MMC3's scanline counter interrupts at the
-; lines where they change:
+; 4K pattern tables in CHR-RAM, rows 2-25 of the name table. A table is
+; two of MMC3's 2K banks, R0 (tiles 0-127: a third's first four rows) and
+; R1 (128-255: its last four), and each is switched while the rows on the
+; screen use only the other: anywhere in a 32-line window, so neither the
+; interrupt's lateness nor a line more or less in MMC3's count (the
+; hardware and MesenCE count the pre-render line, MAME's cart doesn't)
+; can put a wrong tile on the screen. The margins (rows 0-1: tile 128;
+; rows 26-29: tile 0) show CHR bank 12's first tile, kept blank (the
+; sprites' pair 0, src/nes/gfx.c), while R1 or R0 holds bank 12:
 ;
-;   line  15  the background on (above it, rows 0-1, only sprites)
-;         79  rows 10-17: the second table
-;        143  rows 18-25: the third
-;        207  everything off: from here to the end of the vertical blank
-;             the PPU is free, and the queue is drained (then again in the
-;             NMI, after the sprites' DMA)
+;   NMI        R0 the first table's first half, R1 bank 12 (the top
+;              margin), everything on
+;   line  32   R1 the first table's second half    (after row 1, before 6)
+;         64   R0 the second table's first half    (after row 5, before 10)
+;         96   R1 its second half                  (after row 9, before 14)
+;        128   R0 the third table's first half     (after row 13, before 18)
+;        160   R1 its second half                  (after row 17, before 22)
+;        192   R0 bank 12, the bottom margin       (after row 21, before 26)
+;        210   everything off: from here to the end of the vertical blank
+;              the PPU is free, and the queue is drained (then again in
+;              the NMI, after the sprites' DMA)
 ;
 ; The NMI counts the frames, plays the sound effect's next frame and puts
-; the display back for the next frame (the first table, the scroll, the
-; counter).
+; the display back for the next frame (the banks, the scroll, the counter).
 ;
 ; Game code never touches the PPU while it shows a picture: drawing goes
 ; into the queue (ppuq) and the interrupts drain it, a budget's worth a
 ; frame. While a whole screen is drawn, ppu_direct is set: the NMI turns
 ; the display off and leaves the PPU alone, and the game drains the queue
 ; itself as it fills (src/nes/gfx.c).
+;
+; The sprites have two pages (oam, oam2): the game builds the one not
+; shown and names it in oam_next, and the NMI sends that one from then on,
+; never a page half made.
 ;
 ; MMC3's bank select register is shared: the game sets R6 for its overlays
 ; and its art (prg_r6), the interrupts R0/R1 for the pattern tables. The
@@ -34,7 +49,8 @@
         .export         _exit
         .export         _ppu_drain, _prg_r6, _snd_frame_nmi
         .exportzp       _qhead, _qtail, _ppu_direct, _mmc3_sel, _ppu_off, _spr_ovf
-        .export         _frame_count, _ppuq, _oam
+        .exportzp       _oam_show, _oam_next
+        .export         _frame_count, _ppuq, _oam, _oam2
         .import         initlib, donelib, callmain, zerobss, copydata
         .import         _snd_f, _snd_nf, _snd_n
         .include        "zeropage.inc"
@@ -49,29 +65,33 @@ PPUDATA   = $2007
 OAMDMA    = $4014
 
 CTRL_ON   = $A0                 ; NMI, 8 x 16 sprites, background at $0000
-MASK_SPR  = $14                 ; sprites only (the top margin)
 MASK_ALL  = $1E                 ; background and sprites, no clipping
 
 ; The first interrupt: the counter is reloaded with the latch at the first
-; rendered line it sees, then counts down a line at a time. MAME's cart
-; (pico/nes/emu) clocks it from line 0; the hardware also clocks it on the
-; pre-render line, a line earlier: IRQ_EARLY 1 for that.
-.ifndef IRQ_EARLY
-IRQ_EARLY = 0
-.endif
-IRQ_FIRST = 15 - IRQ_EARLY
-IRQ_NEXT  = 63                  ; then every 64 lines
+; line it is clocked on (the pre-render line, or MAME's line 0), and goes
+; off when it has counted down to 0; each interrupt then sets the next.
+IRQ_FIRST = 32
+NBANK     = 12                  ; the 1K bank with the blank tile (R0/R1: 12-13)
 
-; Drain budgets, in units of about 16 cycles (a byte copied is one, a byte
-; filled half). No command may cost more than the IRQ's budget (gfx.c keeps
+; Drain budgets, in units of 16 cycles, counted from the code below at
+; its slowest (a switch of the third's banks included): a copy of n bytes
+; is 15n + 196 cycles, a fill 9n + 230, a paint 1110 and a row of n cells
+; 185n + 215. No command may cost more than the IRQ's budget (gfx.c keeps
 ; them smaller), or it would never go.
 Q_COPY    = 1
 Q_FILL    = 2
 Q_PAINT   = 3
 Q_ROW     = 4
-PAINT_COST = 56
-IRQ_BUDGET = 190                ; lines 208-240
-NMI_BUDGET = 85                 ; the vertical blank, after the DMA
+Q_BASE    = 13
+PAINT_COST = 71
+; The IRQ's drain starts by line 212 and the display must be back on by
+; the pre-render line's dot 280 (or it isn't scrolled to the top): 49 lines
+; for the drain, the NMI meanwhile, the sprites' DMA and show. Past line
+; 241 the NMI leaves those to the IRQ (nmi_late). The NMI's own drain has
+; the vertical blank after its DMA: 2366 cycles in all, about 680 of them
+; the NMI's own work. (A budget is a byte, 255 meaning no limit.)
+IRQ_BUDGET = 250
+NMI_BUDGET = 90
 
 ; ---------------------------------------------------------------------------
 ; The header: NES 2.0, mapper 4, 128K PRG, 16K CHR-RAM, 8K PRG-RAM.
@@ -103,8 +123,12 @@ ahi:         .res 1
 alo:         .res 1
 alo8:        .res 1
 cnt:         .res 1
+cost:        .res 1
 _ppu_off:    .res 1             ; the NMI has turned the display off
 _spr_ovf:    .res 1             ; a line had more than 8 sprites
+_oam_show:   .res 1             ; the sprites' page the NMI sends
+_oam_next:   .res 1             ; the page to send from now on (0: none)
+pbuf:        .res 16            ; a cell being painted
 
 .segment "BSS"
 _frame_count: .res 2            ; (cleared by zerobss)
@@ -115,8 +139,8 @@ _ppuq:       .res 256
 .segment "OAM"
 _oam:        .res 256
 
-.segment "PBUF"
-pbuf:        .res 16            ; a cell being painted
+.segment "OAM2"
+_oam2:       .res 256
 
 ; ---------------------------------------------------------------------------
 .segment "STARTUP"
@@ -172,8 +196,11 @@ start:
         ; sprites all off the screen
         lda     #$F8
 @ofs:   sta     _oam,x
+        sta     _oam2,x
         inx
         bne     @ofs
+        lda     #>_oam
+        sta     _oam_show
 
 @v2:    bit     PPUSTATUS
         bpl     @v2
@@ -210,20 +237,23 @@ _prg_r6:
         rts
 
 ; ---------------------------------------------------------------------------
-; The display for the next frame: the first table, scroll 0, the top margin
-; showing sprites only, and the scanline counter set for line 15.
+; The display for the next frame: the first table's first half and the
+; blank bank, scroll 0 (the address too: should this ever come after the
+; pre-render line, which copies the scroll into it, the picture is only
+; lower, not from wherever the drain left it), and the scanline counter.
 show:
         lda     #0
         sta     $8000
         sta     $8001
         lda     #1
         sta     $8000
-        lda     #2
+        lda     #NBANK
         sta     $8001
         lda     _mmc3_sel
         sta     $8000
-        lda     #0
+        lda     #$FE            ; R0/R1 hold no one table
         sta     cur_third
+        lda     #0
         sta     irq_step
         bit     PPUSTATUS
         lda     #CTRL_ON
@@ -231,13 +261,28 @@ show:
         lda     #0
         sta     PPUSCROLL
         sta     PPUSCROLL
-        lda     #MASK_SPR
+        sta     PPUADDR
+        sta     PPUADDR
+        lda     #MASK_ALL
         sta     PPUMASK
         sta     $E000
         lda     #IRQ_FIRST
         sta     $C000
         sta     $C001
         sta     $E001
+        rts
+
+; The sprites' DMA, from the page the game last finished.
+oam_send:
+        lda     _oam_next
+        beq     @dma
+        sta     _oam_show
+        lda     #0
+        sta     _oam_next
+@dma:   lda     #0
+        sta     OAMADDR
+        lda     _oam_show
+        sta     OAMDMA
         rts
 
 nmi:
@@ -257,10 +302,7 @@ nmi:
         sta     _spr_ovf
         lda     in_drain
         bne     @late
-        lda     #0
-        sta     OAMADDR
-        lda     #>_oam
-        sta     OAMDMA
+        jsr     oam_send
         lda     #NMI_BUDGET
         jsr     _ppu_drain
         jsr     show
@@ -282,20 +324,40 @@ nmi:
         pla
         rti
 
+; The scanline interrupt's steps (see the top): a bank register, its bank,
+; and the latch for the next (lines to it, less one); then IRQ_STEPS, off.
+IRQ_STEPS = 6
+irq_reg:  .byte 1, 0, 1, 0, 1, 0
+irq_bank: .byte 2, 4, 6, 8, 10, NBANK
+irq_next: .byte 31, 31, 31, 31, 31, 17
+
 irq:
         pha
-        lda     irq_step
-        beq     @s0
-        cmp     #1
-        beq     @s1
-        cmp     #2
-        beq     @s2
-        ; line 207: off, and the queue
-        lda     #0
-        sta     PPUMASK
-        sta     $E000
         txa
         pha
+        ldx     irq_step
+        cpx     #IRQ_STEPS
+        beq     @off
+        lda     irq_reg,x
+        sta     $8000
+        lda     irq_bank,x
+        sta     $8001
+        lda     _mmc3_sel
+        sta     $8000
+        sta     $E000
+        lda     irq_next,x
+        sta     $C000
+        sta     $C001
+        sta     $E001
+        inc     irq_step
+        pla
+        tax
+        pla
+        rti
+        ; line 210: off, and the queue
+@off:   lda     #0
+        sta     PPUMASK
+        sta     $E000
         tya
         pha
         lda     #1
@@ -308,49 +370,12 @@ irq:
         beq     @ret
         lda     #0
         sta     nmi_late
-        lda     #0
-        sta     OAMADDR
-        lda     #>_oam
-        sta     OAMDMA
+        jsr     oam_send
         jsr     show
 @ret:   pla
         tay
         pla
         tax
-        pla
-        rti
-@s1:    lda     #0              ; R0 first: row 10's first tiles are in it
-        sta     $8000
-        lda     #4
-        sta     $8001
-        lda     #1
-        sta     $8000
-        lda     #6
-        sta     $8001
-        lda     #1
-        sta     cur_third
-        bne     @next
-@s2:    lda     #0
-        sta     $8000
-        lda     #8
-        sta     $8001
-        lda     #1
-        sta     $8000
-        lda     #10
-        sta     $8001
-        lda     #2
-        sta     cur_third
-        bne     @next
-@s0:    lda     #MASK_ALL
-        sta     PPUMASK
-@next:  lda     _mmc3_sel
-        sta     $8000
-        sta     $E000
-        lda     #IRQ_NEXT
-        sta     $C000
-        sta     $C001
-        sta     $E001
-        inc     irq_step
         pla
         rti
 
@@ -376,9 +401,19 @@ _ppu_drain:
         ldy     tmp
         cpy     #Q_FILL
         bne     @cc
-        lsr     a               ; a fill: half a unit a byte
+        sta     tmp             ; a fill: 9/16 of a unit a byte
+        lsr     a
+        lsr     a
+        lsr     a
+        lsr     a
+        sta     cost
+        lda     tmp
+        lsr     a
+        clc
+        adc     cost
+        adc     #3              ; (its own work is more than a copy's)
 @cc:    clc
-        adc     #4
+        adc     #Q_BASE
         bcc     @chk
         lda     #255
         bne     @chk
@@ -387,17 +422,17 @@ _ppu_drain:
         beq     @crow
         lda     #PAINT_COST
         bne     @chk
-@crow:  txa                     ; n cells: 10 units each
+@crow:  txa                     ; n cells (16 at most): 12 units each
         clc
         adc     #4
         tay
         lda     _ppuq,y
         sta     tmp
         asl     a
-        asl     a
         adc     tmp
         asl     a
-        adc     #5
+        asl     a
+        adc     #Q_BASE+1
 @chk:   ldy     budget
         cpy     #255
         beq     @go
