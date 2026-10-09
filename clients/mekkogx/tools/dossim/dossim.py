@@ -41,7 +41,9 @@ then the one of the EXE that will run).
 
 Against a FujiNet: DOSSIM_FUJINET=127.0.0.1:PORT connects the serial port
 (a null modem) to a fujinet-pc (RS232 build) listening for BoIP there; the
-boot disk's CONFIG.SYS must load FUJINET.SYS for that port and speed.
+boot disk's CONFIG.SYS must load FUJINET.SYS for that port and speed, and
+DOSSIM_BAUD (default 9600) sets the null modem's to match. The PC's port is
+MAME's -isa2:com:serport0 (COM1); DOSSIM_SERSLOT=-com1 for an older MAME.
 """
 import os
 import re
@@ -64,6 +66,8 @@ def symbols(mapfile):
 
 
 DIRBITS = {"d": 1, "r": 2, "u": 4, "l": 8}
+# MAME's RS232_BAUD_* (src/devices/bus/rs232/rs232.h)
+BAUDS = {9600: 0x07, 19200: 0x09, 38400: 0x0b, 57600: 0x0c, 115200: 0x0d}
 
 
 def make_disk(exe, out):
@@ -179,9 +183,18 @@ local pcdump = 0
 local asked = false
 local held = nil
 local early = %d
+local baud = %d
 local function a(off) return ds * 16 + off end
 emu.register_frame_done(function()
   frames = frames + 1
+  if frames == 1 and baud >= 0 then
+    -- the null modem's speed (MAME's RS232_BAUD_* codes)
+    for tag, port in pairs(manager.machine.ioport.ports) do
+      if tag:find("null_modem:RS232_[RT]XBAUD") then
+        for name, field in pairs(port.fields) do field.user_value = baud end
+      end
+    end
+  end
   if frames > 60 * %d then
     manager.machine.video:snapshot()
     local f = io.open(out .. "/snaps.txt", "a"); f:write("timeout\\n"); f:close()
@@ -268,6 +281,7 @@ emu.register_frame_done(function()
   manager.machine:exit()
 end, "dossim")
 """ % (sym("frame_count"), sym("test_hook"), out, int(os.environ.get("DOSSIM_EARLYPC", "0")),
+       BAUDS.get(int(os.environ.get("DOSSIM_BAUD", "9600")), -1),
        int(os.environ.get("DOSSIM_SECONDS", "600"))))
     luafile = os.path.join(out, "scenario.lua")
     open(luafile, "w").write("\n".join(lua))
@@ -291,7 +305,8 @@ end, "dossim")
            "-autoboot_script", luafile, "-skip_gameinfo"]
     cmd += os.environ.get("DOSSIM_MAMEARGS", "").split()   # e.g. "-isa1 ega"
     if os.environ.get("DOSSIM_FUJINET"):   # host:port of a fujinet-pc's BoIP
-        slot = "-serport" if machine == "ibmpcjr" else "-com1"
+        slot = "-serport" if machine == "ibmpcjr" else \
+            os.environ.get("DOSSIM_SERSLOT", "-isa2:com:serport0")
         cmd += [slot, "null_modem", "-bitb", "socket." + os.environ["DOSSIM_FUJINET"]]
         cmd.remove("-nothrottle")       # the server's clock is real time
     if os.environ.get("DOSSIM_REALTIME"):

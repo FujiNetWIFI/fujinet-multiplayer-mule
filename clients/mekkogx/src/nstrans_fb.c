@@ -49,7 +49,9 @@
 #define SL_ESCEND 0xDC
 #define SL_ESCESC 0xDD
 
-#define WAIT_MAX   300          /* frames for a reply before it's given up */
+#define WAIT_MAX   90           /* frames for a reply before it's given up
+                                 * (one comes in a few: more is a request or
+                                 * a reply's end lost on the line) */
 #define DOWN_AFTER 60           /* statuses saying the socket is shut */
 #define WRITE_TRIES 10
 #ifndef FB_RESENDS
@@ -79,6 +81,15 @@ static uint8_t hdr[6], sbuf[4];
 static uint8_t *dst;
 static uint16_t dmax, got, sum;
 static uint8_t inframe, esc;
+
+#ifdef MULE_AUTOPLAY
+/* (for the harness) replies bad or refused, replies never come, resends
+ * asked, reads dropped */
+uint8_t fb_cnt[4];
+#define FB_COUNT(i) (++fb_cnt[i])
+#else
+#define FB_COUNT(i)
+#endif
 
 #ifdef FB_PROBE
 #define PROBE_WAIT 30           /* frames for a candidate's answer */
@@ -149,7 +160,8 @@ static void request(uint8_t cmd, uint8_t fields, const uint8_t *data, uint8_t n,
     dst = to;
     dmax = max;
     got = sum = 0;
-    inframe = esc = 0;
+    inframe = 1;                    /* (its first END may be lost) */
+    esc = 0;
     started = frame_count;
 #ifdef FB_PROBE
     if (lib) {
@@ -175,8 +187,20 @@ static void request(uint8_t cmd, uint8_t fields, const uint8_t *data, uint8_t n,
     fb_sent();
 }
 
-/* The reply's bytes, as many as wait: 0 not all here yet, 1 an ACK, 2 bad
- * (or a NAK). */
+/* The reply, judged once its header's length is in (its last END isn't
+ * waited for: it may be lost): 1 an ACK, 2 bad (or a NAK). */
+static uint8_t judge(void)
+{
+    inframe = 0;
+    if (got != (hdr[2] | (uint16_t)hdr[3] << 8) || (uint8_t)sum != hdr[4]
+        || hdr[0] != DEV_NET)
+        return 2;
+    return hdr[1] == ACK ? 1 : 2;
+}
+
+/* The reply's bytes, as many as wait: 0 not all here yet, else judge's.
+ * Taken from the first byte after the request: a reply whose opening END
+ * was lost is whole all the same. */
 static uint8_t collect(void)
 {
     uint8_t c, n = 0;
@@ -191,11 +215,7 @@ static uint8_t collect(void)
                 inframe = 1;        /* (the opening END) */
                 continue;
             }
-            inframe = 0;
-            if (got != (hdr[2] | (uint16_t)hdr[3] << 8) || (uint8_t)sum != hdr[4]
-                || hdr[0] != DEV_NET)
-                return 2;
-            return hdr[1] == ACK ? 1 : 2;
+            return judge();         /* short of its length: bad */
         }
         if (!inframe)
             continue;
@@ -216,6 +236,8 @@ static uint8_t collect(void)
         sum += got == 4 ? 0 : c;    /* (taken with the checksum 0) */
         sum = (sum >> 8) + (sum & 0xFF);
         ++got;
+        if (got >= 6 && got == (hdr[2] | (uint16_t)hdr[3] << 8))
+            return judge();
         if (++n == 0)
             break;                  /* 255 a call is plenty */
     }
@@ -252,9 +274,12 @@ static void step(void)
         r = collect();
         if (r == 0 && (uint16_t)(frame_count - started) < WAIT_MAX)
             return;                         /* still going */
+        if (r != 1)
+            FB_COUNT(r == 2 ? 0 : 1);
 #if FB_RESENDS
         if (r != 1 && resends < FB_RESENDS) {
             ++resends;                      /* garbled, or cut short */
+            FB_COUNT(2);
             request(C_RESEND, 0, 0, 0, dst, dmax);
             return;
         }
@@ -289,6 +314,7 @@ static void step(void)
                  * are counted as taken, or the server's credit would be
                  * short for good */
                 dropped = 1;
+                FB_COUNT(3);
             }
             return;                         /* (the bytes first) */
         case T_WRITE:

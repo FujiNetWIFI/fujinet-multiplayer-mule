@@ -26,7 +26,9 @@
 #define NS_PORT  STREAM_PORT
 #endif
 
-#define PING_EVERY 600          /* frames between keepalives */
+#define PING_EVERY 120          /* quiet frames between keepalives: the
+                                 * server hears the seat (or it stops its
+                                 * line) and gets any credit it lost */
 #define DEAD_AFTER 300          /* frames without a frame: the link is gone */
 #define HELLO_WAIT 30           /* frames before HELLO goes again: FujiNet */
 #define HELLO_MAX  10           /* answers before its socket is open */
@@ -41,7 +43,7 @@
                                  * ever let the next one go */
 
 uint8_t ns_on;                  /* the link is up */
-#ifdef __SMS__
+#if defined(__SMS__) || defined(MULE_AUTOPLAY)
 /* (for the harness) states taken, bad frames, RESYNCs sent, links lost */
 uint8_t ns_cnt[4];
 #define NS_COUNT(i) (++ns_cnt[i])

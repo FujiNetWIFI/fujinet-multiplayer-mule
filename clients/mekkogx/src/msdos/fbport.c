@@ -30,7 +30,7 @@
 
 /* uartisr.asm */
 extern uint16_t fb_base;
-extern volatile uint8_t fb_rhead, fb_rtail, fb_thead, fb_ttail, fb_lsr;
+extern volatile uint8_t fb_rhead, fb_rtail, fb_thead, fb_ttail, fb_lsr, fb_poll, fb_ovr;
 extern uint8_t fb_rring[256], fb_tring[64];
 extern void __far fb_isr(void);
 #pragma aux fb_base "_*"
@@ -39,6 +39,8 @@ extern void __far fb_isr(void);
 #pragma aux fb_thead "_*"
 #pragma aux fb_ttail "_*"
 #pragma aux fb_lsr "_*"
+#pragma aux fb_poll "_*"
+#pragma aux fb_ovr "_*"
 #pragma aux fb_rring "_*"
 #pragma aux fb_tring "_*"
 #pragma aux fb_isr "_*"
@@ -82,11 +84,14 @@ uint8_t fb_getc(void)
 }
 
 /* The request is in the ring: the first byte goes now, and the
- * transmitter's interrupt sends the rest. */
+ * transmitter's interrupt sends the rest. Its reply may come faster than
+ * an interrupt a byte can take it: the handler waits for each next byte
+ * until one doesn't come (uartisr.asm). */
 void fb_sent(void)
 {
     uint16_t b = fb_base;
     _disable();
+    fb_poll = 1;
     if ((inp(b + LSR) & 0x20) && fb_ttail != fb_thead) {
         outp(b, fb_tring[fb_ttail]);
         fb_ttail = (fb_ttail + 1) & 63;
@@ -157,7 +162,7 @@ uint8_t fb_try(uint8_t i)
             else
                 outp(b + FCR, 0);
         }
-        fb_rhead = fb_rtail = fb_thead = fb_ttail = fb_lsr = 0;
+        fb_rhead = fb_rtail = fb_thead = fb_ttail = fb_lsr = fb_poll = fb_ovr = 0;
         _disable();
         old_irq = _dos_getvect(vec);
         _dos_setvect(vec, (void (__interrupt __far *)(void))fb_isr);
