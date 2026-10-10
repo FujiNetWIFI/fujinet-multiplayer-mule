@@ -1,0 +1,4 @@
+# a frame with every player shown (the dealers blink) and every label drawn
+test 6 3
+wait 272
+snap 15-trading

@@ -1,0 +1,5 @@
+# the title comes up sooner than elsewhere (the phase's clock starts at
+# boot in the test mode): the store's stage a little later
+test 5 0
+wait 500
+snap 13-goods-status
