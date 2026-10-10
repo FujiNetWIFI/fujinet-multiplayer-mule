@@ -1,3 +1,9 @@
+# Nothing here needs root, and sudo breaks it: HOME becomes /root (the intv
+# build can't find IntyBASIC), outputs end up root-owned, scp uses root's key.
+ifeq ($(shell id -u),0)
+$(error Don't run make as root: HOME becomes /root (intv can't find IntyBASIC), outputs end up root-owned, and scp uses root's SSH key)
+endif
+
 .PHONY: build test run assets header clients dist deploy-clients
 build:
 	go build -o muleserver ./cmd/muleserver

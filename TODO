@@ -1,0 +1,5 @@
+ATARI: Player/missile graphics corruption when shuttle is flying in.
+
+ATARI: game corrupts or crashes after energy auction, first by overwriting the auction display with the proceeding status display, and then finally freezing after pressing trigger.
+
+ATARI: Another playthrough died at the initial status screen after ship landed. looks like DLI failed.
