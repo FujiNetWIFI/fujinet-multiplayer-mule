@@ -38,10 +38,24 @@ void test_poll(void)
     st.h.t += w;                /* the server's clock: the auction lines step on it */
     st.turn.elapsed += w;
     if (st.h.phase == PHASE_GRANT) {
-        /* the cursor steps every 12 */
-        v = st.grant.next + (uint16_t)st.grant.cursor * 12 + w;
-        st.grant.cursor = v / 12 > 44 ? 45 : (int8_t)(v / 12);
-        st.grant.next = 12 - v % 12;
+        /* as the server's: the cursor waits (-1) for the ship, then steps
+         * every 12 (next: jiffies to its next step) */
+        v = w;
+        if (st.grant.cursor < 0) {
+            if (st.grant.next > v) {
+                st.grant.next -= v;
+                v = 0;
+            } else {
+                v -= st.grant.next;
+                st.grant.cursor = 0;
+                st.grant.next = 12;
+            }
+        }
+        if (st.grant.cursor >= 0) {
+            v += (uint16_t)st.grant.cursor * 12 + 12 - st.grant.next;
+            st.grant.cursor = v / 12 > 44 ? 45 : (int8_t)(v / 12);
+            st.grant.next = 12 - v % 12;
+        }
     }
     act = ACT_NONE;
     state_arrived();

@@ -71,26 +71,36 @@ void poll_rate(void)
  *
  * A reply slower than the fastest is that much older than it looks: rx_age
  * says by how much, and whatever runs on from a state (pe_now, since_rx,
- * the auction lines, the grant cursor) starts that many jiffies on. */
+ * the auction lines, the grant cursor) starts that many jiffies on.
+ *
+ * Where the clock is an interrupt that never misses a frame (frame_lost
+ * does nothing: the NES, the Lynx), a gap larger than before is only a
+ * faster reply than any yet, and it is the one to measure from. The lobby
+ * has no clock (t is 0): the first state of a game starts afresh. */
 uint8_t rx_age;
 
 static void clock_sync(void)
 {
     static uint16_t base;
     static uint8_t have;
-    uint16_t lag = st.h.t - frame_count, d;
+    uint16_t lag = st.h.t - frame_count, d, f;
     rx_age = 0;
-    if (test_mode)
+    if (test_mode || st.h.phase == PHASE_LOBBY) {
+        have = 0;
         return;
+    }
     if (!have) {
         have = 1;
         base = lag;
         return;
     }
     d = lag - base;
-    if (d && d < 60)
+    if (d && d < 60) {
+        f = frame_count;
         frame_lost((uint8_t)d);
-    else if (d >= 60 && d < 0x8000)
+        if (frame_count == f)
+            base = lag;
+    } else if (d >= 60 && d < 0x8000)
         base = lag;             /* a long stall (or a new game): start again */
     else if (d) {
         d = base - lag;         /* older than the fastest reply */

@@ -584,6 +584,9 @@ static uint8_t *ai_move(uint8_t *s, int8_t dx, int8_t dy, uint8_t n)
 
 static void dv_ai_land(uint8_t on)
 {
+#ifdef GFX_LAND_HILITE
+    gfx_land_hilite(on ? PLCOL(dv_seat) : NOBODY);
+#else
     uint8_t mp;
     for (mp = 0; mp < NUM_PLOTS; ++mp)
         if (OWNER(mp) == dv_seat) {
@@ -594,6 +597,7 @@ static void dv_ai_land(uint8_t on)
             map_draw_plot(mp);
             map_blink = NOBODY;
         }
+#endif
 }
 
 static void dv_ai_walk(void)
@@ -619,8 +623,12 @@ static void dv_ai_walk(void)
     y = (j / 9) * 16 + 16 + 6;
     sp = PL(dv_seat).species & 7;
     col = PLCOL(dv_seat);
-    if (dv_ai == 2)
-        map_draw_all();             /* the last one's land */
+    if (dv_ai == 2)                 /* the last one's land */
+#ifdef GFX_LAND_HILITE
+        gfx_land_hilite(NOBODY);
+#else
+        map_draw_all();
+#endif
     dv_aip = j;
     dv_ai = 1;
     hc = x >= c ? (x - c) / 2 : (c - x) / 2;

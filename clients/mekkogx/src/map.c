@@ -78,7 +78,7 @@ void map_enter(void)
     scr_now = SCR_MAP;
     map_blink = NOBODY;
     map_blink_on = 0;
-    bar_x = 152;
+    bar_x = MAP_BAR_X;
     bar_top = 16;
     bar_h = 160;
     bar_last = 255;

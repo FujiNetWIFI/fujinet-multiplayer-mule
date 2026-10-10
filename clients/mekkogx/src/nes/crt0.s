@@ -24,10 +24,25 @@
 ;        192   R0 bank 12, the bottom margin       (after row 21, before 26)
 ;        210   everything off: from here to the end of the vertical blank
 ;              the PPU is free, and the queue is drained (then again in
-;              the NMI, after the sprites' DMA)
+;              the NMI, before the sprites' DMA)
+;
+; Rendering goes off mid-screen, so it goes off at a dot that leaves OAM
+; alone: ~150, in the next line's sprite evaluation (dots 65-256), with no
+; sprite on that line (gfx.c keeps them higher up). Its second OAM address
+; is then 0; switched off where the interrupt lands (dot ~5-30, as that
+; OAM is being cleared) it was left part way, and at the pre-render line
+; a 2C02 copies OAM row 0 over the row it points at (MesenCE does too:
+; a different pair of the river's sprites gone each frame). The DMA comes
+; last before rendering is back on: OAM left alone with the display off
+; decays.
 ;
 ; The NMI counts the frames, plays the sound effect's next frame and puts
 ; the display back for the next frame (the banks, the scroll, the counter).
+; The count is the server's 60 Hz, not the NES's 60.0988: one frame in
+; CLK_EVERY isn't counted. (Counting them all, the server's clock fell
+; behind ours a jiffy every ten seconds, and src/main.c's clock_sync took
+; that for replies coming ever later: every state looked up to 30 jiffies
+; old, and the grant's cursor stepped as states came, not on its own.)
 ;
 ; Game code never touches the PPU while it shows a picture: drawing goes
 ; into the queue (ppuq) and the interrupts drain it, a budget's worth a
@@ -48,6 +63,7 @@
         .export         __STARTUP__ : absolute = 1
         .export         _exit
         .export         _ppu_drain, _prg_r6, _snd_frame_nmi
+        .export         oam_send        ; (tools/nessim's ppuwatch)
         .exportzp       _qhead, _qtail, _ppu_direct, _mmc3_sel, _ppu_off, _spr_ovf
         .exportzp       _oam_show, _oam_next
         .export         _frame_count, _ppuq, _oam, _oam2
@@ -84,14 +100,17 @@ Q_PAINT   = 3
 Q_ROW     = 4
 Q_BASE    = 13
 PAINT_COST = 71
-; The IRQ's drain starts by line 212 and the display must be back on by
-; the pre-render line's dot 280 (or it isn't scrolled to the top): 49 lines
-; for the drain, the NMI meanwhile, the sprites' DMA and show. Past line
-; 241 the NMI leaves those to the IRQ (nmi_late). The NMI's own drain has
-; the vertical blank after its DMA: 2366 cycles in all, about 680 of them
-; the NMI's own work. (A budget is a byte, 255 meaning no limit.)
-IRQ_BUDGET = 250
+; The IRQ's drain starts by line 212 (rendering off at dot ~150 of 211)
+; and the display must be back on by the pre-render line's dot 280 (or it
+; isn't scrolled to the top): 49 lines for the drain, the NMI meanwhile,
+; the sprites' DMA and show. Past line 241 the NMI leaves those to the IRQ
+; (nmi_late). The NMI's own drain has the vertical blank before its DMA:
+; 2366 cycles in all, about 680 of them the NMI's own work. (A budget is a
+; byte, 255 meaning no limit.)
+IRQ_BUDGET = 247
 NMI_BUDGET = 90
+OFF_DELAY  = 8                  ; the IRQ's wait before rendering goes off
+CLK_EVERY  = 608                ; 60.0988 * 607 / 608 = 60.000 Hz
 
 ; ---------------------------------------------------------------------------
 ; The header: NES 2.0, mapper 4, 128K PRG, 16K CHR-RAM, 8K PRG-RAM.
@@ -128,6 +147,7 @@ _ppu_off:    .res 1             ; the NMI has turned the display off
 _spr_ovf:    .res 1             ; a line had more than 8 sprites
 _oam_show:   .res 1             ; the sprites' page the NMI sends
 _oam_next:   .res 1             ; the page to send from now on (0: none)
+clk_n:       .res 2             ; frames to the next one not counted
 pbuf:        .res 16            ; a cell being painted
 
 .segment "BSS"
@@ -291,6 +311,17 @@ nmi:
         pha
         tya
         pha
+        lda     clk_n           ; (see the top: one frame in CLK_EVERY
+        bne     @cl             ; isn't counted)
+        lda     clk_n+1
+        bne     @ch
+        lda     #<(CLK_EVERY - 1)
+        sta     clk_n
+        lda     #>(CLK_EVERY - 1)
+        sta     clk_n+1
+        jmp     @c
+@ch:    dec     clk_n+1
+@cl:    dec     clk_n
         inc     _frame_count
         bne     @c
         inc     _frame_count+1
@@ -302,9 +333,9 @@ nmi:
         sta     _spr_ovf
         lda     in_drain
         bne     @late
-        jsr     oam_send
         lda     #NMI_BUDGET
         jsr     _ppu_drain
+        jsr     oam_send
         jsr     show
         jmp     @snd
 @late:  lda     #1              ; the IRQ's drain shows it when done
@@ -354,12 +385,17 @@ irq:
         tax
         pla
         rti
-        ; line 210: off, and the queue
-@off:   lda     #0
+        ; line 210: off at dot ~150 of the next (see the top), and the
+        ; queue. 38 + 5 * OFF_DELAY cycles from the interrupt (at dot ~260)
+        ; to the write.
+@off:   tya
+        pha
+        ldy     #OFF_DELAY
+@dl:    dey
+        bne     @dl
+        lda     #0
         sta     PPUMASK
         sta     $E000
-        tya
-        pha
         lda     #1
         sta     in_drain
         lda     #IRQ_BUDGET
@@ -600,7 +636,12 @@ _ppu_drain:
         dey
         bne     @cl
         stx     _qtail
-        jmp     @next
+        lda     ahi             ; a palette's: the address off it (with the
+        cmp     #$3F            ; display off, the colour it points at is
+        bne     @cn             ; what the screen shows)
+        sty     PPUADDR
+        sty     PPUADDR
+@cn:    jmp     @next
 
 @fill:  ldy     _ppuq,x
         inx

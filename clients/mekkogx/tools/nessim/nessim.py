@@ -25,16 +25,19 @@ scenario, one command a line; times are in frames of the game's clock:
                                 shows (should be none), each switch's lines,
                                 and the interrupts' drains: cycles taken
                                 beyond 16 a unit of budget spent (crt0.s)
-    trace FILE | trace off      log every instruction to OUTDIR/FILE (slow)
+    trace FILE | trace off      log every instruction to OUTDIR/FILE (slow; loops
+                                not folded, so it can be counted)
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
     type TEXT                   type on the real keyboard (\\n RETURN, \\s space)
-    poke SYMBOL VALUE
+    poke SYMBOL[+OFFSET] VALUE
 
 The input goes through the game's test hook (inp_hook in input.c), the
 addresses come from the linker map. NESWAV=out.wav records the sound.
 Only the offline test mode runs here (tools/a2sim's scenario language,
 same commands): the cartridge is pointed at a port nothing listens on
-(FUJINET_TCP), so no fujinet-pc is needed or disturbed.
+(FUJINET_TCP), so no fujinet-pc is needed or disturbed. For a live game,
+FUJINET_TCP=host:port names a private fujinet-pc's BoIP and
+NESSIM_THROTTLE=1 runs MAME in real time.
 """
 import os
 import re
@@ -61,7 +64,9 @@ def main():
     out = os.path.abspath(out)
     os.makedirs(out, exist_ok=True)
     syms = symbols(mapfile)
-    sym = lambda n: syms["_" + n] if "_" + n in syms else syms[n]
+    def sym(n):                     # NAME, or NAME+OFFSET[+OFFSET...]
+        n, *off = n.split("+")
+        return (syms["_" + n] if "_" + n in syms else syms[n]) + sum(int(x, 0) for x in off)
     steps = []
     for line in open(scen):
         line = line.split("#")[0].strip()
@@ -143,7 +148,8 @@ local frames = 0
 local pcdump = 0
 local asked = false
 -- ppuwatch: the debugger logs the cycle count of the NMI's first
--- instruction and of every write to PPUMASK and MMC3's bank registers; a
+-- instruction, of the drain's and oam_send's (the sprites' DMA, after the
+-- NMI's drain) and of every write to PPUMASK and MMC3's bank registers; a
 -- write's line is 241 (the NMI's) + its cycles since / 113.667 (+10 for
 -- the NMI's entry), past 261 the next frame's
 local cpu = manager.machine.devices[":maincpu"]
@@ -158,6 +164,7 @@ local function watch_on()
   cpu.debug:bpset(mem:read_u16(0xFFFA), "1", 'printf "PW N %%d",totalcycles; g')
   -- the drain's budget is crt0.s's zero page byte 4, in_drain byte 7
   cpu.debug:bpset(%d, "1", 'printf "PW D %%d %%d",totalcycles,a; g')
+  cpu.debug:bpset(%d, "1", 'printf "PW S %%d %%d",totalcycles,b@4; g')
   cpu.debug:wpset(mem, "w", 7, 1, "1", 'printf "PW I %%d %%d %%d",totalcycles,wpdata,b@4; g')
   cpu.debug:wpset(mem, "w", 0x2001, 1, "1", 'printf "PW M %%d %%d %%d",totalcycles,wpdata,b@4; g')
   cpu.debug:wpset(mem, "w", 0x8000, 2, "1", 'printf "PW B %%d %%d %%d",totalcycles,wpaddr,wpdata; g')
@@ -194,18 +201,16 @@ local function watch_read()
       local c = tonumber(w[3])
       if w[2] == "N" then nmi_c = c; ws.nmis = ws.nmis + 1
       elseif w[2] == "D" then
-        -- the NMI's drain: done when show turns the display on, 81 cycles
-        -- later (rts, jsr show, show to its PPUMASK write)
+        -- the NMI's drain: done 12 cycles before oam_send (rts, jsr)
         if tonumber(w[4]) == 90 then nmi_drain = c else nmi_drain = nil end
+      elseif w[2] == "S" then
+        if nmi_drain ~= nil then drained(nmi_drain, c - 12, 90 - tonumber(w[4])); nmi_drain = nil end
       elseif w[2] == "I" then
         -- the IRQ's: between in_drain's writes (and 16 cycles of its own)
         if tonumber(w[4]) == 1 then irq_drain = c
-        elseif irq_drain ~= nil then drained(irq_drain + 16, c, 250 - tonumber(w[5])); irq_drain = nil end
+        elseif irq_drain ~= nil then drained(irq_drain + 16, c, 247 - tonumber(w[5])); irq_drain = nil end  -- (247: crt0.s IRQ_BUDGET)
       elseif nmi_c ~= nil and w[2] == "M" then
         local v = tonumber(w[4])
-        if nmi_drain ~= nil and (v & 0x18) ~= 0 then
-          drained(nmi_drain + 81, c, 90 - tonumber(w[5])); nmi_drain = nil
-        end
         if (v & 0x18) ~= 0 and rend == 0 then
           local l, dot = line_of(c)
           bump(ws.on, l)
@@ -295,7 +300,7 @@ emu.register_frame_done(function()
       manager.machine.natkeyboard:post(s[2]); i = i + 1
     elseif s[1] == "trace" then
       if s[2] == "off" then manager.machine.debugger:command("trace off")
-      else manager.machine.debugger:command("trace " .. s[2] .. ",0") end
+      else manager.machine.debugger:command("trace " .. s[2] .. ",0,noloop") end
       i = i + 1
     elseif s[1] == "pc" then
       pcdump = s[2]; i = i + 1; return
@@ -314,7 +319,7 @@ emu.register_frame_done(function()
   end
   manager.machine:exit()
 end, "nessim")
-""" % (sym("frame_count"), out, syms.get("_ppu_drain", 0)))
+""" % (sym("frame_count"), out, syms.get("_ppu_drain", 0), syms.get("oam_send", 0)))
     luafile = os.path.join(out, "scenario.lua")
     open(luafile, "w").write("\n".join(lua))
     snapdir = os.path.join(out, "raw")
@@ -324,6 +329,8 @@ end, "nessim")
            "-video", "none", "-sound", "none", "-nothrottle", "-snapshot_directory", snapdir,
            "-cfg_directory", cfg, "-nvram_directory", cfg,
            "-autoboot_script", luafile, "-skip_gameinfo"]
+    if os.environ.get("NESSIM_THROTTLE"):  # real time (a live server's clock)
+        cmd.remove("-nothrottle")
     if any(x[0] in ("trace", "ppuwatch") for x in steps):
         cmd[2:2] = ["-debug", "-debugger", "none"]
     if os.environ.get("NESWAV"):        # record the sound: NESWAV=out.wav

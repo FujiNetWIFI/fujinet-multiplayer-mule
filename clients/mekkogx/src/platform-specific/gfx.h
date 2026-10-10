@@ -99,6 +99,19 @@ void gfx_map_frame(void);   /* the map's surroundings (clear + frame) */
 /* The town (the Atari's picture of it), in its box. */
 void gfx_town(void);
 
+#ifdef __NES__
+/* A player's land outlined in white at once (their colour made white for
+ * a while), NOBODY to end it; else src/develop.c draws their plots again
+ * outlined. And the map's time bar clear of the last column's plots (it
+ * shares their colours' blocks at 152). */
+#define GFX_LAND_HILITE
+void gfx_land_hilite(uint8_t col);
+#define MAP_BAR_X 158
+#endif
+#ifndef MAP_BAR_X
+#define MAP_BAR_X 152
+#endif
+
 /* Small pictures drawn into the background. */
 #define PIC_STOREICON 0
 #define PIC_FLAG      1

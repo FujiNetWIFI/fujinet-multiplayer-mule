@@ -100,9 +100,9 @@ void test_start(uint8_t ph, uint8_t arg, uint8_t pev)
                        st.h.phase == PHASE_LANDAUCTION ? arg : 0;
     st.auction.hi = 66;
     st.auction.lo = 20;
-    st.grant.cursor = 0;
-    st.grant.step = 12;
-    st.grant.next = 12;
+    st.grant.cursor = -1;           /* the ship leaves first (the server's */
+    st.grant.step = 12;             /* GrantIntro + LandingDelay) */
+    st.grant.next = 186 + 726;
     for (i = 0; i < 4; ++i)
         st.grant.claimed[i] = -1;
     strcpy(sc_name, "PL0");

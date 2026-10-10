@@ -47,7 +47,7 @@ NES_RGB = [
 # The town's palettes (src/nes/gfx.c pal_sets[PS_TOWN]): the background,
 # then colours 1-3 of each.
 TOWN_BG = 0x0F
-TOWN_PALS = [(0x30, 0x21, 0x24), (0x30, 0x2A, 0x27), (0x10, 0x2A, 0x2B), (0x10, 0x38, 0x26)]
+TOWN_PALS = [(0x30, 0x21, 0x27), (0x30, 0x2A, 0x24), (0x10, 0x2A, 0x2B), (0x10, 0x38, 0x26)]
 BUILDING_PALS = (2, 3)          # what the town's own blocks choose from
 # The plots' preview (the map's set): the plains, white, black, blue.
 MAP_BG, MAP_WHITE, MAP_BLACK, MAP_P0, RIVER = 0x10, 0x30, 0x0F, 0x21, 0x12
@@ -167,6 +167,27 @@ def main():
         src.append("  { /* %s */" % n)
         src.append(c_bytes([b for r in rows for b in tms.pack(r)]))
         src.append("  },")
+    src.append("};")
+    # The river's sprites (src/nes/gfx.c): the river part's pixels from its
+    # first column (8 at most), two pairs across, two down, in colour 3.
+    rb = [b for r in dict(parts)["river"] for b in tms.pack(r)]
+    px = lambda l, c: c < 24 and (rb[l * 3 + (c >> 3)] >> (7 - (c & 7))) & 1
+    x0 = min([c for l in range(32) for c in range(24) if px(l, c)] + [8])
+    pats = []
+    for gr in range(2):
+        for gc in range(2):
+            pat = [0] * 32
+            for l in range(16):
+                b = sum(0x80 >> c for c in range(8) if px(gr * 16 + l, x0 + gc * 8 + c))
+                k = 16 + (l & 7) if l & 8 else l
+                pat[k] = pat[k + 8] = b
+            pats.append(pat)
+    src.append("/* the river's sprites: pairs of 8 x 16 (planes 0, 1 of the top tile,")
+    src.append(" * then the bottom's), from pixel river_x0 of its plot */")
+    src.append("const uint8_t river_x0 = %d;" % x0)
+    src.append("const uint8_t river_pat[4][32] = {")
+    for pat in pats:
+        src.append("  {" + c_bytes(pat).strip() + "},")
     src.append("};")
     src.append("/* production dots: line, pixel */")
     src.append("const uint8_t plot_dots[8][2] = {")

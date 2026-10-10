@@ -25,6 +25,8 @@ extern const uint8_t plot_parts[12][96];    /* 32 lines x 24 pixels (3 bytes) */
 extern const uint8_t plot_dots[8][2];       /* line, pixel (2 pixels wide) */
 extern const ShapeDef nes_shapes[];
 extern const uint8_t nes_pics[4][8];        /* 8 x 8 clocks, shown 2 lines a row */
+extern const uint8_t river_pat[4][32];      /* the river's sprites: 2 x 2 pairs */
+extern const uint8_t river_x0;              /* their first pixel in the plot */
 extern const uint16_t wide12[256];          /* 8 clocks -> 12 pixels, bit 11 left */
 
 /* The town: cells 6..24 of rows 2..19, each row its 19 cells' tiles (16
