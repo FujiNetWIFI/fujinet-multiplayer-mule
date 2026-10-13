@@ -60,6 +60,7 @@ func main() {
 			{Platform: "msx", Url: "tnfs://irata.online/mule/msxrom/mule.rom"},
 			{Platform: "nes", Url: "tnfs://irata.online/mule/nes/mule.nes"},
 			{Platform: "sms", Url: "tnfs://irata.online/mule/sms/mule.sms"},
+			{Platform: "h89", Url: "tnfs://irata.online/mule/h89-cpm/mule-boot.h8d"},
 			{Platform: "intv", Url: "tnfs://irata.online/mule/intv/mule.rom"},
 			{Platform: "astrocade", Url: "tnfs://irata.online/mule/astrocade/mule.bin"},
 			{Platform: "a2600", Url: "tnfs://irata.online/mule/atari-2600/mule2600.bin"},
