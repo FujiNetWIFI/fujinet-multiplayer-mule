@@ -10,6 +10,8 @@
 #   make lynx                          r2r/lynx/mule.lnx (Atari Lynx cart, FujiNet-Lynx)
 #   make nes                           r2r/nes/mule.nes (NES, the FujiNet NES cartridge: MMC3)
 #   make sms                           r2r/sms/mule.sms (Sega Master System, the FujiNet SMS cartridge)
+#   make h89-cpm                       r2r/h89-cpm/mule.h8d (Heathkit H89, CP/M: MULE.COM on an H17 disk)
+#   make h89-boot                      r2r/h89-cpm/mule-boot.h8d (the same on a bootable 64K CP/M disk)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -19,7 +21,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms
+PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms h89-cpm
 # The PC's disk has two: MULE.EXE, and MULEJR.EXE for the PCjr (MS-DOS below)
 ifeq ($(PLATFORM),msdos)
   PRODUCTS = mule mulejr
@@ -39,7 +41,8 @@ PLATFORM_COMBOS = \
   msxdos+=msx \
   adam_cpm+=adam \
   adam+=tms9918 \
-  sms+=tms9918
+  sms+=tms9918 \
+  h89-cpm+=h89
 
 # ---- Apple II -------------------------------------------------------------
 # HGR page 1 sits at $2000-$3FFF: the linker config keeps code and data out
@@ -193,7 +196,7 @@ pcjr-floppy: r2r/msdos/$(PRODUCT)
 # TMS9918A code is src/tms9918 (a PLATFORM_COMBOS entry). fujinet-lib is
 # fujinet-lib-experimental built with zsdcc (tools/z80/mkfnlib.sh).
 Z80_TOOLS = $(CURDIR)/tools/z80
-ifneq ($(filter adam msxrom sms,$(PLATFORM)),)
+ifneq ($(filter adam msxrom sms h89-cpm,$(PLATFORM)),)
   FUJINET_LIB := __UNDEFINED__
   CC_Z88DK = $(Z80_TOOLS)/z88dk zcc
   AS_Z88DK = $(Z80_TOOLS)/z88dk z80asm
@@ -275,6 +278,48 @@ $(SMOBJ)/gen/tms9918/gfx.o:                   CFLAGS += --constseg=ART
 
 sms/r2r-post::
 	python3 tools/sms/mkrom.py r2r/sms
+
+# ---- Heathkit H89: CP/M 2.2.04, the H19 terminal --------------------------
+# MULE.COM, alone on a 100K H17 disk (hz89, the format Heath's CP/M gives a
+# hard-sectored disk). The H89-ESP32 FujiNet card is an 82C55 at D0h that
+# speaks FujiBus: the stream's calls go to it unwaited (src/h89/fbport.c,
+# src/nstrans_fb.c); fujinet-lib (FNLIB_H89: the one with bus/h89) opens and
+# closes, built with zsdcc. The screen is the H19's characters, sent by
+# difference (src/h89/h19.c). No overlays: a 64K CP/M has room for it all.
+FNLIB_H89 ?= $(HOME)/Workspace/fujinet-lib
+CFLAGS_EXTRA_H89-CPM += -compiler=sdcc -SO3 -D__H89__ -DPLAT_NET_PROBE -DPLAT_NETSTREAM -DPLAT_FUJIBUS \
+                        -DPLAT_NS_SLOW -DFB_RBUF=128 -DFB_QBUF=64
+ifeq ($(H89_RIG_KEYS),1)
+  CFLAGS_EXTRA_H89-CPM += -DH89_RIG_KEYS
+endif
+EXTRA_INCLUDE_H89-CPM += src/h89 build/fnlib-h89/include
+LDFLAGS_EXTRA_H89-CPM += -compiler=sdcc -m -pragma-define:CRT_ENABLE_STDIO=0 -pragma-define:CLIB_FOPEN_MAX=0 \
+                         -pragma-define:CRT_ENABLE_COMMANDLINE=0 -pragma-define:CRT_INITIALIZE_BSS=1 \
+                         -pragma-define:noprotectmsdos=1
+ifeq ($(PLATFORM),h89-cpm)
+  LIBS += -Lbuild/fnlib-h89 -lfujinet-h89
+endif
+EXECUTABLE_EXTRA_DEPS_H89-CPM += build/fnlib-h89/fujinet-h89.lib
+# What runs once in a while is made small, for the 62K CP/M FNDISK needs.
+H8OBJ = build/$(PRODUCT)/h89-cpm/src
+$(H8OBJ)/boot.o $(H8OBJ)/teststart.o $(H8OBJ)/test.o $(H8OBJ)/net.o $(H8OBJ)/status.o \
+  $(H8OBJ)/events.o $(H8OBJ)/grant.o $(H8OBJ)/strings.o: CFLAGS += --opt-code-size
+
+h89-cpm/r2r-post::
+	@mkdir -p $(CACHE_PLATFORM)/disk
+	python3 tools/h89/trimcom.py $(R2R_PD)/$(PRODUCT).map $(R2R_PD)/$(PRODUCT).com
+	cp $(R2R_PD)/$(PRODUCT).com $(CACHE_PLATFORM)/disk/MULE.COM
+	cd $(CACHE_PLATFORM)/disk && rm -f disk && $(Z80_TOOLS)/z88dk z88dk-appmake +cpmdisk -f hz89 \
+	  --container raw --no-com-file -b MULE.COM -o disk
+	python3 -I tools/h89/cpm-dir-fixup.py $(CACHE_PLATFORM)/disk/disk
+	mv $(CACHE_PLATFORM)/disk/disk $(R2R_PD)/$(PRODUCT).h8d
+
+# A disk that boots: fujinet-go-h89-desktop's 64K CP/M system disk with the
+# development tools taken off and MULE.COM put on, by CP/M itself in that
+# project's headless H89 (tools/h89/mkboot.sh; it needs the rig, built).
+.PHONY: h89-boot
+h89-boot: r2r/h89-cpm/$(PRODUCT)
+	tools/h89/mkboot.sh r2r/h89-cpm/$(PRODUCT).com r2r/h89-cpm/$(PRODUCT)-boot.h8d
 
 # ---- Atari 400/800 (48K), XL/XE -------------------------------------------
 # cc65, no DOS: picoboot loads MULE.COM, whose first chunk (src/atari/
@@ -376,7 +421,7 @@ PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms gen-h89-cpm FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
@@ -386,6 +431,7 @@ r2r/atari/$(PRODUCT): gen-atari
 r2r/lynx/$(PRODUCT): gen-lynx
 r2r/nes/$(PRODUCT): gen-nes
 r2r/sms/$(PRODUCT): gen-sms
+r2r/h89-cpm/$(PRODUCT): gen-h89-cpm
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
@@ -396,6 +442,7 @@ gen-atari: gen/config.h gen/atari/gfx.c
 gen-lynx: gen/config.h gen/lynx/gfx.c build/fnlib-lynx/fujinet-lynx.lib
 gen-nes: gen/config.h gen/nes/gfx.c build/fnlib-nes/fujinet-nes.lib
 gen-sms: gen/config.h gen/tms9918/gfx.c build/fnlib-sms/fujinet-sms.lib
+gen-h89-cpm: gen/config.h build/fnlib-h89/fujinet-h89.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen
@@ -462,6 +509,9 @@ build/fnlib-msx/fujinet-msx.lib: tools/z80/mkfnlib.sh tools/z80/msx-portio.c $(w
 
 build/fnlib-sms/fujinet-sms.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_SMS)/common/*.c $(FNLIB_SMS)/bus/sms/* $(FNLIB_SMS)/include/*.h)
 	tools/z80/mkfnlib.sh $(FNLIB_SMS) build/fnlib-sms sms
+
+build/fnlib-h89/fujinet-h89.lib: tools/z80/mkfnlib.sh $(wildcard $(FNLIB_H89)/common/*.c $(FNLIB_H89)/bus/h89/* $(FNLIB_H89)/include/*.h)
+	tools/z80/mkfnlib.sh $(FNLIB_H89) build/fnlib-h89 h89
 
 build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP)/common/*.c $(FNLIB_EXP)/bus/msdos/*.c $(FNLIB_EXP)/include/*.h)
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos

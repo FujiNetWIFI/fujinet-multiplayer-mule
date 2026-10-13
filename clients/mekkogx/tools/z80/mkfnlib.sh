@@ -1,6 +1,6 @@
 #!/bin/sh
 # mkfnlib.sh SRC OUT PLATFORM -- build fujinet-lib-experimental (SRC) for a
-# z88dk platform (adam, msx or sms) with zsdcc, the game's compiler, into
+# z88dk platform (adam, msx, sms or h89) with zsdcc, the game's compiler, into
 # OUT/fujinet-PLATFORM.lib, headers in OUT/include. The released libs are
 # sccz80 builds. Sources are copied in first so the container can see them,
 # and the copies get these local fixes:
@@ -26,6 +26,11 @@
 #   - sms: SRC is the add-sms branch (fujinet-lib-experimental's worktree
 #     ~/Workspace/fnlib-sms); its bus is plain stores to the cartridge's
 #     mailbox, and fuji_bus_call has fixed arguments (no va_arg fix).
+#   - h89: SRC is fujinet-lib (its bus/h89: FujiBus over the H89-ESP32
+#     card's 82C55, fixed-argument fuji_bus_call); the card runs the rs232
+#     code, so the URL goes with its NUL too. Its fuji_bus_call.c has a
+#     static copy of common/fuji_field.c's table, which the header declares
+#     extern (sccz80 lets it pass, zsdcc doesn't): the copy goes.
 #   - no <stdio.h> (debug only).
 set -e
 src=$1
@@ -35,6 +40,7 @@ case $plat in
     adam) target="+coleco -subtype=adam"; define=BUILD_ADAM ;;
     msx)  target="+msx -subtype=rom";     define=BUILD_MSX ;;
     sms)  target="+sms";                  define=BUILD_SMS ;;
+    h89)  target="+cpm";                  define="BUILD_H89 -D__H89__" ;;
     *) echo "mkfnlib.sh: unknown platform $plat" >&2; exit 1 ;;
 esac
 z88dk=$(dirname "$0")/z88dk
@@ -84,7 +90,10 @@ s = s.replace("  U16_LSB(U32_LSW(l)), U16_MSB(U32_LSW(l)),                      
 open(p, "w").write(s)
 P
 fi
-if [ "$plat" = msx ] || [ "$plat" = sms ]; then
+if [ "$plat" = h89 ]; then
+    sed -i '/^static const uint8_t fuji_field_numbytes_table\[\]/d' "$out/src/fuji_bus_call.c"
+fi
+if [ "$plat" = msx ] || [ "$plat" = sms ] || [ "$plat" = h89 ]; then
     sed -i 's/^#define NETWORK_OPEN_LEN strlen(devicespec)$/#define NETWORK_OPEN_LEN (strlen(devicespec) + 1)/' \
         "$out/include/fujinet-network.h"
     grep -q 'strlen(devicespec) + 1' "$out/include/fujinet-network.h" || {

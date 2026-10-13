@@ -28,6 +28,21 @@ extern const uint8_t fx_land[];
 #define LB_NAME_X    8          /* the lobby */
 #define LB_SPEC_X    28
 #define LB_HELP_ROW  21
+#elif TCOLS == 80
+#define SU_MONEY_X   14         /* (the H19: big is small) 6 digits: ends at 19 */
+#define SU_MONEY_H   15
+#define SU_LAND_X    28         /* 5 digits: ends at 32 */
+#define SU_LAND_H    29
+#define SU_GOODS_X   42         /* 6 digits: ends at 47 */
+#define SU_GOODS_H   43
+#define SU_TOTAL_X   41         /* 7 digits */
+#define SU_TOTAL_L   34
+#define SU_COLONY_X  14
+#define GO_FIRST_X   29
+#define GO_FOUNDER_X 39
+#define LB_NAME_X    12
+#define LB_SPEC_X    40
+#define LB_HELP_ROW  20
 #else
 #define SU_MONEY_X   10         /* 6 digits: ends at cell 15 */
 #define SU_MONEY_H   11

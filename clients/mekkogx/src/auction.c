@@ -30,6 +30,12 @@
 #if TCOLS == 40
 #define AU_FX(i)  ((i) * 10)
 #define AU_FW(i)  10
+#elif TCOLS == 80
+/* (the H19: its big text is half as wide; 12 cells each, a number ending
+ * under its player) */
+static const uint8_t au_fx[5] = { 17, 29, 41, 53, 65 };
+#define AU_FX(i)  au_fx[i]
+#define AU_FW(i)  12
 #else
 static const uint8_t au_fx[5] = { TX(0), TX(10), TX(20), TX(30), TX(40) };
 #define AU_FX(i)  au_fx[i]

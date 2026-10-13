@@ -1,0 +1,5 @@
+# the auction screen takes the H19 a few seconds to fill in at 9600 baud,
+# the moving players first
+test 6 3
+wait 600
+snap 15-trading

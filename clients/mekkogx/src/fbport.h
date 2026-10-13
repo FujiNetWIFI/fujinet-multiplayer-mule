@@ -27,6 +27,13 @@
 #define fb_getc()  (FB_GETC)
 #define fb_sent()
 #define fb_release()
+#elif defined(__H89__)
+/* The H89's FujiNet card: its 82C55, polled (src/h89/fbport.c) */
+void fb_putc(uint8_t c);
+uint8_t fb_ready(void);
+uint8_t fb_getc(void);
+void fb_sent(void);
+#define fb_release()
 #else
 /* MS-DOS: the UART, through rings its interrupt fills and empties
  * (src/msdos/fbport.c) */

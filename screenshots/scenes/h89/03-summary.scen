@@ -1,0 +1,5 @@
+# the species walk to their rows a little later than elsewhere (the H19
+# takes the walk a few cells at a time)
+test 7
+wait 900
+snap 03-summary

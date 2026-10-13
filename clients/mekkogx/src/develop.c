@@ -276,16 +276,23 @@ static void town_money(void)
 {
     if (scr_now != SCR_TOWN || my_seat > 3)
         return;
+#ifdef GFX_DEV_STRIP
+    gfx_town_money(PL(my_seat).money, st.store.mulePrice, st.store.mules);
+#else
     msg_row = 20;
     msg_show(M_MONEY, PL(my_seat).money, 0);
     msg_row = 22;
     /* the corral: price and how many are left */
     put_num(TX(26), 19, st.store.mulePrice, 3, C_WHITE);
     put_num(TX(27), 13, st.store.mules, 2, C_WHITE);
+#endif
 }
 
 static void dv_resume(void)
 {
+#ifdef INPUT_STOP
+    input_stop();
+#endif
     w_hold = 0;
     w_face = 5;
     walk_draw();
@@ -321,11 +328,13 @@ static void dv_blank(void)
     uint8_t k;
     anim = AN_NONE;
     spr_hide_all();
+#ifndef GFX_DEV_STRIP
     gfx_clear();
     for (k = 0; k < 22; ++k) {
         frame_wait();
         snd_tick();
     }
+#endif
     for (k = 0; k < 4; ++k)
         w_tx[k] = 0;
 }

@@ -5,7 +5,7 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are nine platforms:
+There are ten platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
@@ -14,7 +14,8 @@ There are nine platforms:
 - the **Atari 400/800** with 48K (and the XL/XE), with the original's own graphics, music and sound effects, from its disk;
 - the **Atari Lynx**, as a cart image, with FujiNet-Lynx on ComLynx, and the Atari's music and effects on Mikey;
 - the **NES**, as an MMC3 image the FujiNet NES cartridge boots, with the Adam's pictures and effects on its pulse channel;
-- the **Sega Master System**, as an image the FujiNet SMS cartridge runs, with the Adam's pictures in Mode 4 and its effects on the SMS's own SN76489.
+- the **Sega Master System**, as an image the FujiNet SMS cartridge runs, with the Adam's pictures in Mode 4 and its effects on the SMS's own SN76489;
+- the **Heathkit H89** under CP/M, with the H89-ESP32 FujiNet card, drawn on its H19 terminal in the terminal's own characters (and its one beep).
 
 The Adam, the MSX and the SMS share their graphics code (`src/tms9918`): the first two have a TMS9918A, and the SMS shows the same cells in its own mode.
 
@@ -33,6 +34,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/lynx/` | the Lynx implementation (cc65; its sound is the Atari's `pokey.s`) |
 | `src/nes/` | the NES implementation (cc65; the screen is the TMS9918A's, in the PPU's terms) |
 | `src/sms/` | the Sega Master System implementation (z88dk; the TMS9918A's cells as Mode 4 tiles) |
+| `src/h89/` | the Heathkit H89 implementation (z88dk, CP/M; the H19 terminal's characters, sent by difference) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -590,6 +592,67 @@ Pause is the Z80's NMI and can't be held, so the button held when it comes says 
 
 - **Live, in MAME:** as for the NES, the same device with a copy of fujinet-pc-rs232 and a server, together in `unshare -rnm`. An `AUTOPLAY=1` build played 25 minutes that way, to round 9 (land grants, auctions, development, production, the goods' auctions), with no failed or dropped call and at most 137 tiles in use. Leaving the table and quitting back to CONFIG were played with the pad and Pause.
 
+## The H89 version
+
+`MULE.COM` for a Heathkit H89 (or Zenith Z-89/Z-90) running Heath/Zenith CP/M 2.2.04, with the H89-ESP32 FujiNet card (fujinet-firmware's `rs232` build for the H89: an 82C55 at D0h speaking FujiBus). The screen is the H89's own H19 terminal: 80 columns, 24 lines and the 25th, its graphics characters, reverse video, no colour, one beep.
+
+    make h89-cpm                               # r2r/h89-cpm/mule.h8d (MULE.COM on an H17 disk) and mule.com
+    make h89-cpm ENDPOINT=http://myhost:8080   # the server: its host, stream port 9902
+
+- **What it needs:** z88dk, as for the Adam (`tools/z80/z88dk`), and fujinet-lib with `bus/h89` in `~/Workspace/fujinet-lib` (or `make FNLIB_H89=/path`), which `tools/z80/mkfnlib.sh` builds with zsdcc into `build/fnlib-h89`.
+- **The disks** are 100K H17 images (the layout Heath's CP/M gives a hard-sectored disk):
+  - `mule-boot.h8d` (`make h89-boot`) boots: a 64K CP/M 2.2.04 system disk with `MULE.COM` on it (and PIP, STAT, SYSGEN, FORMAT and DUP; the development tools are taken off for room). Boot it from drive 1 and type `MULE`. `tools/h89/mkboot.sh` makes it from fujinet-go-h89-desktop's system disk, letting CP/M itself ERA and PIP in that project's headless H89.
+  - `mule.h8d` is a data disk with `MULE.COM` alone (`appmake +cpmdisk -f hz89`): from a CP/M already booted, `B:MULE`, or through FNDISK (fujinet-h89) `D:MULE`.
+- **Memory:** a 64K system, or the 62K one FNDISK needs (about 360 bytes to spare there). MULE.COM loads at 0100h; the screen's buffer (2,000 bytes) and the stack (384 bytes; 192 measured) go above the program's variables, over the CCP (it ends with a warm boot). The .COM is cut short at its variables (`tools/h89/trimcom.py`): 46K to load, about 20 seconds from an H17.
+
+**The screen** (`src/h89/h19.c`, `gfx.c`). The H19 is a serial terminal at 9600 baud: a byte a millisecond, a whole screen in two seconds. So the game draws into a buffer of cells, and only the cells that changed go out, in the fewest bytes:
+- graphics mode stays on (ESC F once): its characters 20h-5Dh are still text, upper case, so the only switch is reverse video (ESC p, ESC q);
+- the cursor moves the cheapest way: a few cells across by sending them again, back by BS, down by LF, else ESC Y; the rest of a line gone blank is ESC K; a new screen with much to wipe is ESC E;
+- a flush puts at most 56 bytes in the console's ring, so what is queued is on the screen within a few frames, and the rows the sprites are on go first: your figure answers the keys even while a screen is still being drawn behind it.
+- A cell has a dirty bit, not a copy of what the terminal shows: 250 bytes instead of 2,000, which the 62K system doesn't have. The cell writes are assembly (`h19cell.asm`); a flush with nothing to send returns at once.
+- A step in town costs about 10 bytes; walking out of town onto the map, a few dozen (the title) and a seventh of a second.
+
+| Screen | What it looks like |
+|---|---|
+| map | plots of 8 x 3 cells; mountains ╱╲, the river ▒▒, an owned plot boxed with its owner's seat number and its M.U.L.E.'s good (F, E, S, C) in the top edge, production dots ● along the bottom edge; your own plots' boxes in reverse; a plot for sale blinks boxed |
+| development | the map and the town together (map rows 1-15, the town 16-22): walking into town or out of it moves only your figure. The money is at the top right, the time bar down the right edge |
+| town | the four outfitters along the top, the assay office, land office, pub and corral (with the M.U.L.E. price and count) along the bottom, their doors where the Atari's are |
+| players | seat numbers 1-4, reversed, wherever they stand; the 25th line says who is who: `1 NAME  2 NAME ...` |
+| auctions | the price lines ─, the players' numbers above them, the money and goods under each; the goods' bars in block characters |
+| titles | in reverse |
+
+**The console and the clock** (`src/h89/h89io.asm`). The BIOS's console output waits a millisecond a byte, most of a frame for a few cells. Here the bytes go into a ring that empties without waiting: from the main loop whenever it waits, and from the BIOS's 2 ms clock interrupt (the jump at 0008h, which goes through ours first) two bytes at a time, so the screen keeps moving while a FujiBus call holds the CPU. The console's receive interrupt (0018h) is ours while the game runs: the keys go into a ring, and XOFF/XON from the terminal stop and start the output at once. Both vectors are put back on the way out. The clock interrupt also counts the 60 Hz frames.
+
+**The network: stream mode, never waited on.** `src/nstrans_fb.c` drives the card's 82C55 itself (`src/h89/fbport.c`): a request goes out, and its reply is collected over the frames after. The open, the close, the appkeys and the table list are fujinet-lib's functions, but the call they all make, `fuji_bus_call`, is `fbport.c`'s own: fujinet-lib's `bus/h89` is 1.6K that repeats it, and its writes wait for ever on a card that doesn't answer (these time out). Before anything, the 82C55 is looked for (`plat_net_probe`): with no card, port D2h reads FFh.
+
+**Controls** (the keypad is put in shifted mode):
+
+| Key | Does |
+|---|---|
+| keypad 8 2 4 6 (7 9 1 3 diagonals) | walk; up/down in auctions; left/right in the lobby |
+| SPACE or keypad 5 | the button |
+| RETURN | end your development turn |
+| ESC | leave the table: at once in the lobby; in a game it asks first (ESC again leaves). At the table list, back to CP/M |
+| 0 | declare: sit this good out |
+| BACKSPACE, DELETE | rub out, when typing a name |
+| f1 | the bell off / on |
+| f5, ERASE | draw the screen again |
+
+A terminal sends keys, not keys held, and the H19 repeats only with its REPEAT key. So while walking and in the auctions an arrow keeps going until keypad 5, SPACE or another arrow, or until you arrive in town, on the map or come out of a building. Elsewhere an arrow counts as held for a sixth of a second.
+
+**Sound:** the bell, for the one alert that wants your hand (your turn, the land grant, an auction, the summary).
+
+**Testing.**
+- **In fujinet-go-h89-desktop's headless H89** (`tools/h89sim/h89sim.py`), the scenario language, step by step through its runner's `--stdin`: CP/M boots from its 64K disk, `B:MULE` runs, and `snap` saves the H19's picture and its text.
+
+      python3 tools/h89sim/h89sim.py r2r/h89-cpm/mule.h8d r2r/h89-cpm/mule.map scenario.txt out/
+
+  `H89SIM_FUJINET=1` is a live game against the runner's in-process FujiNet, with the appkeys `H89SIM_NAME` and `H89SIM_TABLE` written first; with a private server, run both in `unshare -rn`.
+  More commands for this target: `keyname NAME` (esc, up, f1... -- keys `type` can't send), `sleep MS` (after the game has quit and its clock stopped), and `profile N` / `pcprof N` / `stallpcs`. Build with `-DH89_PROF=1` (C and `h89io.asm`) for the last two: the clock interrupt keeps the last 256 PCs it interrupted (a fair profile, which the rig's debugger samples are not), and the worst stall's are kept too.
+- **The rig's runner** needs fujinet-go-h89-desktop with `--stdin` and the ESC-like key names in `core/tools/h89_headless.c`, and its Z80 core's `EX (SP),IX` and `LD SP,IX` honouring the DD/FD prefix (`core/v89/z80.cpp`): zsdcc's frame entry and exit use both.
+- **Live:** an `AUTOPLAY=1` build played 25 minutes against a private server (round 9: land grants and auctions, development, production, the goods' auctions) with no failed or dropped FujiBus call; leaving the table and quitting to CP/M were played with the keys (the BIOS's vectors come back).
+- **zsdcc's lost store:** at -SO3 zsdcc can drop the result of `v |= n` on a local kept in the frame (it bit the SMS's input and the H89's bars). `tools/z80/scan-lost-store.py` looks for it in the compiler's assembly.
+
 ## Known limits
 
 - **Assay results in town only**, as in the Intellivision version: the server doesn't track where anyone stands.
@@ -598,6 +661,8 @@ Pause is the Z80's NMI and can't be held, so the button held when it comes says 
 - **Network pauses.** Animations pause briefly while a network call runs, because the Apple II has nothing to run them during a SmartPort call (the CoCo, during a DriveWire call).
 - **CoCo: phase changes** pause about a second while the phase's overlay is read.
 - **CoCo: grey** is black or white, and the fourth player is striped.
+- **H89: no colour.** Players are their seat numbers; the 25th line names them.
+- **H89: the console line.** At 9600 baud a new screen takes a second or two to fill in; the development screen is drawn once per turn.
 - **Lynx: the screen is 102 lines.** Text rows on the map and town screens share lines, as described above. A long message's two rows (22 and 23) are tight.
 - **Lynx: untested on hardware** as written: MAME has no ComLynx to the outside, so the network half has only been run on paper and the offline test mode.
 - **MS-DOS: phase changes** pause while an overlay is read the first time; on a 128K PCjr in 16 colours, every time. Over FUJINET.SYS that is a sector (512 bytes) a round trip: about 5 s at 9600 bps, half a second at 115200. `make pcjr-floppy` makes a boot floppy with MULE.EXE on it (`r2r/msdos/pcjr-boot.img`, from `PCJR_BOOT`, the rig's DOS disk), from which the overlays load at floppy speed.

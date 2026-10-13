@@ -59,4 +59,11 @@ void input_take(void);      /* move the latches into ev_btn / ev_key */
  * inp_hook_key replace the hardware (tools/a2sim pokes them). */
 extern uint8_t inp_hook, inp_hook_dir, inp_hook_btn, inp_hook_key;
 
+#ifdef __H89__
+/* A terminal's arrows keep going until stopped (src/h89/input.c): the
+ * game stops them where the walk starts again (src/develop.c). */
+#define INPUT_STOP
+void input_stop(void);
+#endif
+
 #endif

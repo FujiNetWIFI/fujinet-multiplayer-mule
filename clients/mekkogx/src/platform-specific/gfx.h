@@ -45,6 +45,11 @@
 #define TCOLS 32
 #define BIGW  1
 #define TX(c) ((uint8_t)(((c) * 3 + 2) >> 2))
+#elif defined(__H89__)
+/* the H19 terminal: 80 columns of its own characters, big text as small */
+#define TCOLS 80
+#define BIGW  1
+#define TX(c) ((uint8_t)((c) * 2))
 #else
 #define TCOLS 40
 #define BIGW  2
@@ -107,6 +112,14 @@ void gfx_town(void);
 #define GFX_LAND_HILITE
 void gfx_land_hilite(uint8_t col);
 #define MAP_BAR_X 158
+#endif
+#ifdef __H89__
+/* The development screen has the map and the town on it together (the
+ * H19 draws a whole screen in seconds): walking from one to the other
+ * draws neither again, and the town's prices are the platform's to place
+ * (src/develop.c). */
+#define GFX_DEV_STRIP
+void gfx_town_money(uint16_t money, uint16_t price, uint8_t mules);
 #endif
 #ifndef MAP_BAR_X
 #define MAP_BAR_X 152
