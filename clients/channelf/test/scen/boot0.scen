@@ -1,0 +1,10 @@
+wait 80
+snap title
+wait 300
+snap join
+peek DBGAT
+peek NETFAIL
+peek NSTATE
+peek FRAMES 2
+peek ACTSENT
+tick

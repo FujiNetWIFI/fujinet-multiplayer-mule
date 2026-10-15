@@ -1,0 +1,40 @@
+test 3 0
+wait 150
+hold r
+wait 40
+hold none
+wait 10
+hold d
+wait 16
+hold none
+wait 120
+snap b1
+peek W_MULE 1
+hold r
+wait 22
+hold none
+wait 10
+peek W_X 2
+hold u
+wait 16
+hold none
+wait 120
+snap b2
+peek ST+456 1
+hold r
+wait 60
+hold none
+wait 150
+snap b3
+peek W_X 2
+hold d
+wait 30
+hold none
+wait 20
+press
+wait 80
+snap b4
+peek W_X 2
+peek ST+222 45
+peek W_MULE 1
+vcheck

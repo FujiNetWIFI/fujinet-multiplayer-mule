@@ -1,0 +1,10 @@
+test 8
+wait 200
+snap o1
+wait 200
+snap o2
+wait 400
+snap o3
+wait 300
+snap o4
+vcheck

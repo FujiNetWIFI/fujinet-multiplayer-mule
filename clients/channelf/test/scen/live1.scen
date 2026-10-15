@@ -1,0 +1,16 @@
+wait 500
+snap tables
+peek TBN
+peek SCNAME 9
+peek SCENDPT 32
+wait 60
+press
+wait 400
+snap joined
+peek SCTABL 9
+peek STOK
+peek PHASE
+peek MYSEAT
+peek NETFAIL
+peek NETHAVE
+peek ST 16

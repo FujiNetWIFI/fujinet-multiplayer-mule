@@ -71,13 +71,14 @@ run() {
     h89) shoot h89 "$MX" python3 tools/h89sim/h89sim.py r2r/h89-cpm/mule.h8d r2r/h89-cpm/mule.map ;;
     intv) shoot intv "$ROOT/clients/intv" python3 tools/intvsim.py mule.rom ;;
     astrocade) shoot astrocade "$ROOT/clients/astrocade" python3 tools/astrosim.py ;;
+    channelf) shoot channelf "$ROOT/clients/channelf" python3 tools/chfsim.py ;;
     atari-2600) a2600 ;;
     *) echo "unknown target $1"; return 1 ;;
     esac
 }
 
 MAME_DEFAULT=${MAME:-$HOME/Workspace/mame}
-TARGETS=${*:-apple2 coco msdos-cga msdos-pcjr adam msx atari lynx nes sms h89 intv astrocade}
+TARGETS=${*:-apple2 coco msdos-cga msdos-pcjr adam msx atari lynx nes sms h89 intv astrocade channelf}
 for t in $TARGETS; do
     run "$t" &
 done

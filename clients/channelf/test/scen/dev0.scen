@@ -1,0 +1,23 @@
+test 3 0
+wait 150
+snap d1
+hold r
+wait 60
+hold none
+wait 10
+snap d2
+hold l
+wait 200
+hold none
+wait 120
+snap d3
+wait 60
+snap d4
+hold u
+wait 60
+hold none
+wait 20
+snap d5
+peek W_X 6
+peek DVSTATE 1
+vcheck

@@ -1,0 +1,10 @@
+wait 160
+snap s1
+wait 40
+snap s2
+wait 40
+snap s3
+wait 300
+snap s4
+peek GT 22
+vcheck

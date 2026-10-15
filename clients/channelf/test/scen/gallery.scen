@@ -1,0 +1,7 @@
+wait 240
+snap gallery
+tick
+wait 600
+tick
+vcheck
+page

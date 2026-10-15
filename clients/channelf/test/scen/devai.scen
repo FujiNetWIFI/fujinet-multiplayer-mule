@@ -1,0 +1,10 @@
+test 3 3
+wait 150
+snap c1
+wait 150
+snap c2
+wait 150
+snap c3
+wait 200
+snap c4
+vcheck

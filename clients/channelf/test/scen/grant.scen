@@ -1,0 +1,19 @@
+test 1
+wait 40
+snap g1
+wait 200
+snap g2
+wait 300
+snap g3
+wait 200
+snap g4
+peek G_CUR 11
+press
+wait 30
+snap g5
+peek G_CUR 11
+wait 300
+snap g6
+peek G_CUR 11
+peek 0xC185 4
+vcheck

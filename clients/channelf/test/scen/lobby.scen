@@ -1,0 +1,13 @@
+test 0
+wait 120
+snap l1
+hold r
+wait 10
+hold none
+wait 30
+snap l2
+press
+wait 60
+snap l3
+peek LB_SPEC 1
+vcheck

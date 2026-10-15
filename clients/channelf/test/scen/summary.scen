@@ -1,0 +1,13 @@
+test 7
+wait 200
+snap s1
+wait 200
+snap s2
+wait 200
+snap s3
+wait 200
+snap s4
+press
+wait 60
+snap s5
+vcheck

@@ -1,0 +1,17 @@
+test 1
+wait 1250
+snap a
+peek G_CUR 11
+press
+wait 30
+snap b
+peek G_CUR 11
+peek ST+389 4
+peek ACT 4
+wait 300
+snap c
+peek G_CUR 11
+peek ST+389 4
+peek ST+M_OWNER 45
+peek PHASE 1
+vcheck
