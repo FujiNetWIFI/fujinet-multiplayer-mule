@@ -57,7 +57,7 @@ func main() {
 			{Platform: "msdos", Url: "tnfs://irata.online/mule/msdos/mule.img"},
 			{Platform: "lynx", Url: "tnfs://irata.online/mule/lynx/mule.lnx"},
 			{Platform: "adam", Url: "tnfs://irata.online/mule/adam/mule.ddp"},
-			{Platform: "msx", Url: "tnfs://irata.online/mule/msxrom/mule.rom"},
+			{Platform: "msx", Url: "tnfs://irata.online/mule/msxrom/mule[ASCII8].rom"},
 			{Platform: "nes", Url: "tnfs://irata.online/mule/nes/mule.nes"},
 			{Platform: "sms", Url: "tnfs://irata.online/mule/sms/mule.sms"},
 			{Platform: "h89", Url: "tnfs://irata.online/mule/h89-cpm/mule-boot.h8d"},
