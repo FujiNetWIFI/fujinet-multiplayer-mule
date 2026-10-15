@@ -226,7 +226,7 @@ LS4:    PI STRP
         LR H,DC
         LDB LB_R
         LR 2,A
-        LI 84
+        LI 82                   ; (5 letters end on cell 23)
         LR 1,A
         LIS C_WHITE
         LR 6,A
