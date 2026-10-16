@@ -259,9 +259,16 @@ DPADA:  sta     WSYNC
         ldy     #0              ; the absolute scanline, 0-125; never clobbered
         lda     #0
         sta     MROW
-
+        IFDEF   MHASDIG
+        lda     MPFT            ; row 0's digit row (see THE DIGITS below)
+        sta     DGROW
+        sta     PF1
+        lda     #TINK
+        sta     MLINE
+        ELSE
 DROWL:  lda     #TINK
         sta     MLINE
+        ENDIF
 
 DINK:   sta     WSYNC
         lda     TP0,y           ; 4
@@ -281,9 +288,22 @@ DINK:   sta     WSYNC
         stx     GRP0            ; 3   -> 47   displays group 3
         sta     GRP1            ; 3   -> 50   displays group 4
         sty     GRP0            ; 3   -> 53   displays group 5; value unused
+        IFDEF   MHASDIG
+        lda     #PFEDGE         ; 2   -> 55   the border for the right half
+        sta     PF1             ; 3   -> 58     (see THE DIGITS)
+        iny                     ; 2   -> 60
+        lda     DGROW           ; 3   -> 63
+        sta     >PF1            ; 4   -> 67   the digit again, for the next line
+        cpy     MLINE           ; 3   -> 70   the row's last ink line done?
+        bne     DINK            ; 3   -> 73   + the WSYNC's 3: 76, none spare
+        IF      (DINK>>8) <> (*>>8)
+        ERROR   "disptext.inc: the ink loop's branch crosses a page"
+        ENDIF
+        ELSE
         iny                     ; 2   -> 55
         dec     MLINE          ; 5   -> 60
         bne     DINK            ; 3   -> 63
+        ENDIF
 
 ; ---- the seam line ----
 ; Line 5 of the cell. The cartridge stores zero here, so no glyph can be
@@ -303,6 +323,45 @@ DINK:   sta     WSYNC
 ; and it is 76. The path below reaches it at 58, with `lda MBGT,x` costing a
 ; fifth cycle in any bank whose twenty-two byte table straddles a page and
 ; `bne DSEAM1` a third if its target ever lands on another page.
+        IFDEF   MHASDIG
+; THE DIGITS (MHASDIG: the summary's placings). PF1's low nibble draws a
+; black digit left of the text, a 3 x 4 font whose pixels are a text row tall:
+; MPFT holds each row's pattern ORed with PFEDGE, DGROW the row being drawn.
+; CTRLPF reflects PF1 onto the right half from cycle 60, so every line puts
+; the border back by then and the digit again from 67, when only the
+; border's bits, the same in both, are left to draw. The ink lines then have
+; no cycle to spare, and this line has three: the ink colours are not set
+; here, since they never change in such a bank.
+        sta     WSYNC
+        lda     #0              ; 2
+        sta     GRP0            ; 3   ->  5
+        sta     GRP1            ; 3   ->  8
+        sta     GRP0            ; 3   -> 11
+        ldx     MROW            ; 3   -> 14
+        inx                     ; 2   -> 16
+        lda     MBGT,x          ; 4   -> 20
+        and     MBGMSK          ; 3   -> 23
+        cpx     MBAR            ; 3   -> 26
+        bne     DSEAMD          ; 3   -> 29
+        lda     #CRED           ; 2
+DSEAMD: sta     COLUBK          ; 3   -> 32
+        stx     MROW            ; 3   -> 35
+        iny                     ; 2   -> 37
+        lda     #PFEDGE         ; 2   -> 39   the border for the right half
+        sta     PF1             ; 3   -> 42
+        lda     MPFT,x          ; 4   -> 46   the next row's digit row
+        sta     DGROW           ; 3   -> 49
+        cpx     #FNTROW         ; 2   -> 51
+        beq     DSEAMX          ; 2   -> 53
+        tya                     ; 2   -> 55   its ink lines end at Y + TINK
+        adc     #TINK           ; 2   -> 57   (no carry: X < FNTROW)
+        sta     MLINE           ; 3   -> 60
+        lda     DGROW           ; 3   -> 63
+        sta     >PF1            ; 4   -> 67
+        jmp     DINK            ; 3   -> 70   + the WSYNC's 3: 73 (one more for
+                                ;   the bar row, one if MBGT straddles a page)
+DSEAMX:
+        ELSE
         sta     WSYNC
         lda     #0              ; 2
         sta     GRP0            ; 3   ->  5   three writes, not two: with
@@ -334,6 +393,7 @@ DSEAM1: sta     COLUBK          ; 3   -> 32   by cycle 32, pixel 28 at the
         lda     MROW           ; 3   -> 45
         cmp     #FNTROW         ; 2   -> 47
         bne     DROWL           ; 3   -> 50   + DROWL's 5 and the WSYNC's 3
+        ENDIF
 
         ldx     SAVSP
         txs

@@ -1,8 +1,8 @@
 ; stat.asm -- bank 3: the status summary (phase 7) and game over (phase 8).
 ;
 ; MekkoGX status.c, as text. Each seat is a band of four rows in its colour:
-; its rank and name (and OK once it has pressed), then money, land and the
-; total. Land is the server's ScoreOf: 500 a plot, and for a plot with a
+; its name (and OK once it has pressed), then money, land and the total, with
+; its placing as a big digit at the left (the text kernel's MHASDIG). Land is the server's ScoreOf: 500 a plot, and for a plot with a
 ; M.U.L.E. the outfit (25 a good's step) plus 35. Under the bands, the
 ; colony's total -- which is in the reply's second slice, bytes 512-549.
 ;
@@ -18,6 +18,7 @@ MHASINP EQU     1
 MHASDEC EQU     1
 MHASCMP EQU     0
 MHASMSG EQU     1
+MHASDIG EQU     1
 TICKROW EQU     20
 
         INCLUDE "../build/tail.inc"
@@ -35,6 +36,8 @@ SRDY    EQU     PV+9            ; my PF_READY
 SEL0    EQU     PV+10           ; elapsed jiffies at the arrival, 16 bits
 SEL1    EQU     PV+11
 SMSGK   EQU     PV+12           ; the message said: 1 press, 2 the rating
+MPFT    EQU     PV+13           ; the text kernel's digit, a row's PF1 (21)
+DGROW   EQU     PV+34           ;   and the row's being drawn
 
 DRAWN   EQU     410             ; jiffies the Atari spends drawing
 
@@ -67,6 +70,11 @@ SSETUP: lda     #BKSTAT
         sta     SBELL
         sta     SMSGK
         sta     MSGCNT
+        ldx     #FNTROW-1       ; no digits until the seats' names come
+        lda     #PFEDGE
+SSU1:   sta     MPFT,x
+        dex
+        bpl     SSU1
 SSTATE: lda     #1
         sta     MCOMP
         lda     SMSGK           ; the press message was wanted: now
@@ -177,15 +185,30 @@ SC1:    sec
         beq     SCLAND
         jmp     SCTOT
 
-SCNAME: ldx     MIDX
+SCNAME: ldx     MIDX            ; the placing: the band's four digit rows
         lda     PLOFS,x
         tax
         lda     FNRPLY+SPLAYER+PLRANK,x
-        and     #7
-        ora     #'0'
-        jsr     FNCHR
-        lda     #' '
-        jsr     FNCHR
+        sec
+        sbc     #1
+        and     #3
+        asl     a
+        asl     a
+        tay
+        ldx     MIDX
+        lda     SEATROW,x
+        tax
+SCN1:   lda     DFONT,y         ; (the border's last pixel off: a gap
+        ora     #PFEDGE&$EF     ;   between it and the digit)
+        sta     MPFT,x
+        inx
+        iny
+        tya
+        and     #3
+        bne     SCN1
+        ldx     MIDX
+        lda     PLOFS,x
+        tax
         ldy     #8
 SC2:    lda     FNRPLY+SPLAYER+PLNAME,x
         beq     SC3
@@ -480,6 +503,11 @@ STICK:  rts
 
 PLOFS:  DB      0,PLSIZE,2*PLSIZE,3*PLSIZE
 SEATROW: DB     1,5,9,13
+; The placings 1-4 for the text kernel: 3 x 4, PF1 bits 3-1 (pixels 8-10).
+DFONT:  DB      $0C,$04,$04,$0E ; 1
+        DB      $0C,$02,$04,$0E ; 2
+        DB      $0E,$06,$02,$0E ; 3
+        DB      $0A,$0E,$02,$02 ; 4
 MULEV:  DB      25+35,50+35,75+35,100+35
 
 SSUMM:  DB      "SUMMARY #",0

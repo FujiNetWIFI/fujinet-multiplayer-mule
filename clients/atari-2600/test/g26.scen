@@ -1,0 +1,29 @@
+# the summary's placings (snap), and a claim in the grant
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 480
+text
+snap
+press fire
+wait 60
+press fire
+wait 60
+press fire
+wait 60
+press fire
+bank 4 3000
+zp C7 14 6000
+press fire
+wait 120
+peek C7 8
+wait 900
+peek C7 8
+snap
+quit
