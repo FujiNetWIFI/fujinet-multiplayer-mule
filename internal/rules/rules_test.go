@@ -295,9 +295,10 @@ func TestLandGrantHumanBumpsAI(t *testing.T) {
 	if g.Map[p].Owner != 0 || g.Claimed[1] != -1 || g.GrantCur != p {
 		t.Fatalf("owner %d computer %d cursor %d", g.Map[p].Owner, g.Claimed[1], g.GrantCur)
 	}
+	stop := g.GrantStop()
 	runTo(t, g, 1000, func() bool { return g.Claimed[1] >= 0 })
-	if g.Claimed[1] <= p {
-		t.Fatalf("computer claimed %d", g.Claimed[1])
+	if g.Claimed[1] <= p || g.Claimed[1] != stop {
+		t.Fatalf("computer claimed %d, GrantStop said %d", g.Claimed[1], stop)
 	}
 }
 

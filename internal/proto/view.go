@@ -131,6 +131,7 @@ type GrantV struct {
 	Claimed []int `json:"cl"`
 	Step    int   `json:"ctu"` // jiffies per cursor step
 	Ended   bool  `json:"end"`
+	Stop    int   `json:"st"` // the plot where the cursor next stops for a computer's claim, 45 none
 }
 
 type LineV struct {
@@ -267,7 +268,7 @@ func BuildView(tb *Table, me int) *View {
 			cur = rules.NumPlots
 		}
 		v.Grant = &GrantV{Cursor: cur, Next: max(0, g.GrantNext-g.T), Claimed: append([]int(nil), g.Claimed[:]...),
-			Step: rules.CTU, Ended: g.GrantEnd >= 0}
+			Step: rules.CTU, Ended: g.GrantEnd >= 0, Stop: g.GrantStop()}
 	case rules.PhaseLandAuction, rules.PhaseDeclare, rules.PhaseTrading:
 		if a := g.Auction; a != nil {
 			av := &AuctionV{Land: a.Land, Good: int(a.Good), Plot: a.Plot, Seller: a.Seller, Crit: a.Crit, Start: a.Start,

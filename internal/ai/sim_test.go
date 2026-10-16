@@ -20,10 +20,36 @@ func runGame(t *testing.T, seed uint64) *rules.Game {
 		if step > 2_000_000 {
 			t.Fatalf("seed %d: game did not finish (round %d phase %s)", seed, g.Round, g.Phase)
 		}
+		stop, claimed := grantStop(g), g.Claimed
 		g.Advance(g.T + 1)
 		checkInvariants(t, g)
+		checkGrantStop(t, g, stop, claimed)
 	}
 	return g
+}
+
+func grantStop(g *rules.Game) int {
+	if g.Phase != rules.PhaseLandGrant {
+		return -1
+	}
+	return g.GrantStop()
+}
+
+// checkGrantStop checks a computer only claims where GrantStop said the cursor
+// would next stop, and that the stop is never behind the cursor.
+func checkGrantStop(t *testing.T, g *rules.Game, stop int, claimed [rules.NumSeats]int) {
+	t.Helper()
+	if g.Phase != rules.PhaseLandGrant || stop < 0 {
+		return
+	}
+	for seat, c := range g.Claimed {
+		if c >= 0 && claimed[seat] < 0 && c != stop {
+			t.Fatalf("round %d: seat %d claimed %d, GrantStop said %d", g.Round, seat, c, stop)
+		}
+	}
+	if s := g.GrantStop(); g.GrantEnd < 0 && s <= g.GrantCur {
+		t.Fatalf("round %d: GrantStop %d not past the cursor %d", g.Round, s, g.GrantCur)
+	}
 }
 
 func checkInvariants(t *testing.T, g *rules.Game) {

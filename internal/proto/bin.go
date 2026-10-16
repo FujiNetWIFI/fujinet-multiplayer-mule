@@ -30,7 +30,7 @@ type BinHeader struct {
 	Round     uint8  `c:"1..12"`
 	MySeat    int8   `c:"-1 = spectator"`
 	Err       uint8  `c:"ERR_* of the last action"`
-	Size      uint8  `c:"reserved"`
+	GrantStop uint8  `c:"land grant: 1 + the plot where the cursor next stops for a computer, 46 none, 0 unknown"`
 	T         uint16 `c:"server clock, jiffies (1/60 s), low 16 bits"`
 	Elapsed   uint16 `c:"jiffies since the phase started"`
 	Countdown int16  `c:"lobby: jiffies until start, -1 = waiting"`
@@ -214,6 +214,7 @@ func ToBin(v *View) *BinState {
 	b.Grant.Claimed = [4]int8{-1, -1, -1, -1}
 	if gr := v.Grant; gr != nil {
 		b.Grant.Cursor, b.Grant.Step, b.Grant.Next = int8(gr.Cursor), uint8(gr.Step), u16(gr.Next)
+		b.H.GrantStop = uint8(gr.Stop + 1)
 		for i, c := range gr.Claimed {
 			b.Grant.Claimed[i] = int8(c)
 		}

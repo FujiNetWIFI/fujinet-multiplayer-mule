@@ -42,7 +42,7 @@ Clients keep a jiffy clock synced to `t` and animate between polls:
 
 | What | How to animate it |
 |------|-------------------|
-| Land-grant cursor | It moves to the next free plot once `gr.nx` jiffies have passed, then every `gr.ctu` jiffies. |
+| Land-grant cursor | It moves to the next free plot once `gr.nx` jiffies have passed, then every `gr.ctu` jiffies, but never past `gr.st`: a computer claims that plot when the cursor arrives, and the cursor pauses there. |
 | Auction lines | Each line moves one `au.stp` price step every `au.lj` jiffies towards its target. |
 | Auction time bar | `au.tk` ticks are left, and the current tick has `au.tl` jiffies left. Each later tick lasts 25 jiffies, or 6 when `au.idl` is set. |
 | Turn time bar | It loses one pixel every `tu.ptu` jiffies. |
@@ -87,7 +87,7 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
             "m": 1600, "g": [4,2,0,0], "sc": 2100, "rk": 1, "pr": [0,0,0,0], "sl": [0,0,0,0] } ],
   "map": { "tr": [..45], "mt": [..], "ow": [..], "mu": [..], "cr": [..], "pr": [..], "ls": [..], "fs": [..] },
   "st":  { "s": [8,8,8,0], "pr": [30,25,50,100], "b": [15,10,50,100], "x": [50,45,85,240], "mu": 14, "mp": 100 },
-  "gr":  { "cur": 12, "nx": 7, "cl": [-1,3,-1,-1], "ctu": 12, "end": false }, // land grant only
+  "gr":  { "cur": 12, "nx": 7, "cl": [-1,3,-1,-1], "ctu": 12, "end": false, "st": 20 }, // land grant only; st 45 = no computer stop ahead
   "au":  { "land": false, "gd": 2, "pt": -1, "sl": -1, "cr": -1, "sp": 0, "ak": 0,   // auctions and declare; cr: seller at critical level
            "sg": 3, "sgl": 0, "tk": 70, "tl": 25, "idl": false, "lj": 8,          // stage, time bar
            "lo": 40, "hi": 86, "sb": 50, "ss": 85, "stp": 1,
@@ -124,7 +124,7 @@ over it shows the whole map.
 
 | Offset | Size | Struct |
 |--------|------|--------|
-| 0 | 16 | MuleHeader: `'M'`, version (2), msgType, phase, round, mySeat, err, reserved, `t` (jiffies, low 16 bits), elapsed, countdown, result |
+| 0 | 16 | MuleHeader: `'M'`, version (2), msgType, phase, round, mySeat, err, grantStop (land grant: `gr.st` + 1, 0 otherwise), `t` (jiffies, low 16 bits), elapsed, countdown, result |
 | 16 | 4×29 | MulePlayer: `name[9]`, species, color, flags (`PF_*`), money, `goods[4]`, score, rank, `prod[4]`, `spoil[4]` |
 | 132 | 225 | MuleMap: `terrain[45]` (bits 0–1 terrain, bits 2–3 mountains), `owner[45]`, `mule[45]`, `crystite[45]`, `prod[45]` (bits 0–3 units, bit 6 for sale, bit 7 lost) |
 | 357 | 31 | MuleStore: stock, price, buy, sell, mules, mulePrice |

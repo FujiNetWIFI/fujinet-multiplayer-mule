@@ -126,7 +126,7 @@ typedef struct { /* 16 bytes */
   uint8_t round; /* 1..12 */
   int8_t mySeat; /* -1 = spectator */
   uint8_t err; /* ERR_* of the last action */
-  uint8_t size; /* reserved */
+  uint8_t grantStop; /* land grant: 1 + the plot where the cursor next stops for a computer, 46 none, 0 unknown */
   uint16_t t; /* server clock, jiffies (1/60 s), low 16 bits */
   uint16_t elapsed; /* jiffies since the phase started */
   int16_t countdown; /* lobby: jiffies until start, -1 = waiting */

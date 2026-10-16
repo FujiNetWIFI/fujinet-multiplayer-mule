@@ -165,6 +165,7 @@ func (g *Game) startRound() {
 	if g.Round == 1 {
 		g.GrantNext += LandingDelay
 	}
+	g.refreshGrantWants(0)
 }
 
 func (g *Game) checkFailure() bool {
@@ -233,17 +234,10 @@ func (g *Game) tickGrant() {
 	// Computers press their button as soon as the cursor reaches their plot. [RE]
 	// Several simultaneous claims go to the worst ranked player. (A human who
 	// pressed on the same plot can still take it: see Claim.)
+	g.refreshGrantWants(next)
 	var want []int
 	for seat, p := range g.Players {
-		if !p.AI || g.Claimed[seat] >= 0 {
-			continue
-		}
-		w := g.grantWant[seat]
-		if w == -2 || (w >= 0 && (w < next || !g.grantable(w))) {
-			w = g.brain.GrantChoice(g, seat, next)
-			g.grantWant[seat] = w
-		}
-		if w == next {
+		if p.AI && g.Claimed[seat] < 0 && g.grantWant[seat] == next {
 			want = append(want, seat)
 		}
 	}
@@ -255,7 +249,35 @@ func (g *Game) tickGrant() {
 			}
 		}
 		g.claim(best, next)
+		g.refreshGrantWants(next)
 	}
+}
+
+// refreshGrantWants decides, for every computer still without a plot, the plot
+// at or after from it will claim, keeping a choice that is still open. They are
+// decided ahead so GrantStop can tell clients where the cursor will stop.
+func (g *Game) refreshGrantWants(from int) {
+	for seat, p := range g.Players {
+		if !p.AI || g.Claimed[seat] >= 0 {
+			continue
+		}
+		if w := g.grantWant[seat]; w == -2 || (w >= 0 && (w < from || !g.grantable(w))) {
+			g.grantWant[seat] = g.brain.GrantChoice(g, seat, from)
+		}
+	}
+}
+
+// GrantStop returns the plot past the cursor where it next stops for a
+// computer's claim, or NumPlots if none will [IMPL]: clients that move the
+// cursor between states never step past it.
+func (g *Game) GrantStop() int {
+	stop := NumPlots
+	for seat, p := range g.Players {
+		if w := g.grantWant[seat]; p.AI && g.Claimed[seat] < 0 && w > g.GrantCur && w < stop {
+			stop = w
+		}
+	}
+	return stop
 }
 
 // moveCursor puts the grant cursor on plot p and records the stop.
@@ -324,6 +346,7 @@ func (g *Game) Claim(seat, plot int) error {
 		g.moveCursor(plot)
 	}
 	g.claim(seat, plot)
+	g.refreshGrantWants(plot)
 	return nil
 }
 
