@@ -30,6 +30,8 @@ scenario, one command a line; times are in frames of the game's clock:
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
     type TEXT                   type on the real keyboard (\\n RETURN, \\s space)
     poke SYMBOL[+OFFSET] VALUE
+    watch N SYMBOL[+OFFSET]...  for N frames, print the game frame and a byte at
+                                each symbol whenever one of them changes (WATCH)
 
 The input goes through the game's test hook (inp_hook in input.c), the
 addresses come from the linker map. NESWAV=out.wav records the sound.
@@ -109,6 +111,8 @@ def main():
             steps.append(("poke", sym(w[1]), int(w[2], 0)))
         elif c == "ppuwatch":
             steps.append(("ppuwatch", int(w[1])))
+        elif c == "watch":
+            steps.append(("watch", int(w[1]), [sym(x) for x in w[2:]]))
         else:
             sys.exit("unknown command: " + line)
 
@@ -126,6 +130,8 @@ def main():
             lua.append('{"pc", %d},' % s[1])
         elif s[0] == "ppuwatch":
             lua.append('{"ppuwatch", %d},' % s[1])
+        elif s[0] == "watch":
+            lua.append('{"watch", %d, {%s}},' % (s[1], ", ".join(str(a) for a in s[2])))
         elif s[0] == "dump":
             lua.append('{"dump", %d, %d, "%s"},' % (s[1], s[2], os.path.join(out, s[3])))
         elif s[0] == "type":
@@ -252,6 +258,7 @@ local function watch_report()
   ws = nil
 end
 local watch_until = nil
+local watch_last = ""
 emu.register_frame_done(function()
   frames = frames + 1
   if frames > 60 * 600 then manager.machine:exit() end
@@ -310,6 +317,13 @@ emu.register_frame_done(function()
       if ((now - watch_until) & 0xFFFF) < 0x8000 then
         watch_report(); watch_until = nil; i = i + 1
       else return end
+    elseif s[1] == "watch" then
+      if watch_until == nil then watch_until = now + s[2]; watch_last = "" end
+      local t = {}
+      for _, a in ipairs(s[3]) do t[#t + 1] = string.format("%%d", mem:read_u8(a)) end
+      local v = table.concat(t, " ")
+      if v ~= watch_last then print("WATCH " .. now .. " " .. v); watch_last = v end
+      if ((now - watch_until) & 0xFFFF) < 0x8000 then watch_until = nil; i = i + 1 else return end
     elseif s[1] == "peek" then
       local t = {}
       for k = 0, s[4] - 1 do t[#t + 1] = string.format("%%02X", mem:read_u8(s[3] + k)) end
@@ -341,7 +355,7 @@ end, "nessim")
     env.setdefault("FUJINET_TCP", "127.0.0.1:1")
     r = subprocess.run(cmd, cwd=MAME, capture_output=True, text=True, timeout=900, env=env)
     for line in r.stdout.splitlines():
-        if line.startswith(("PEEK", "SNAP", "PC ", "PPUW")):
+        if line.startswith(("PEEK", "SNAP", "PC ", "PPUW", "WATCH")):
             print(line)
     if r.returncode:
         print(r.stdout[-2000:], r.stderr[-2000:])

@@ -22,8 +22,12 @@ void autoplay(void)
             ev_btn = 1;
         break;
     case PHASE_SUMMARY:
-    case PHASE_GRANT:
         ev_btn = 1;
+        break;
+    case PHASE_GRANT:
+        /* late, so a soak sees the computers' stops first */
+        if (st.grant.cursor >= 20)
+            ev_btn = 1;
         break;
     case PHASE_DEVELOP:
         if (dv_state == DV_PROMPT)
