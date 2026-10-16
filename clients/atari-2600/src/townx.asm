@@ -35,6 +35,7 @@ MHASSRUN EQU    0               ; the sound runs in the screen banks
         INCLUDE "../build/tail.inc"
         INCLUDE "devram.inc"
         INCLUDE "devaddr.inc"
+        INCLUDE "mapram.inc"
 
 ; the map kernel's cells (dispmap.inc), which the town's kernel shares
 FIGX    EQU     PV+0
@@ -61,7 +62,11 @@ WIN     EQU     DVBW            ; bit 7: walking in through a door (bits 0-2
 
         ORG     $1000
 
-YENTRY: lda     MENT
+YENTRY: lda     MSCR            ; the map's grant and production (mapx.inc)
+        cmp     #BKMAP
+        bne     YE0
+        jmp     MAPX
+YE0:    lda     MENT
         cmp     #ENRUN
         bne     YE1
         jsr     TFRAMEX
@@ -380,6 +385,7 @@ TS5:    lda     #200
         sta     P1TOP
         rts
 
+        INCLUDE "mapx.inc"
         INCLUDE "devcom.inc"
 MUL11:  DB      0,11,22,33
 MUL12:  DB      0,12
@@ -398,5 +404,9 @@ DSTART:
 DOORLO: DB      116,92,68,44,44,64,84,104
 DOORHI: DB      124,100,76,52,52,72,92,124
 DOORC:  DB      120,96,72,48,48,68,88,116
+; the map's plots (mapx.inc XPLACE): a column's POSOBJ x for the double-width
+; box, a row's top entry (map.asm's PLOTX, ROWENT)
+XPLOTX: DB      12,28,44,60,76,92,108,124,140
+XROWENT: DB     0,16,32,48,64
 
         END

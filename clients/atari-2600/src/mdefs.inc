@@ -157,6 +157,7 @@ SHPHASE EQU     3
 SHROUND EQU     4
 SHSEAT  EQU     5
 SHERR   EQU     6
+SHSTOP  EQU     7               ; land grant: 1 + where a computer stops the cursor
 SHT     EQU     8
 SHELAP  EQU     10
 SHCOUNT EQU     12

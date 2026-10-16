@@ -6,11 +6,10 @@
 ; bank draws around it is the text: the phase and round at the top, a line
 ; under the map.
 ;
-; THE LAND GRANT. The server steps a cursor across the plots, one every
-; grant.step jiffies; FIRE claims the plot under it (the server takes the
-; plot the cursor left up to 36 jiffies ago, too). The cursor is stepped here
-; between polls from grant.next, so it sweeps smoothly; each state re-syncs
-; it. It is player 0, double width: a box the size of a plot.
+; THE LAND GRANT AND PRODUCTION think in bank 12 (mapx.inc), once a frame
+; from STICK: the grant's cursor and claim, round 1's transport ship, the
+; colony event's plot. The box is player 0, double width, the size of a plot;
+; the ship is player 1.
 
         CPU     6502UNDOC
         INCLUDE "vcs.inc"
@@ -24,13 +23,7 @@ TICKROW EQU     1
 
         INCLUDE "../build/tail.inc"
 
-; After the kernel's cells (dispmap.inc's MKEND).
-GCUR    EQU     MKEND+0         ; the grant cursor's plot, $FF none
-GNEXT   EQU     MKEND+1         ; frames to its next step
-GSTEP   EQU     MKEND+2         ; frames per step
-GCLAIM  EQU     MKEND+3         ; I have claimed this grant
-MLAST   EQU     MKEND+4         ; the message shown last: a key, so each is
-                                ;   said once (phase * 16 + what)
+        INCLUDE "mapram.inc"
 
         ORG     $1000
 
@@ -66,6 +59,7 @@ MSETUP: lda     #BKMAP
         lda     #$FF
         sta     GCUR
         sta     MLAST
+        sta     GPH
         lda     #0
         sta     MSGCNT
         lda     #16             ; the cursor's height
@@ -93,40 +87,10 @@ MR1:    tax
         sta     FNRSEL+FH_BSH
         lda     #FB_MULEMAP
         jsr     FNBLIT
-        lda     #1              ; the text, a row a frame (MCOMPOSE)
-        sta     MCOMP
-; the grant
-        lda     HPHASE
-        cmp     #PHGRANT
-        bne     MR9
-        lda     FNRPLY+SGCUR
-        bmi     MR1A            ; not started
-        ldx     GCUR
-        bpl     MR1A            ; already going
-        pha                     ; the cursor sets off: the bell, and what
-        lda     #SNDBELL        ;   to do
-        jsr     SNDPLAY
-        lda     #MSSELECT
-        sta     MSGREQ
-        pla
-MR1A:   sta     GCUR
-        lda     FNRPLY+SGSTEP
-        sta     GSTEP
-        lda     FNRPLY+SGNEXT+1 ; jiffies to the next step (a frame each)
-        bne     MR2
-        lda     FNRPLY+SGNEXT
-        bne     MR3
-MR2:    lda     GSTEP
-MR3:    sta     GNEXT
-        ldx     HSEAT
-        cpx     #4
-        bcs     MR4
-        lda     FNRPLY+SGCLAIM,x
-        bmi     MR4
-        lda     #1
-        sta     GCLAIM
-MR4:    jsr     GPLACE
-MR9:    jmp     MMSG
+        lda     #1              ; the text, a row a frame (MCOMPOSE); bank 12
+        sta     MCOMP           ;   reads the grant's and production's parts
+        sta     GFRESH          ;   on its next visit
+        jmp     MMSG
 
 ; MCOMPOSE -- the text rows, one a frame from the vblank; HFNEW is cleared
 ; with the last.
@@ -323,39 +287,20 @@ APB2:   jsr     INSCAN          ; the button skips the wait
         jsr     QACT
 APB3:   jmp     RSTCHK
 APB:    jsr     INSCAN
-        jsr     RSTCHK
-        lda     HPHASE
-        cmp     #PHGRANT
-        bne     AP9
-        lda     GCUR
-        cmp     #NPLOTS
-        bcs     AP5
-        dec     GNEXT
-        bne     AP5
-        lda     GSTEP
-        sta     GNEXT
-        inc     GCUR
-        jsr     GPLACE
-AP5:    lda     MINP
-        and     #IN_FIRE
-        beq     AP9
-        ldx     HSEAT           ; a spectator claims nothing
-        cpx     #4
-        bcs     AP9
-        lda     GCLAIM
-        bne     AP9
-        ldx     GCUR
-        cpx     #NPLOTS
-        bcs     AP9
-        inc     GCLAIM
-        lda     #SNDBELL
-        jsr     SNDPLAY
-        lda     #RQCLAIM
-        ldy     #0
-        jmp     QACT
-AP9:    rts
+        jmp     RSTCHK
 
-STICK:  rts
+; STICK -- the grant and production: bank 12, once a frame (it comes back
+; to SLOOP1 with ENPOST).
+STICK:  lda     HPHASE
+        cmp     #PHGRANT
+        beq     STK1
+        cmp     #PHPROD
+        bne     STK9
+STK1:   lda     #ENRUN
+        sta     MENT
+        lda     #BKTOWNX
+        jmp     MGOTO
+STK9:   rts
 
 ; plot column -> POSOBJ x of its left edge (double-width player: POSOBJ's
 ; x is 4 clocks right of the picture, measured), row -> top entry
@@ -393,15 +338,25 @@ MT5     EQU     FNTEXT+$280+MAP0
 DSTART:
 PHNLO:  DB      (PHN0)&$FF,(PHN1)&$FF,(PHN2)&$FF,(PHN3)&$FF,(PHN4)&$FF,(PHN5)&$FF,(PHN6)&$FF,(PHN7)&$FF,(PHN8)&$FF
 PHNHI:  DB      (PHN0)>>8,(PHN1)>>8,(PHN2)>>8,(PHN3)>>8,(PHN4)>>8,(PHN5)>>8,(PHN6)>>8,(PHN7)>>8,(PHN8)>>8
-; The kernel's colour per entry: the map model's (tools/mulemap.py COLTAB),
-; and the cursor after it -- neither may cross a page (a kernel load would
-; take a fifth cycle), so they move to the next page only if they must.
-        IF      (* & $FF) > $100 - 96
+; The kernel's colour per entry: the map model's (tools/mulemap.py COLTAB).
+; It may not cross a page (a kernel load would take a fifth cycle), so it
+; moves to the next page only if it must.
+        IF      (* & $FF) > $100 - 80
         ALIGN   256
         ENDIF
         INCLUDE "../build/mapcol.inc"
+; At fixed addresses (mapram.inc), for bank 12; neither crosses a page.
+        IF      * > MSHIP
+        ERROR   "map.asm: the bank runs into MSHIP"
+        ENDIF
+        ORG     MSHIP
+; The transport ship, nose left, 8 entries.
+SHIPPIC: DB     $0C,$1E,$7F,$FF,$7F,$1E,$0C,$00
 ; The cursor: a box a plot big (double width), 16 entries.
 CURSOR: DB      $FF,$81,$81,$81,$81,$81,$81,$81
         DB      $81,$81,$81,$81,$81,$81,$81,$FF
+        IF      CURSOR <> MCURS
+        ERROR   "map.asm: CURSOR is not at MCURS"
+        ENDIF
 
         END

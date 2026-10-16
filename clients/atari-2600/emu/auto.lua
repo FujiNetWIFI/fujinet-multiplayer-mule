@@ -8,6 +8,7 @@
 -- banks visited at the end.
 --
 --   M26_AUTO_SEED=n    the random walk's seed
+--   M26_SHOW=a,b,...   log those zero-page cells (hex) whenever one changes
 
 local sp = manager.machine.devices[":maincpu"].spaces["program"]
 local function rd(a) return sp:readv_u8(a) end
@@ -71,8 +72,11 @@ _G._auto = emu.add_machine_frame_notifier(function()
         if rd(SPRESS) == 0 then press("fire"); cool = 60 end
         return
     end
-    if b == 4 then
-        if math.random(60) == 1 then press("fire") end
+    if b == 4 or (b == 12 and (ph == 1 or ph == 4)) then
+        -- (bank 12 thinks for the map in the grant and production) the grant:
+        -- late, so a soak sees the computers' stops
+        local g = rd(0xC7)
+        if (ph ~= 1 or (g >= 20 and g < 45)) and math.random(60) == 1 then press("fire") end
         return
     end
     if b == 5 or b == 6 then
@@ -96,6 +100,17 @@ _G._auto = emu.add_machine_frame_notifier(function()
         return
     end
 end)
+
+if os.getenv("M26_SHOW") then
+    local cells, lastv = {}, ""
+    for a in os.getenv("M26_SHOW"):gmatch("[^,]+") do cells[#cells + 1] = tonumber(a, 16) end
+    _G._autoshow = emu.add_machine_frame_notifier(function()
+        local t = {}
+        for _, a in ipairs(cells) do t[#t + 1] = string.format("%d", rd(a)) end
+        local v = table.concat(t, " ")
+        if v ~= lastv then print("SHOW " .. n .. " " .. v); lastv = v end
+    end)
+end
 
 -- every frame that is not 262 lines
 local LINE = (1 / 59.92) / 262
