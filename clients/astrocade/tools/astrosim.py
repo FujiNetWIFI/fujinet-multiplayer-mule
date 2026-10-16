@@ -21,6 +21,8 @@ The scenario language is the other sims' (clients/mekkogx/tools/cocosim):
     pad KEYPADn MASK            tap a real keypad key (e.g. KEYPAD3 0x10 = '1')
     pc N                        print the CPU's PC for N (MAME) frames
     trace FILE | trace off      log every instruction to OUTDIR/FILE (slow)
+    show N SYMBOL[+OFF]...      for N frames (under 32768), print FRAMES and a byte at each
+                                whenever one of them changes (SHOW)
 
 The input goes through the game's test hook (INPHK in input.inc); symbols
 come from the zmac listing's symbol table (build/mule.lst).
@@ -63,7 +65,9 @@ def main():
     out = os.path.abspath(out)
     os.makedirs(out, exist_ok=True)
     syms = symbols(lst)
-    sym = lambda n: syms[n.upper()]
+    def sym(n):                     # NAME, or NAME+OFFSET
+        n, *off = n.split("+")
+        return syms[n.upper()] + sum(int(x, 0) for x in off)
     steps = []
     for line in open(scen):
         line = line.split("#")[0].strip()
@@ -92,6 +96,8 @@ def main():
             steps.append(("poke", sym("INPHK"), 1))
             steps.append(("poke", sym("INPHKK"), k))
             steps.append(("wait", 2))
+        elif c == "show":
+            steps.append(("show", int(w[1]), [sym(x) for x in w[2:]]))
         elif c == "peek":
             steps.append(("peek", w[1], sym(w[1]), int(w[2]) if len(w) > 2 else 1))
         elif c == "poke":
@@ -128,6 +134,8 @@ def main():
             lua.append('{"test", %d, %d, %d, %d},' % s[1:])
         elif s[0] == "pc":
             lua.append('{"pc", %d},' % s[1])
+        elif s[0] == "show":
+            lua.append('{"show", %d, {%s}},' % (s[1], ", ".join(str(a) for a in s[2])))
     lua.append("}")
     lua.append("""
 local fc = %d
@@ -145,6 +153,7 @@ local frames = 0
 local asked = false
 local untap = {}
 local pcdump = 0
+local show_last = ""
 emu.register_frame_done(function()
   frames = frames + 1
   for k, u in pairs(untap) do
@@ -202,6 +211,13 @@ emu.register_frame_done(function()
       i = i + 1
     elseif s[1] == "pc" then
       pcdump = s[2]; i = i + 1; return
+    elseif s[1] == "show" then
+      if wait_until == nil then wait_until = (now + s[2]) & 0xFFFF; show_last = "" end
+      local t = {}
+      for _, a in ipairs(s[3]) do t[#t + 1] = string.format("%%d", mem:read_u8(a)) end
+      local v = table.concat(t, " ")
+      if v ~= show_last then print("SHOW " .. now .. " " .. v); show_last = v end
+      if ((now - wait_until) & 0xFFFF) < 0x8000 then wait_until = nil; i = i + 1 else return end
     elseif s[1] == "peek" then
       local t = {}
       for k = 0, s[4] - 1 do t[#t + 1] = string.format("%%02X", mem:read_u8(s[3] + k)) end
@@ -234,7 +250,7 @@ end, "astrosim")
     if os.environ.get("ASTROSIM_VERBOSE"):
         print(r.stdout, r.stderr)
     for line in r.stdout.splitlines():
-        if line.startswith(("PEEK", "SNAP", "PC ")):
+        if line.startswith(("PEEK", "SNAP", "PC ", "SHOW")):
             print(line)
     names = []
     if os.path.exists(os.path.join(out, "snaps.txt")):

@@ -50,8 +50,14 @@ APBTN:  LD      A,1
 AP1:    CP      PH_SUMM
         JR      Z,APBTN
         CP      PH_GRANT
-        JR      Z,APBTN
-        CP      PH_DEVEL
+        JR      NZ,AP1D
+        LD      A,(HOTU)        ; late, so a soak sees the computers' stops
+        CP      20
+        RET     C
+        CP      NPLOTS
+        RET     NC
+        JR      APBTN
+AP1D:   CP      PH_DEVEL
         JR      NZ,AP2
         LD      A,(DVSTATE)
         CP      DV_PROMPT

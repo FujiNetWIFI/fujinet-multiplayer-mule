@@ -30,7 +30,7 @@ scenario, one command a line; times are in frames of the game's clock:
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
     type TEXT                   type on the real keyboard (\\n RETURN, \\s space)
     poke SYMBOL[+OFFSET] VALUE
-    watch N SYMBOL[+OFFSET]...  for N frames, print the game frame and a byte at
+    watch N SYMBOL[+OFFSET]...  for N frames (under 32768), print the game frame and a byte at
                                 each symbol whenever one of them changes (WATCH)
 
 The input goes through the game's test hook (inp_hook in input.c), the

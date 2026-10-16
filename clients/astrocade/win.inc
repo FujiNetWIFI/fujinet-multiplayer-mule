@@ -8,6 +8,7 @@ W_PHASE EQU     3
 W_ROUND EQU     4
 W_SEAT  EQU     5
 W_ERR   EQU     6
+W_STOP  EQU     7               ; land grant: 1 + where a computer stops the cursor
 W_T     EQU     8
 W_ELAP  EQU     10
 W_CDOWN EQU     12

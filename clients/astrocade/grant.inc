@@ -8,10 +8,12 @@ PVP     DEFL    FXEND
         PV      GSHOW,1
         PV      GRDEP,1         ; the ship is leaving first
         PV      GRCLM,1         ; we have claimed (or asked to)
-        PV      GRSRV,1         ; the cursor in the last state
+        PV      GRLIM,1         ; the furthest plot it may step to
+        PV      GRLAG,1         ; the fastest reply's t - FRAMES (low bytes)
         PV      GRPRESS,1       ; the cursor's plot when the button went down
         PV      GRWAS,1         ; the plot before the cursor's last step
         PV      GRWANT,1        ; the plot we claimed and wait on
+        PV      GRPARK,1        ; it came too early: sent again when it's time
         PV      PREVT,1         ; production: the colony event
         PV      PRPLOT,1
         PV      PRSTART,1
@@ -82,6 +84,9 @@ PXY2:   ADD     A,A
 ; and owned plots; the button claims the plot under it. The server judges
 ; the claim as of the press (it takes a plot the cursor left up to 36
 ; jiffies ago), so the press is latched with the plot on the screen then.
+; Between polls the cursor steps on its own, from the state's countdown
+; less the state's age, never past the plot the state says a computer
+; will stop it on (an older server doesn't say: one plot past its cursor).
 GRENTER: XOR    A
         LD      (MAPDOTS),A
         CALL    MAPENTER
@@ -92,11 +97,15 @@ GRENTER: XOR    A
         LD      (GNEXT),A
         LD      (GRCLM),A
         LD      (GRDEP),A
+        LD      (GRPARK),A
         LD      A,255
         LD      (GCUR),A
         LD      (GRPRESS),A
         LD      (GRWANT),A
         LD      (GRWAS),A
+        LD      (GRLIM),A
+        CALL    GRLAGN          ; the first state's lag is the fastest yet
+        LD      (GRLAG),A
         LD      A,(RND)
         CP      1
         JR      NZ,GRE2
@@ -113,6 +122,7 @@ GRENTER: XOR    A
         LD      B,M_DEPART
         CALL    MSG0
         XOR     A
+        LD      (FXFLAG),A      ; (the summary's landing left it 1)
         LD      HL,FXDEPART
         JP      FXSTART
 GRE2:   LD      B,T_LANDGRANT
@@ -129,10 +139,9 @@ MSG0:   LD      HL,0
         JP      MSGSHOW
 
 GRSTATE: CALL   MAPUPD
-        ; sync the cursor: -1 (255) before it starts, 45 when it's done
+        ; the server's cursor: -1 (255) before it starts, 45 when it's done
         LD      HL,W_GRANT
         CALL    RXGETB
-        LD      (GRSRV),A
         LD      C,A             ; C = k
         LD      HL,W_GRANT+5
         CALL    RXGETB
@@ -140,37 +149,105 @@ GRSTATE: CALL   MAPUPD
         JR      NZ,GRS1
         LD      A,12
 GRS1:   LD      (GSTEP),A
+        ; the state's age: how much later than the fastest reply yet it is
+        CALL    GRLAGN
+        LD      B,A
+        LD      HL,GRLAG
+        SUB     (HL)
+        CP      128
+        JR      NC,GRS2
+        LD      (HL),B          ; the fastest yet
+        XOR     A
+        JR      GRS3
+GRS2:   NEG
+        CP      31
+        JR      C,GRS3
+        LD      A,30
+GRS3:   LD      L,A
+        LD      H,0
+        ; its countdown less the age: a step that came since is due now; far
+        ; off (the ship leaving), wait for a nearer state
+        PUSH    HL
         LD      HL,W_GRANT+6
         CALL    RXGETW          ; DE = next
-        LD      A,D
+        POP     HL
+        EX      DE,HL
         OR      A
-        LD      A,E
-        JR      Z,GRS2
-        LD      A,255
-GRS2:   LD      B,A             ; B = w
+        SBC     HL,DE
+        JR      Z,GRS4
+        JR      NC,GRS5
+GRS4:   LD      HL,1
+GRS5:   LD      A,H
+        OR      A
+        LD      B,L             ; B = w
+        JR      Z,GRS6
+        LD      B,0
+GRS6:   PUSH    BC
+        CALL    GRCLAIM
+        POP     BC
+        ; (while our claim is out the cursor waits on its plot)
+        LD      A,(GRWANT)
+        CP      NPLOTS
+        JR      C,GRS10
         LD      A,(GCUR)
         CP      C
-        JR      NZ,GRS3
-        LD      A,(GNEXT)
+        JR      Z,GRS9
+        ; we made the step it waits for a little early: no jump back (after
+        ; a claim it waits longer, and the cursor goes there)
+        CP      NPLOTS
+        JR      NC,GRS8
+        LD      D,A
+        LD      A,C
+        CP      255
+        JR      Z,GRS7
+        CP      D
+        JR      NC,GRS8
+GRS7:   LD      A,B
+        OR      A
+        JR      Z,GRS8
+        LD      A,(GSTEP)
         CP      B
-        JR      C,GRS5
-        JR      Z,GRS5
-        JR      GRS4
-GRS3:   LD      A,255
+        JR      C,GRS8
+        ADD     A,B
+        LD      B,A
+        JR      GRS9
+GRS8:   LD      A,C             ; a claim (ours, or another's the cursor
+        LD      (GCUR),A        ; went back for)
+        LD      A,255
         LD      (GRWAS),A
-GRS4:   LD      A,C
-        LD      (GCUR),A
-        LD      A,B
+GRS9:   LD      A,B
+        LD      (GNEXT),A
+GRS10:  LD      HL,W_STOP       ; no further than where a computer stops it
+        CALL    RXGETB
         OR      A
-        JR      NZ,GRS4A
+        JR      Z,GRS11
+        DEC     A
+        JR      GRS12
+GRS11:  LD      A,C
         INC     A
-GRS4A:  LD      (GNEXT),A
-GRS5:   LD      A,(GRDEP)
+GRS12:  LD      (GRLIM),A
+        ; the server's cursor has started: our ship (which set out late,
+        ; after the map) has gone too, or the first plots would pass unseen
+        LD      A,(GRDEP)
         OR      A
-        JR      NZ,GRS6
-        INC     A
+        JR      Z,GRS13
+        LD      A,C
+        CP      NPLOTS
+        RET     NC
+        JP      GRDONE
+GRS13:  INC     A
         LD      (GSHOW),A
-GRS6:   LD      A,(MYSEAT)
+        RET
+
+; GRLAGN: A = the state's t - FRAMES, low bytes.
+GRLAGN: LD      HL,W_T
+        CALL    RXGETB
+        LD      HL,FRAMES
+        SUB     (HL)
+        RET
+
+; GRCLAIM: our claim's answer (C = the server's cursor).
+GRCLAIM: LD     A,(MYSEAT)
         CP      4
         RET     NC
         LD      E,A
@@ -180,78 +257,72 @@ GRS6:   LD      A,(MYSEAT)
         CALL    RXGETB
         LD      B,A             ; B = mine
         CP      NPLOTS
-        JR      NC,GRS7
+        JR      NC,GRC7
         LD      A,1
         LD      (GRCLM),A
         LD      A,255
         LD      (GRWANT),A
-GRS7:   LD      A,(GRWANT)
+GRC7:   LD      A,(GRWANT)
         CP      NPLOTS
         RET     NC
         LD      D,A             ; D = j
         LD      A,B
         CP      NPLOTS
         RET     C
-        ; every claim is answered by the next state, so a plot a computer
-        ; owns is not lost yet: the server may still give it
+        ; only the state answering the claim judges it: those before were
+        ; made before the server saw it (its cursor may have gone on, and a
+        ; computer's plot may still be ours)
+        LD      A,C
+        INC     A
+        LD      E,A             ; E = k + 1 (0 before it starts)
+        LD      A,(ACTSNT)
+        CP      A_CLAIM
+        JR      NZ,GRC8
         LD      HL,W_ERR
         CALL    RXGETB
-        LD      E,A             ; E = err
-        LD      A,(ACTSNT)
-        CP      A_CLAIM
-        JR      NZ,GRS8
-        LD      A,E
         OR      A
-        JR      Z,GRS8
-        LD      A,C             ; turned down as the cursor wasn't there
-        CP      D               ; yet: keep the claim, send it again
-        JR      NC,GRS9
-        XOR     A
-        LD      (ACTSNT),A
+        JR      Z,GRC9
+        LD      A,D             ; turned down as the server's cursor wasn't
+        CP      E               ; there yet (k < j): send it again when it
+        JR      C,GRC9          ; is; otherwise press again
+        LD      A,1
+        LD      (GRPARK),A
         RET
-GRS8:   LD      A,C             ; turned down, or the cursor is past it
-        CP      NPLOTS
-        JR      NC,GRS9
-        LD      A,D
-        CP      C
-        JR      C,GRS9
-        LD      A,(ACTSNT)
-        CP      A_CLAIM
-        JR      NZ,GRS10
-        LD      A,E
+GRC8:   LD      A,(GRPARK)
         OR      A
-        JR      Z,GRS10
-GRS9:   LD      A,255
-        LD      (GRWANT),A
-        XOR     A
-        LD      (GRCLM),A
-        LD      A,SNERR
-        JP      SNDPLAY
-GRS10:  LD      A,C             ; the cursor is there: send it again
-        CP      D
-        RET     NZ
+        RET     Z
         LD      A,(ACT)
         OR      A
         RET     NZ
-        LD      A,(ACTSNT)
-        CP      A_CLAIM
-        RET     Z
+        LD      A,D             ; k >= j: it's time
+        CP      E
+        RET     NC
+        XOR     A
+        LD      (GRPARK),A
+        LD      A,C
+        CP      NPLOTS
+        JR      NC,GRC9
         LD      L,D
         LD      H,0
         LD      A,A_CLAIM
         JP      ACTSEND
+GRC9:   LD      A,255           ; press again
+        LD      (GRWANT),A
+        XOR     A
+        LD      (GRCLM),A
+        LD      (GRPARK),A
+        LD      A,SNERR
+        JP      SNDPLAY
 
-; GRISR: every frame: the cursor moves to the next free plot every GSTEP
-; frames, blanking for one frame at each step, like the Atari.
-GRISR:  LD      A,(GCUR)
-        CP      NPLOTS
-        JR      NC,GRI0
-        LD      A,(GSHOW)
+; GRISR: every frame: the cursor steps to the next free plot when its
+; countdown runs out, blanking for that frame, like the Atari.
+GRISR:  LD      A,(GSHOW)
         OR      A
-        JR      NZ,GRI1
-GRI0:   LD      A,SLOTCUR
-        JP      SPRHIDE
-GRI1:   LD      A,(EVBTN)
+        JR      Z,GRI2
+        LD      A,(GCUR)
+        CP      NPLOTS
+        JR      NC,GRI2
+        LD      A,(EVBTN)
         OR      A
         JR      Z,GRI2
         LD      A,(GRPRESS)
@@ -268,26 +339,18 @@ GRI1:   LD      A,(EVBTN)
         CP      NPLOTS
         JR      NC,GRI2
         LD      (GRPRESS),A
-GRI2:   LD      A,(GNEXT)
+GRI2:   LD      A,(GRWANT)      ; our claim is out: it waits on its plot
+        CP      NPLOTS
+        JR      C,GRI6
+        LD      A,(GNEXT)
         OR      A
         JR      Z,GRI6
         DEC     A
         LD      (GNEXT),A
         JR      NZ,GRI6
-        ; at most one step past where the server last had it
-        LD      A,(GRSRV)
-        CP      NPLOTS
-        JR      NC,GRI3
-        LD      B,A
         LD      A,(GCUR)
-        CP      B
-        JR      Z,GRI3
-        JR      C,GRI3
-        LD      A,1
-        LD      (GNEXT),A
-        JR      GRI6
-GRI3:   LD      A,(GCUR)
-        LD      (GRWAS),A
+        CP      NPLOTS
+        JR      Z,GRI6
 GRI4:   INC     A
         CP      NPLOTS
         JR      NC,GRI5
@@ -302,12 +365,30 @@ GRI4:   INC     A
         CP      NOBODY
         LD      A,C
         JR      NZ,GRI4
-GRI5:   LD      (GCUR),A
+GRI5:   LD      HL,GRLIM
+        CP      (HL)
+        JR      Z,GRI5A
+        JR      C,GRI5A
+        LD      A,1             ; a computer stops it here: the state says
+        LD      (GNEXT),A       ; when
+        JR      GRI6
+GRI5A:  LD      C,A
+        LD      A,(GCUR)
+        LD      (GRWAS),A
+        LD      A,C
+        LD      (GCUR),A
         LD      A,(GSTEP)
         LD      (GNEXT),A
-        LD      A,SLOTCUR
-        JP      SPRHIDE
+        JR      GRI0
 GRI6:   LD      A,(GCUR)
+        CP      NPLOTS
+        JR      NC,GRI0
+        LD      A,(GSHOW)
+        OR      A
+        JR      NZ,GRI7
+GRI0:   LD      A,SLOTCUR
+        JP      SPRHIDE
+GRI7:   LD      A,(GCUR)
         CALL    PLOTXY
         LD      (SPA_X),HL
         LD      (SPA_Y),DE
@@ -327,13 +408,13 @@ GRTICK: CALL    MSGTICK
         JR      Z,GRT2
         LD      A,(FXFLAG)
         CP      1
-        JR      Z,GRT1
+        JR      Z,GRDONE
         XOR     A
         CALL    ACTOR
         LD      A,(IX+AC_ST)
         OR      A
         RET     NZ
-GRT1:   XOR     A               ; the ship has gone: the grant proper begins
+GRDONE: XOR     A               ; the ship has gone: the grant proper begins
         LD      (GRDEP),A
         CALL    XFXSTOP
         LD      B,T_LANDGRANT
@@ -349,7 +430,7 @@ GRT2:   LD      A,(EVBTN)
         OR      A
         RET     Z
         ; claim the plot the cursor was on when the button went down, and
-        ; hold the cursor there for the server's pause after a claim
+        ; hold the cursor there until the server answers
         LD      A,(GRPRESS)
         CP      NPLOTS
         JR      C,GRT3
@@ -374,10 +455,6 @@ GRT3:   LD      C,A
         CALL    ACTSEND
         LD      A,1
         LD      (GRCLM),A
-        LD      A,(GSTEP)
-        ADD     A,A
-        ADD     A,A
-        LD      (GNEXT),A
         LD      A,255
         LD      (GRWAS),A
         LD      A,SNBUY
