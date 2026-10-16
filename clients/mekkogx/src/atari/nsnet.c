@@ -40,7 +40,7 @@ extern uint8_t ns_fbuf[];
 #define PING_EVERY 600          /* frames between keepalives */
 #define DEAD_AFTER 300          /* frames without a frame: the link is gone (the
                                  * server's clock alone comes every 30) */
-#define SETTLE     3            /* jiffies between the motor off and SIO */
+#define SETTLE     10           /* jiffies between the motor off and SIO */
 #define ASK_AGAIN  60           /* frames unanswered before HELLO or TABLES goes
                                  * again: the first after the link opens can be
                                  * lost while FujiNet still dials the server */

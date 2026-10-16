@@ -23,6 +23,8 @@
  *   coldstart              power off and on (boot again: FujiNet is there now)
  *   savestate NAME / loadstate NAME
  *
+ * A JAM or a display list error prints CRASH (code, frame, PC).
+ *
  * Link with -Wl,--wrap=POKEY_PutByte,--wrap=GTIA_PutByte,--wrap=ANTIC_PutByte
  * (see Makefile). GPLv3.
  */
@@ -88,7 +90,15 @@ static int realtime;             /* NetSIO: keep to 60 frames a second */
 
 static void frame(void)
 {
-	libatari800_next_frame(&in);
+	static int frames, said = -600;
+	++frames;
+	if (!libatari800_next_frame(&in) && frames > 60 && frames - said >= 600) {
+		/* a JAM (2), a display list error (4): at most every 10 s (the
+		 * power-on frames have no display list yet) */
+		said = frames;
+		printf("CRASH %d frame %d PC %04X\n", libatari800_error_code, frames, CPU_regPC);
+		fflush(stdout);
+	}
 	if (realtime) {
 		static struct timespec next;
 		struct timespec now;

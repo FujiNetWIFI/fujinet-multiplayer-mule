@@ -10,6 +10,7 @@
 #include <string.h>
 #include "bank.h"
 #include "plat.h"
+#include "atari.h"
 
 #define DUNIT  (*(volatile uint8_t *)0x0301)
 #define DCOMND (*(volatile uint8_t *)0x0302)
@@ -26,14 +27,22 @@ static uint8_t sec[128];
 static uint16_t ovl_first[6];
 static uint8_t ovl_cur;
 
+/* A sector, tried a few times: FujiNet may still be leaving the stream. */
 static uint8_t read_sector(uint16_t n)
 {
-    DUNIT = 1;
-    DCOMND = 'R';
-    DBUF = (uint16_t)sec;
-    DAUX = n;
-    asm("jsr $E453");                   /* DSKINV */
-    return DSTATS < 128;
+    uint8_t tries = 4, t;
+    do {
+        DUNIT = 1;
+        DCOMND = 'R';
+        DBUF = (uint16_t)sec;
+        DAUX = n;
+        asm("jsr $E453");               /* DSKINV */
+        if (DSTATS < 128)
+            return 1;
+        for (t = RTCLOK; t == RTCLOK; )
+            ;
+    } while (--tries);
+    return 0;
 }
 
 const char *bank_init(void)

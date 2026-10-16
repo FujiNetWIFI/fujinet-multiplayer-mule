@@ -123,8 +123,16 @@ void state_arrived(void)
     my_seat = (uint8_t)st.h.mySeat;
     rx_pe = st.h.elapsed;
     rx_frame = frame_count - rx_age;
-    st_ok = 1;
     bank_overlay(ovl_of[phase]);
+    if (bank_current() != ovl_of[phase]) {
+        /* its overlay didn't load (a disk read failed): none of the phase's
+         * code may run, and the next state tries again */
+        st_ok = 0;
+        anim = AN_NONE;
+        fx_stop_all();
+        return;
+    }
+    st_ok = 1;
     if (phase != last_phase || (phase == PHASE_GRANT && rnd != last_round)) {
         msg_scroll = 0;
         fx_stop_all();
