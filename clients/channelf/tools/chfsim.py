@@ -19,6 +19,8 @@ scenario, one command a line. Times are MAME frames (the console's own,
     dump FROM TO FILE           save memory (hex addresses) to OUTDIR/FILE
     vram FILE                   save the 128 x 64 screen (a byte a pixel)
     watch ADDR [N [LEN]]        print the PC of the next N writes to ADDR..+LEN
+    show N SYMBOL...            for N frames, print FRAMES and a byte at each
+                                symbol whenever one of them changes (SHOW)
     vcheck                      VRAM against the shadow; 'untagged differ' are
                                 the real errors (tagged pixels show a sprite)
     tick                        print the cart's tick and the game's FRAMES
@@ -118,6 +120,8 @@ def main():
         elif c == "watch":
             steps.append('{"watch", %d, %d, %d}' % (sym(w[1]), int(w[2]) if len(w) > 2 else 20,
                                                    int(w[3], 0) if len(w) > 3 else 1))
+        elif c == "show":
+            steps.append('{"show", %d, {%s}}' % (int(w[1]), ", ".join(str(sym(x)) for x in w[2:])))
         elif c == "traceon":
             steps.append('{"traceon", %d, "%s", %d, %d}' % (sym(w[1]), os.path.join(out, w[2]), int(w[3]) if len(w) > 3 else 10,
                                                            int(w[4], 0) if len(w) > 4 else -1))
@@ -141,6 +145,7 @@ local FRAMES, CURPG, SHADOW = %(frames)d, %(curpg)d, 0x8000
 local mem = manager.machine.devices[":maincpu"].spaces["program"]
 local vram = manager.machine.memory.regions[":vram"]
 local i, frames, wait_until, pcdump, asked, started = 1, 0, nil, 0, false, false
+local show_last = ""
 traceoff = nil
 _G._chfsim = emu.add_machine_frame_notifier(function()
   frames = frames + 1
@@ -247,6 +252,16 @@ _G._chfsim = emu.add_machine_frame_notifier(function()
       i = i + 1
     elseif s[1] == "pc" then
       pcdump = s[2]; i = i + 1; return
+    elseif s[1] == "show" then
+      if wait_until == nil then wait_until = frames + s[2]; show_last = "" end
+      local t = {}
+      for _, a in ipairs(s[3]) do t[#t + 1] = string.format("%%d", mem:readv_u8(a)) end
+      local v = table.concat(t, " ")
+      if v ~= show_last then
+        print("SHOW " .. (mem:readv_u8(FRAMES) + 256 * mem:readv_u8(FRAMES + 1)) .. " " .. v)
+        show_last = v
+      end
+      if frames >= wait_until then wait_until = nil; i = i + 1 else return end
     elseif s[1] == "peek" then
       local t = {}
       for k = 0, s[4] - 1 do t[#t + 1] = string.format("%%02X", mem:readv_u8(s[3] + k)) end
@@ -281,7 +296,7 @@ end)
     if os.environ.get("CHFSIM_VERBOSE"):
         print(r.stdout, r.stderr)
     for line in r.stdout.splitlines():
-        if line.startswith(("PEEK", "SNAP", "PC ", "VCHECK", "TICK", "PAGE", "CHFSIM", "WATCH", "TRACEON")):
+        if line.startswith(("PEEK", "SNAP", "PC ", "VCHECK", "TICK", "PAGE", "CHFSIM", "WATCH", "TRACEON", "SHOW")):
             print(line)
     names = []
     if os.path.exists(os.path.join(out, "snaps.txt")):

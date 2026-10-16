@@ -5,7 +5,10 @@
 ; The cursor sweeps the map a plot every step (12 jiffies), skipping the
 ; store and owned plots; the button claims the plot under it. The server
 ; judges the claim as of the press, and takes a plot it gave a computer
-; within that time. Round 1 opens with the transport ship leaving.
+; within that time. Between polls the cursor steps on its own, never past
+; the plot the state says a computer will stop it on (an older server
+; doesn't say: one plot past its cursor). Round 1 opens with the transport
+; ship leaving.
 ; ---------------------------------------------------------------------------
 
 G_CUR   EQU PV+0                ; the cursor's plot (255 before it starts)
@@ -18,7 +21,9 @@ GR_SRV  EQU PV+6                ; the cursor in the last state
 GR_PRS  EQU PV+7                ; the cursor's plot when the button went down
 GR_WAS  EQU PV+8                ; the plot before the cursor's last step
 GR_WNT  EQU PV+9                ; the plot we claimed and wait on
-GR_AGED EQU PV+10               ; the state's step came before we saw it
+GR_LIM  EQU PV+10               ; the furthest plot the cursor may step to
+GR_PRK  EQU PV+11               ; our claim came too early: sent again when
+                                ; the server's cursor gets there
 PR_EV   EQU PV+16               ; the colony event (0 none)
 PR_PL   EQU PV+17               ; its plot
 PR_STR  EQU PV+18               ; its set piece has started
@@ -43,11 +48,13 @@ GRANTE: ENTER
         STB G_NEXT
         STB GR_CLD
         STB GR_DEP
+        STB GR_PRK
         LI 0FFH
         STB G_CUR
         STB GR_PRS
         STB GR_WNT
         STB GR_WAS
+        STB GR_LIM
         LI MSGY
         STB MSGROW
         LIS C_WHITE
@@ -151,19 +158,19 @@ GRANTS: ENTER
         BNZ GS1
         LI 12
 GS1:    STB G_STEP
-        LDW 0, 1, ST+GR_NEXT    ; w = min(next, 255) ...
+        PI GRCLAIM              ; our claim's answer first
+        LDW 0, 1, ST+GR_NEXT    ; w: the countdown ...
         LR A,1
         NI 0FFH
         BZ GS2
-        LI 0FFH
-        LR 0,A
-GS2:    LDB RXAGE               ; ... the state is rx_age jiffies old: the
-        LR 2,A                  ; step it waited for may have come since
+        CLR                     ; (far off, the ship leaving: wait for a
+        LR 0,A                  ; nearer state)
+        BR GS4
+GS2:    LDB RXAGE               ; ... less the state's age: the step it
+        LR 2,A                  ; waited for may have come since
         COM
         AS 0                    ; w + ~age carries: w > age
         BC GS3
-        LIS 1
-        STB GR_AGED
         LIS 1
         LR 0,A                  ; w = 1
         BR GS4
@@ -172,109 +179,115 @@ GS3:    LR A,2
         INC
         AS 0
         LR 0,A                  ; w -= age
-        CLR
-        STB GR_AGED
-GS4:    LDB GR_SRV
-        LR 4,A
+GS4:    LDB GR_WNT              ; (while our claim is out the cursor waits
+        CI NPLOTS-1             ; on its plot)
+        BC GS7
+        LDB GR_SRV
+        LR 4,A                  ; k
         LDB G_CUR
+        LR 5,A
         XS 4
         BZ GS6
-        LDB GR_AGED             ; our cursor already made the step: no jump
-        NI 0FFH                 ; back
-        BZ GS5
+        LR A,5                  ; we made the step it waits for a little
+        CI NPLOTS-1             ; early: no jump back (after a claim it
+        BNC GS5                 ; waits longer, and the cursor goes there)
         LR A,4
-        CI NPLOTS-1
+        CI 0FFH
+        BZ GSA
+        COM
+        AS 5                    ; cur + ~k carries: k < cur
         BNC GS5
-        LR 5,A
-        PI NEXTFR
-        LR 5,A
-        LDB G_CUR
-        XS 5
-        BZ GS7
-GS5:    LI 0FFH
-        STB GR_WAS
+GSA:    LR A,0
+        NI 0FFH
+        BZ GS5
+        LDB G_STEP
+        LR 6,A
+        COM
+        AS 0                    ; w + ~step carries: w > step
+        BC GS5
+        LR A,6
+        AS 0
+        LR 0,A                  ; w + step
+        BR GS6
+GS5:    LI 0FFH                 ; a claim (ours, or another's the cursor
+        STB GR_WAS              ; went back for)
         LR A,4
         STB G_CUR
-        LR A,0
+GS6:    LR A,0
         STB G_NEXT
-        BR GS7
-GS6:    LDB G_NEXT              ; same plot: sooner, if the server says so
-        LR 5,A
-        LR A,0
-        COM
-        AS 5                    ; g_next + ~w carries: w < g_next
-        BNC GS7
-        LR A,0
-        STB G_NEXT
-GS7:    LDB GR_DEP              ; the server's cursor has started: our ship
+GS7:    LDB ST+H_STOP           ; no further than where a computer stops it
+        NI 0FFH                 ; (an older server doesn't say: one plot
+        BZ GS8                  ; past its cursor)
+        AI 0FFH
+        BR GS9
+GS8:    LDB GR_SRV
+        INC
+GS9:    STB GR_LIM
+        LDB GR_DEP              ; the server's cursor has started: our ship
         NI 0FFH                 ; has gone too
-        BZ GS8
+        BZ GSS
         LDB GR_SRV
         CI NPLOTS-1
-        BNC GS9
+        BNC GSX
         PI GRDDONE
-GS8:    LIS 1
+GSS:    LIS 1
         STB G_SHOW
-GS9:    LDB MYSEAT              ; our claim
+GSX:    LEAVE
+
+; GRCLAIM -- our claim's answer (GR_SRV: the server's cursor).
+GRCLAIM: ENTER
+        LDB MYSEAT
         CI 3
-        JNC GSX
+        JNC GCX
         DCI ST+GR_CLM
         ADC
         LM
         LR 6,A                  ; mine
         CI NPLOTS-1
-        BNC GS10
+        BNC GC10
         LIS 1
         STB GR_CLD
         LI 0FFH
         STB GR_WNT
-GS10:   LDB GR_WNT
+GC10:   LDB GR_WNT
         LR 7,A                  ; j: the plot we wait on
         CI NPLOTS-1
-        JNC GSX
+        JNC GCX
         LR A,6
         CI NPLOTS-1
-        JC GSX
-        CLR                     ; r8: our claim was turned down
-        LR 8,A
-        LDB ACTSENT
-        CI ACT_CLAIM
-        BNZ GS11
+        JC GCX
+        LDB ACTSENT             ; only the state answering the claim judges
+        CI ACT_CLAIM            ; it: those before were made before the
+        BNZ GC12                ; server saw it
         LDB ST+H_ERR
         NI 0FFH
-        BZ GS11
-        LIS 1
-        LR 8,A
-GS11:   LR A,8                  ; turned down because the server's cursor
-        NI 0FFH                 ; wasn't there yet (k < j): send it again
-        BZ GS12                 ; when it arrives
-        LDB GR_SRV
+        BZ GCDN
+        LDB GR_SRV              ; turned down as the server's cursor wasn't
+        CI 0FFH                 ; there yet (k < j): send it again when it
+        BZ GC11                 ; is; otherwise press again
         COM
         AS 7                    ; j + ~k carries: k < j
-        BNC GS12
-        CLR
-        STB ACTSENT
-        JMP GSX
-GS12:   LDB GR_SRV              ; turned down, or the cursor is past it
-        CI NPLOTS-1
-        BNC GSDN
-        LR 5,A
-        LR A,7
-        COM
-        AS 5                    ; k + ~j carries: k > j
-        BC GSDN
-        LR A,8
+        BNC GCDN
+GC11:   LIS 1
+        STB GR_PRK
+        BR GCX
+GC12:   LDB GR_PRK
         NI 0FFH
-        BNZ GSDN
-        LDB GR_SRV              ; the cursor is on it: claim it now
-        XS 7
-        BNZ GSX
+        BZ GCX
         LDB ACT
         NI 0FFH
-        BNZ GSX
-        LDB ACTSENT
-        CI ACT_CLAIM
-        BZ GSX
+        BNZ GCX
+        LDB GR_SRV              ; it's time once k >= j
+        CI 0FFH
+        BZ GCX
+        COM
+        AS 7                    ; j + ~k carries: k < j
+        BC GCX
+        CLR
+        STB GR_PRK
+        LDB GR_SRV
+        CI NPLOTS-1
+        BNC GCDN
         LIS ACT_CLAIM
         LR 0,A
         LR A,7
@@ -282,32 +295,29 @@ GS12:   LDB GR_SRV              ; turned down, or the cursor is past it
         CLR
         LR 2,A
         PI ACTSEND
-        BR GSX
-GSDN:   LI 0FFH                 ; press again
+        BR GCX
+GCDN:   LI 0FFH                 ; press again
         STB GR_WNT
         CLR
         STB GR_CLD
+        STB GR_PRK
         LIS SND_ERROR
         LR 0,A
         PI SNDPLAY
-GSX:    LEAVE
+GCX:    LEAVE
 
 ; ---------------------------------------------------------------------------
-; GRANTISR -- every frame: the cursor moves to the next free plot every
-;   G_STEP frames, blanking for one frame at each step, like the Atari.
+; GRANTISR -- every frame: the cursor steps to the next free plot when its
+;   countdown runs out, blanking for that frame, like the Atari.
 ; ---------------------------------------------------------------------------
 GRANTISR: ENTER
+        LDB G_SHOW              ; the press: the plot on screen then
+        NI 0FFH
+        BZ GI2
         LDB G_CUR
         CI NPLOTS-1
-        BNC GIH
-        LDB G_SHOW
-        NI 0FFH
-        BNZ GI1
-GIH:    LIS SLOT_CUR
-        LR 0,A
-        PI SPRHIDE
-        LEAVE
-GI1:    LDB EVBTN               ; the press: the plot on screen then
+        BNC GI2
+        LDB EVBTN
         NI 0FFH
         BZ GI2
         LDB GR_PRS
@@ -324,35 +334,47 @@ GI1:    LDB EVBTN               ; the press: the plot on screen then
         CI NPLOTS-1
         BNC GI2
         STB GR_PRS
-GI2:    LDB G_NEXT
+GI2:    LDB GR_WNT              ; our claim is out: it waits on its plot
+        CI NPLOTS-1
+        BC GI4
+        LDB G_NEXT
         NI 0FFH
         BZ GI4
         AI 0FFH
         STB G_NEXT
         NI 0FFH
         BNZ GI4
-        LDB GR_SRV              ; at most one step past the server's cursor
-        LR 4,A                  ; (it holds after a computer's claim)
-        CI NPLOTS-1
-        BNC GI3
-        LR A,4
-        COM
-        LR 5,A
         LDB G_CUR
-        AS 5                    ; cur + ~srv carries: cur > srv
+        CI NPLOTS
+        BZ GI4
+        LR 5,A
+        PI NEXTFR
+        LR 6,A                  ; the next free plot
+        LDB GR_LIM              ; a computer stops it before that: the
+        COM                     ; state says when
+        AS 6                    ; n + ~lim carries: n > lim
         BNC GI3
         LIS 1
         STB G_NEXT
         BR GI4
 GI3:    LDB G_CUR               ; a step
         STB GR_WAS
-        LR 5,A
-        PI NEXTFR
+        LR A,6
         STB G_CUR
         LDB G_STEP
         STB G_NEXT
         BR GIH
 GI4:    LDB G_CUR
+        CI NPLOTS-1
+        BNC GIH
+        LDB G_SHOW
+        NI 0FFH
+        BNZ GI5
+GIH:    LIS SLOT_CUR
+        LR 0,A
+        PI SPRHIDE
+        LEAVE
+GI5:    LDB G_CUR
         LR 0,A
         PI PLATXY
         LIS SLOT_CUR
@@ -412,15 +434,11 @@ GT2:    LI 0FFH
         CLR
         LR 2,A
         PI ACTSEND
-        LIS 1                   ; hold the cursor there for the server's
-        STB GR_CLD              ; pause after a claim (4 steps)
+        LIS 1                   ; hold the cursor there until the server
+        STB GR_CLD              ; answers
         LR A,4
         STB GR_WNT
         STB G_CUR
-        LDB G_STEP
-        SL 1
-        SL 1
-        STB G_NEXT
         LI 0FFH
         STB GR_WAS
         LIS SND_BUY

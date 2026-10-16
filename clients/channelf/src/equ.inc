@@ -141,6 +141,7 @@ H_PHASE EQU 3
 H_ROUND EQU 4
 H_SEAT  EQU 5
 H_ERR   EQU 6
+H_STOP  EQU 7                   ; land grant: 1 + where a computer stops the cursor
 H_T     EQU 8
 H_ELAP  EQU 10
 H_CDOWN EQU 12

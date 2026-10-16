@@ -1283,8 +1283,14 @@ AP1:    LDB STOK
 AP2:    CI PH_SUM
         BZ APBTN
         CI PH_GRANT
-        BZ APBTN
-        CI PH_DEV
+        BNZ AP2D
+        LDB ST+GR_CUR           ; late, so a soak sees the computers' stops
+        CI 19
+        BC APX
+        CI NPLOTS-1
+        BNC APX
+        BR APBTN
+AP2D:   CI PH_DEV
         BNZ AP3
         LDB DVSTATE
         CI DV_PROMPT
