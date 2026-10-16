@@ -88,7 +88,7 @@ static uint8_t next_free(uint8_t p)
 
 void grant_state(void)
 {
-    uint8_t k, j, mine, again;
+    uint8_t k, j, n, mine, again;
     uint16_t due;
 
     map_update();
@@ -132,17 +132,26 @@ void grant_state(void)
     }
     /* (while our claim is out the cursor waits on its plot) */
     if (gr_want >= NUM_PLOTS) {
-        if (k == g_cur)
+        if (k == g_cur) {
             g_due = due;
-        else if (k < NUM_PLOTS && g_cur == next_free(k)
-                 && !memcmp(st.grant.claimed, prev.grant.claimed, 4)) {
-            /* we made the step it waited for a little early: no jump back */
-            g_due = due + g_step;
         } else {
-            /* a claim (ours, or another's the cursor went back for) */
-            g_cur = k;
-            g_due = due;
-            gr_was = 255;
+            /* behind us with no claim since (made before our last steps,
+             * or late off a stalled line): wait here for the server's
+             * cursor to come and go rather than jump back */
+            j = 0;
+            n = k;
+            if (g_cur < NUM_PLOTS && !memcmp(st.grant.claimed, prev.grant.claimed, 4))
+                do {
+                    n = next_free(n);
+                } while (++j < 8 && n < g_cur);
+            if (j && n == g_cur) {
+                g_due = due + (uint16_t)j * g_step;
+            } else {
+                /* a claim (ours, or another's the cursor went back for) */
+                g_cur = k;
+                g_due = due;
+                gr_was = 255;
+            }
         }
     }
     j = st.h.grantStop;
