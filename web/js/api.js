@@ -40,6 +40,7 @@ export class Api {
       return;
     }
     this.state = v;
+    this.fullT = v.t;
     this.recvAt = performance.now();
     this.sync(v.t);
     if (hash) this.hash = hash;
@@ -94,6 +95,13 @@ export class Api {
   since() {
     if (!this.state) return 0;
     return Math.max(0, this.now() - this.state.t);
+  }
+
+  // Jiffies since the last full state was built (an unchanged reply moves
+  // the clock on but carries no countdowns).
+  sinceFull() {
+    if (!this.state) return 0;
+    return Math.max(0, this.now() - this.fullT);
   }
 
   // Phase-elapsed jiffies, extrapolated.

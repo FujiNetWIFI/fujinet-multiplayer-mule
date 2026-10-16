@@ -386,16 +386,20 @@ function timeBar(units, color = 0x84, tick = true) {
 
 function grantable(v, p) { return p !== STORE && v.map.ow[p] < 0; }
 
-// predictCursor advances the server's cursor by the steps due since the last poll.
+// predictCursor advances the server's cursor by the steps due since the last
+// state, never past the plot where a computer will stop it (gr.st).
 function predictCursor(v) {
   const g = v.gr;
   if (g.end) return 45;
-  let cur = g.cur, since = api.since();
+  const stop = g.st === undefined ? 45 : g.st;
+  let cur = g.cur, since = api.sinceFull();
   if (since < g.nx) return cur;
   let steps = 1 + Math.floor((since - g.nx) / g.ctu);
   while (steps-- > 0 && cur < 45) {
-    cur++;
-    while (cur < 45 && !grantable(v, cur)) cur++;
+    let n = cur + 1;
+    while (n < 45 && !grantable(v, n)) n++;
+    if (n > stop) break;
+    cur = n;
   }
   return cur;
 }
