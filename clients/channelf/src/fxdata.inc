@@ -9,8 +9,9 @@ DOCK_X  EQU 76
 DOCK_Y  EQU 82
 PIRATE_Y EQU 66                 ; the pirate's hull sits 8 lines lower
 
-; Transport ship landing (round 1 arrival, round 12 "the ship is back").
-FXLAND: DB FX_LOOK, FK_SHIP, 5, SH_NOSE, 0, 0, C_WHITE, C_BLUE
+; Transport ship landing (round 1 arrival, round 12 "the ship is back"). It is
+; green: blue and white both draw blue on the map's rows, like the river.
+FXLAND: DB FX_LOOK, FK_SHIP, 5, SH_NOSE, 0, 0, C_GREEN, C_GREEN
         DB FX_POS, XB(182), XB(SHIP_Y)
         DB FX_WAIT, 36
         DB FX_MOVE, SB(-1), 0, 1, 230   ; fast pass right to left, 1 cc a frame
@@ -19,7 +20,7 @@ FXLAND: DB FX_LOOK, FK_SHIP, 5, SH_NOSE, 0, 0, C_WHITE, C_BLUE
         DB FX_MOVE, 1, 0, 6, 78         ; slow return, 1 cc every 6 frames
         DB FX_MOVE, 5, 0, 6, 9          ; settling onto the store
         DB FX_HIDE
-        DB FX_LOOK, FK_SINGLE, 8, SH_DOCK, 0, 0, C_LTBLUE, 0   ; sinking into it
+        DB FX_LOOK, FK_SINGLE, 8, SH_DOCK, 0, 0, C_GREEN, 0   ; sinking into it
         DB FX_POS, XB(DOCK_X), XB(DOCK_Y), FX_WAIT, 8
         DB FX_FRAME, 1, FX_WAIT, 8, FX_FRAME, 2, FX_WAIT, 8
         DB FX_FRAME, 3, FX_WAIT, 8, FX_HIDE
@@ -28,11 +29,11 @@ FXLAND: DB FX_LOOK, FK_SHIP, 5, SH_NOSE, 0, 0, C_WHITE, C_BLUE
 
 ; Transport ship leaving (after round 1's summary: "back in 12 months").
 FXDEPART: DB FX_WAIT, 45
-        DB FX_LOOK, FK_SINGLE, 8, SH_DOCK, 3, 0, C_LTBLUE, 0   ; rising out of the store
+        DB FX_LOOK, FK_SINGLE, 8, SH_DOCK, 3, 0, C_GREEN, 0   ; rising out of the store
         DB FX_POS, XB(DOCK_X), XB(DOCK_Y), FX_WAIT, 8
         DB FX_FRAME, 2, FX_WAIT, 8, FX_FRAME, 1, FX_WAIT, 8
         DB FX_FRAME, 0, FX_WAIT, 8, FX_HIDE
-        DB FX_LOOK, FK_SHIP, 5, SH_NOSE, 0, 0, C_WHITE, C_BLUE
+        DB FX_LOOK, FK_SHIP, 5, SH_NOSE, 0, 0, C_GREEN, C_GREEN
         DB FX_POS, XB(85), XB(SHIP_Y)
         DB FX_MOVE, SB(-5), 0, 8, 9
         DB FX_MOVE, SB(-1), 0, 8, 90    ; off to the left, 1 cc every 8 frames
