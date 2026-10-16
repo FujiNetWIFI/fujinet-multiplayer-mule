@@ -9,7 +9,7 @@
         .export _spr_flush, _row_flags_update, _spr_players
         .export _spr_on, _spr_shape, _spr_frame, _spr_xl, _spr_xh
         .export _spr_yl, _spr_yh, _spr_col, _spr_flags, _spr_changed, _sp_dirty, _pf_dirty
-        .import _row_flags, _row_chb, _row_pf, _row_hp, _row_cm, _row_sz
+        .import _row_flags, _row_chb, _row_pf, _row_hp, _row_cm, _row_sz, _dsp_ready
         .import _atari_shapes, _row_mode, _row_used, _pfuse
         .importzp ptr1, ptr2, tmp1, tmp2, tmp3, tmp4
 
@@ -36,6 +36,11 @@ _spr_players: .res 1            ; how many players the sprites may use
 seg_n:       .res 4
 seg_y:       .res 4 * MAXSEG
 seg_h:       .res 4 * MAXSEG
+old_n:       .res 4             ; the pieces shown before this flush
+old_y:       .res 4 * MAXSEG
+old_h:       .res 4 * MAXSEG
+oy:          .res 1
+oend:        .res 1
 own:         .res 4 * ROWS
 slot:        .res 1
 ord:         .res 1             ; place in order
@@ -81,38 +86,21 @@ _spr_flush:
         jmp     flags
 @go:    lda     #0
         sta     _spr_changed
+        sta     _dsp_ready      ; (the VBI takes none of a half-built set)
         lda     #1
         sta     _sp_dirty
-        ; clear what the players showed
+        ; the pieces shown, kept to be cleared after the new ones are drawn
+        ; (only where none lands: a piece redrawn in place never blanks)
+        ldx     #4 + 8 * MAXSEG - 1
+@keep:  lda     seg_n,x
+        sta     old_n,x
+        dex
+        bpl     @keep
+        ; the players' rows afresh
         ldx     #0
 @clr:   cpx     _spr_players
         bcs     @cleared
         stx     pl
-        txa
-        clc
-        adc     #>PLAYERS
-        sta     ptr1+1
-        lda     seg_n,x
-        sta     tmp1            ; pieces
-        txa
-        asl     a
-        asl     a
-        sta     tmp2            ; p * MAXSEG
-@seg:   lda     tmp1
-        beq     @segdone
-        dec     tmp1
-        ldx     tmp2
-        lda     seg_y,x
-        sta     ptr1
-        ldy     seg_h,x
-        inc     tmp2
-        lda     #0
-@z:     dey
-        sta     (ptr1),y
-        bne     @z
-        beq     @seg
-@segdone:
-        ldx     pl
         lda     #0
         sta     seg_n,x
         ldy     p_rows,x
@@ -138,7 +126,7 @@ _spr_flush:
         inx
         cpx     #SLOTS
         bcc     @slot
-        jmp     smooth
+        jmp     unclear
 @on:    ; the shape: data, h, size
         lda     _spr_shape,x
         asl     a
@@ -320,6 +308,63 @@ _spr_flush:
         bcc     @sr
         jmp     @next
 
+; The bytes of the pieces shown before that no new piece of the same player
+; covers, cleared.
+unclear:
+        ldx     #0
+@pl:    cpx     _spr_players
+        bcs     smooth
+        stx     pl
+        txa
+        clc
+        adc     #>PLAYERS
+        sta     ptr1+1
+        lda     #0
+        sta     ptr1
+        txa
+        asl     a
+        asl     a
+        sta     tmp2            ; p * MAXSEG
+        lda     old_n,x
+        sta     tmp1
+@os:    lda     tmp1
+        beq     @np
+        dec     tmp1
+        ldx     tmp2
+        inc     tmp2
+        lda     old_y,x
+        sta     oy
+        clc
+        adc     old_h,x
+        sta     oend
+@by:    ldx     pl              ; is oy in a new piece of this player?
+        ldy     seg_n,x
+        txa
+        asl     a
+        asl     a
+        tax
+@ck:    dey
+        bmi     @zero
+        lda     oy
+        cmp     seg_y,x
+        bcc     @cn
+        sbc     seg_y,x
+        cmp     seg_h,x
+        bcc     @in
+@cn:    inx
+        bne     @ck
+@zero:  ldy     oy
+        lda     #0
+        sta     (ptr1),y
+@in:    inc     oy
+        lda     oy
+        cmp     oend
+        bcc     @by
+        bcs     @os
+@np:    ldx     pl
+        inx
+        bne     @pl
+
 ; A player's rows without a piece take the next piece's position, size and
 ; colour (its bytes there are 0: nothing shows). The DLI's writes land a
 ; little into a row's first scanline, so a shape starting on that line was
@@ -364,6 +409,8 @@ flags:  lda     _sp_dirty
 ; use take the next row's values, so fewer change between rows: a change
 ; lands a little into the row's first scanline.
 _row_flags_update:
+        lda     #0
+        sta     _dsp_ready
         ldx     #ROWS - 2
 @sm:    ldy     _row_mode,x
         lda     _pfuse,y
@@ -461,4 +508,6 @@ _row_flags_update:
         cpx     #ROWS
         bcs     @done
         jmp     @row
-@done:  rts
+@done:  lda     #1              ; a whole set: the deferred VBI takes it
+        sta     _dsp_ready
+        rts

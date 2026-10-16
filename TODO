@@ -1,7 +1,3 @@
-ATARI: Player/missile graphics corruption when shuttle is flying in.
-
-ATARI: Another playthrough died at the initial status screen after ship landed. looks like DLI failed.
-
 INTV: very hard to select in land grant stage, cursor tends to jump, and sometimes jump backward.
 
 ALL: In fact, the land grant needs to be worked through for all targets, as it tends to jump.
