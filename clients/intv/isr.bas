@@ -250,10 +250,10 @@ town_door_lo: DATA 120, 96, 72, 48, 48, 68, 88, 108
 town_door_hi: DATA 120, 96, 72, 48, 48, 68, 88, 124
 
 ' ---------------------------------------------------------------------------
-' Land grant cursor: moves to the next free plot every g_step frames,
-' blanking for one frame at each step, like the Atari.
+' Land grant cursor: steps to the next free plot when its countdown runs
+' out, blanking for one frame at each step, like the Atari (grant.bas syncs it).
 ' ---------------------------------------------------------------------------
-    CONST GR_SRV = $8811        ' the cursor in the last state
+    CONST GR_LIM = $8811        ' the furthest plot the cursor may step to
     CONST GR_PRESS = $8810      ' the cursor's plot when the button went down
                                 ' (255 none): the main loop may be stuck in a
                                 ' poll for a dozen frames before it sees the
@@ -263,33 +263,45 @@ town_door_hi: DATA 120, 96, 72, 48, 48, 68, 88, 124
                                 ' debounce), and the MOB we set shows a frame
                                 ' later, so a press seen in the frame after a
                                 ' step was made with the plot before on screen
+    CONST GR_WANT = $8812       ' the plot we claimed and are waiting on (255
+                                ' none)
+
+' isr_grant (every frame): the cursor steps to the next free plot when its
+' countdown runs out, blanking for that frame, like the Atari.
 isr_grant: PROCEDURE
+    IF btn_latch THEN
+        IF g_show THEN
+            IF g_cur < 45 THEN
+                IF PEEK(GR_PRESS) AND 128 THEN
+                    POKE GR_PRESS, g_cur
+                    IF g_next = g_step AND (PEEK(GR_WAS) AND 255) < 45 THEN POKE GR_PRESS, PEEK(GR_WAS)
+                END IF
+            END IF
+        END IF
+    END IF
+    IF g_next THEN
+        IF PEEK(GR_WANT) AND 128 THEN
+            g_next = g_next - 1
+            IF g_next = 0 THEN
+                ii = g_cur
+                WHILE ii <> 45
+                    IF ii = 255 THEN ii = 0 ELSE ii = ii + 1
+                    IF ii <> STORE_PLOT THEN IF PEEK(STATE + ST_MAP_OWNER + ii) AND 128 THEN EXIT WHILE
+                WEND
+                IF ii <= (PEEK(GR_LIM) AND 255) THEN
+                    POKE GR_WAS, g_cur
+                    g_cur = ii : g_next = g_step
+                    SPRITE MOB_WAMPUS, 0, 0, 0
+                    RETURN
+                END IF
+                g_next = 1      ' a computer stops it here: the state says when
+            END IF
+        END IF
+    END IF
     IF g_cur >= 45 OR g_show = 0 THEN
         ' (while the ship leaves, actor 0, MOB 3 is a quarter of it: fx.bas)
         IF (PEEK(FXB + AF_ST) AND 255) = 0 THEN SPRITE MOB_WAMPUS, 0, 0, 0
         RETURN
-    END IF
-    IF btn_latch <> 0 AND (PEEK(GR_PRESS) AND 255) = 255 THEN
-        POKE GR_PRESS, g_cur
-        IF g_next = g_step AND (PEEK(GR_WAS) AND 255) < 45 THEN POKE GR_PRESS, PEEK(GR_WAS)
-    END IF
-    IF g_next > 0 THEN
-        g_next = g_next - 1
-        ' At most one step past where the server last had it: the server
-        ' holds the cursor after a computer's claim, which we only learn
-        ' from the next state.
-        IF g_next = 0 AND g_cur > (PEEK(GR_SRV) AND 255) THEN g_next = 1
-        IF g_next = 0 THEN
-            POKE GR_WAS, g_cur
-            WHILE 1
-                g_cur = g_cur + 1
-                IF g_cur >= 45 THEN EXIT WHILE
-                IF g_cur <> STORE_PLOT AND (PEEK(STATE + ST_MAP_OWNER + g_cur) AND 255) = 255 THEN EXIT WHILE
-            WEND
-            g_next = g_step
-            SPRITE MOB_WAMPUS, 0, 0, 0
-            RETURN
-        END IF
     END IF
     ix = (g_cur % 9) * 16 + 16
     iy = (g_cur / 9) * 16 + 16

@@ -134,7 +134,7 @@ END
 poll_rate: PROCEDURE
     IF net_fail THEN poll_wait = 30 : RETURN
     poll_wait = 30
-    IF phase = PHASE_GRANT THEN poll_wait = 12
+    IF phase = PHASE_GRANT THEN poll_wait = 4
     IF phase = PHASE_LANDAUCTION OR phase = PHASE_DECLARE THEN poll_wait = 12
     IF phase = PHASE_TRADING THEN poll_wait = 8
     IF phase = PHASE_PRODUCTION THEN poll_wait = 60

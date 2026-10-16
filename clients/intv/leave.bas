@@ -27,6 +27,8 @@ leave_ask: PROCEDURE
 END
 
 ' leave_table: from the main loop itself (the table list goes deep).
+' (segment 0: segment 1 is full)
+    SEGMENT 0
 leave_table: PROCEDURE
     GOSUB fx_stop_all
     anim = AN_NONE
@@ -37,6 +39,7 @@ leave_table: PROCEDURE
     GOSUB write_room_appkey
     last_phase = 255 : scr_now = SCR_NONE : st_ok = 0 : poll_wait = 0
 END
+    SEGMENT 1
 
 ' ---------------------------------------------------------------------------
 ' Spectating: a seatless player (the game had started when we joined, or we

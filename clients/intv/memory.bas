@@ -25,6 +25,9 @@
     ' 4 the two READs, 5 CLOSE posted
     CONST NX_ST = $8819
     CONST NX_SK = $881A         ' 1: net_finish's: the reply isn't copied
+    CONST GR_LAG = $881B        ' grant.bas: the fastest reply's t - FRAME
+    CONST GR_PARK = $881C       ' grant.bas: 1: our claim came too early, sent
+                                ' again when the server's cursor gets there
 
     ' ---- Intellivision colours ----------------------------------------------
     CONST C_BLACK = 0
