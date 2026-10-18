@@ -6,11 +6,10 @@
  */
 #ifdef __APPLE2__
 
-#include <fcntl.h>
-#include <unistd.h>
 #include "bank.h"
 #include "plat.h"
 
+uint8_t __fastcall__ mli(uint8_t cmd, void *parms);  /* lowlevel.s */
 void aux_get(void *dst, const void *src, uint16_t n);  /* lowlevel.s */
 void aux_put(void *dst, const void *src, uint16_t n);
 
@@ -23,20 +22,26 @@ uint16_t ovl_len[6];
 uint8_t *ovl_at[6];          /* where each overlay sits in aux RAM */
 static uint8_t ovl_cur;
 
+/* The files through ProDOS's MLI itself: cc65's open() takes its I/O buffer
+ * from the heap, and malloc is a K the core has no room for. */
+#define IOBUF ((uint8_t *)0xB700)       /* in SPRSAVE: free until the game runs */
+static char path[] = "\006MULE.0";
+static struct { uint8_t n; char *path; uint8_t *buf; uint8_t ref; } p_open = { 3, path, IOBUF, 0 };
+static struct { uint8_t n, ref; uint8_t *buf; uint16_t req, got; } p_read = { 4, 0, TEMP, 0x2000, 0 };
+static struct { uint8_t n, ref; } p_close = { 1, 0 };
 static int16_t load(uint8_t n, uint8_t *aux)
 {
-    static char name[] = "MULE.0";
-    int fd;
-    int16_t got;
-    name[5] = '0' + n;
-    fd = open(name, O_RDONLY);
-    if (fd < 0)
+    uint8_t err;
+    path[6] = '0' + n;
+    if (mli(0xC8, &p_open))             /* OPEN */
         return -1;
-    got = read(fd, TEMP, 0x2000);
-    close(fd);
-    if (got > 0)
-        aux_put(aux, TEMP, got);
-    return got;
+    p_read.ref = p_close.ref = p_open.ref;
+    err = mli(0xCA, &p_read);           /* READ */
+    mli(0xCC, &p_close);                /* CLOSE */
+    if (err)
+        return -1;
+    aux_put(aux, TEMP, p_read.got);
+    return p_read.got;
 }
 
 const char *bank_init(void)

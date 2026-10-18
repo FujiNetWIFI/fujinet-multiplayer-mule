@@ -1,8 +1,8 @@
 ;
-; lowlevel.s -- the paddles and the speaker.
+; lowlevel.s -- the paddles, the speaker, ProDOS.
 ;
 
-        .export         _paddle, _snd_tone
+        .export         _paddle, _snd_tone, _mli
         .import         popa
 
 PTRIG   := $C070
@@ -168,3 +168,17 @@ iic:    bit     RDVBLBAR
 mode:   .res 1
 last:   .res 1
         .code
+
+; uint8_t __fastcall__ mli(uint8_t cmd, void *parms): a ProDOS MLI call
+; (written into the code, which is RAM); its error, 0 for none.
+.proc   _mli
+        sta     parms
+        stx     parms+1
+        jsr     popa
+        sta     cmd
+        jsr     $BF00
+cmd:    .byte   0
+parms:  .addr   0
+        ldx     #0
+        rts
+.endproc
