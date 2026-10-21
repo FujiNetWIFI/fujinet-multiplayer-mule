@@ -502,6 +502,7 @@ uint8_t net_tables(uint8_t *buf, uint8_t max)
         if (count == 255 && t % HELLO_WAIT == 0)
             send(SC_TABLES, 0, 0);      /* again: the socket may have been shut */
         frame_wait();
+        snd_tick();                     /* (the name's blip ends) */
         while ((n = take_frame()) != 0) {
             if (n == 255 || fbuf[0] != CS_TABLE)
                 continue;               /* a state for the old table: skip */

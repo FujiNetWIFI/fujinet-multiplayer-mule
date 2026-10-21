@@ -139,6 +139,7 @@ void table_select(void)
             text_center(23, sc_endpt, C_WHITE);
             do {
                 frame_wait();
+                snd_tick();
                 input_poll();
                 input_take();
                 if (ev_key == KEY_LEAVE)

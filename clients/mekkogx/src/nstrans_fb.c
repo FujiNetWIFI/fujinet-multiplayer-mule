@@ -81,6 +81,7 @@ static uint8_t hdr[6], sbuf[4];
 static uint8_t *dst;
 static uint16_t dmax, got, sum;
 static uint8_t inframe, esc;
+static volatile uint8_t junk;   /* request's drain: see there */
 
 #ifdef MULE_AUTOPLAY
 /* (for the harness) replies bad or refused, replies never come, resends
@@ -176,8 +177,13 @@ static void request(uint8_t cmd, uint8_t fields, const uint8_t *data, uint8_t n,
     h[4] = 0;
     h[5] = fields;
     h[4] = (uint8_t)fold(fold(0, h, 6), data, n);
-    while (fb_ready())              /* a late reply to something gone */
-        (void)fb_getc();
+    /* A late reply to something gone, or the last END of the one before
+     * (judged on its length): 255 bytes at most. Each byte is kept
+     * somewhere: zsdcc drops a read whose value goes nowhere (the MSX's
+     * fb_getc is the register itself), and the drain would never end. */
+    i = 0;
+    while (fb_ready() && ++i)
+        junk = fb_getc();
     fb_putc(SL_END);
     for (i = 0; i < 6; ++i)
         out(h[i]);
