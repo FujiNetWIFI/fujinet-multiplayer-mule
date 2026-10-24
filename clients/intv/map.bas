@@ -188,7 +188,9 @@ msg_start: PROCEDURE
     t_pos = msg_row : GOSUB clear_row
     IF msg_len <= 20 THEN
         msg_scroll = 0
-        t_pos = msg_row + (20 - msg_len) / 2 : #t_col = #msg_col : t_len = 20
+        ' (only its own length: centred on the last row, 20 would run past
+        ' BACKTAB into the 16-bit variables when TXT has no NUL)
+        t_pos = msg_row + (20 - msg_len) / 2 : #t_col = #msg_col : t_len = msg_len
         #t_src = TXT : GOSUB put_ram
     ELSE
         ' Scroll: the text enters from the right, then repeats after a gap.

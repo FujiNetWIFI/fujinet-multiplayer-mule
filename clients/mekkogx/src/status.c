@@ -450,3 +450,25 @@ void lobby_tick(void)
         snd_play(SND_SELECT);
     }
 }
+
+#ifdef MULE_AUTOPLAY
+/* Autoplay: ready once all four seats are players (a slower machine still
+ * booting isn't shut out by the all-ready start), and on with the summary
+ * a moment after its table is up. A press every 45 frames until the
+ * server shows us ready. */
+void ap_status(void)
+{
+    uint8_t k, n = 0;
+    if (PL(my_seat).flags & PF_READY)
+        return;
+    if (phase == PHASE_LOBBY) {
+        for (k = 0; k < 4; ++k)
+            if (PL(k).name[0] && !(PL(k).flags & PF_AI))
+                ++n;
+        if (n == 4 && ap_every(45))
+            ev_btn = 1;
+    } else if (su_drawn && (uint16_t)(frame_count - ph_t0) > 560 && ap_every(45)) {
+        ev_btn = 1;
+    }
+}
+#endif

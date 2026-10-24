@@ -11,6 +11,12 @@
 #include <string.h>
 #include "mule.h"
 
+#ifdef MULE_NOTEST
+/* (AUTOPLAY on the Atari and the NES: the room went to the turn walker) */
+void test_poll(void)
+{
+}
+#else
 /* Answer an action as the server would, roughly, and age the clocks. */
 void test_poll(void)
 {
@@ -60,3 +66,4 @@ void test_poll(void)
     act = ACT_NONE;
     state_arrived();
 }
+#endif

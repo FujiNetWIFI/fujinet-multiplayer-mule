@@ -1,0 +1,11 @@
+# live: 120 frames of the land grant map, every frame (tools/rowcheck.py)
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+wait 60
+press fire          # seen
+until 3C 1 3000     # the grant
+wait 200
+burst b 120

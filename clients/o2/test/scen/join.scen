@@ -1,0 +1,9 @@
+# live: the name appkey is seeded, so straight to the table list; take the
+# first table and join it
+wait 240
+snap tables
+press fire
+wait 240
+snap joined
+xram 20 18          # SCNAME, SCTABL
+xram 14 12          # the request's state

@@ -1,0 +1,8 @@
+# live: autoplay a whole game, lobby to game over (12 rounds)
+wait 240
+press fire          # the first table
+wait 60
+auto 330000
+wait 300
+snap end
+xram 3C 4

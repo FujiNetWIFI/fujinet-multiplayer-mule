@@ -1,0 +1,10 @@
+# live: the grant cursor, every frame (step gaps: 12 is right)
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+wait 60
+press fire          # seen
+until 3C 1 3000     # the grant
+watch 4B 1500 8      # RXAGE MAPDIG G_CUR G_NEXT G_STEP G_SHOW GR_CLD GR_SRV

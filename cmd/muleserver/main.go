@@ -65,6 +65,7 @@ func main() {
 			{Platform: "astrocade", Url: "tnfs://irata.online/mule/astrocade/mule.bin"},
 			{Platform: "a2600", Url: "tnfs://irata.online/mule/atari-2600/mule2600.bin"},
 			{Platform: "channelf", Url: "tnfs://irata.online/mule/channelf/mule.bin"},
+			{Platform: "o2", Url: "tnfs://irata.online/mule/o2/mule.bin"},
 		})
 		log.Println("updating lobby at", lobby.Endpoint)
 	}

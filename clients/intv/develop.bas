@@ -103,6 +103,7 @@ develop_state: PROCEDURE
                 FOR j = 1 TO 7
                     POKE TXT + t_len, PEEK(#lit_addr + j) + 32 : t_len = t_len + 1
                 NEXT j
+                POKE TXT + t_len, 0
                 GOSUB msg_start
             END IF
         END IF

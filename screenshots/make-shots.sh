@@ -4,7 +4,8 @@
 #
 # usage: [ONLY=08-develop-map] [OLD_MAME=dir] screenshots/make-shots.sh [TARGET...]
 # Build the clients first (top-level `make clients`). The Atari 2600 has
-# no offline mode: `make-shots.sh atari-2600` plays a live game (see a2600()).
+# no offline mode: `make-shots.sh atari-2600` plays a live game (see a2600()),
+# and so does `make-shots.sh o2` (o2()).
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SHOTS=$ROOT/screenshots
@@ -51,6 +52,17 @@ a2600() {
     echo "atari-2600: pick from $d/build/snap/a2600 (see build/shots.log)"
 }
 
+# The Odyssey 2 has no test mode either: a live game against a private
+# server, played by o2sim's autoplay, a snapshot every 600 frames to pick
+# from (about 90 minutes). The build points at the private server.
+o2() {
+    local d=$ROOT/clients/o2
+    (cd "$d" && ENDPOINT=http://localhost:8098 ./build.sh > /dev/null &&
+        O2SIM_SHOTS=600 O2SIM_SECONDS=5600 test/rig.sh test/scen/soak12.scen \
+            build/shots 5600 > build/shots.log 2>&1)
+    echo "o2: pick from $d/build/shots (see build/shots.log)"
+}
+
 run() {
     case $1 in
     apple2) shoot apple2 "$MX" python3 tools/a2sim/a2sim.py r2r/apple2/mule.po build/mule-apple2.map ;;
@@ -73,6 +85,7 @@ run() {
     astrocade) shoot astrocade "$ROOT/clients/astrocade" python3 tools/astrosim.py ;;
     channelf) shoot channelf "$ROOT/clients/channelf" python3 tools/chfsim.py ;;
     atari-2600) a2600 ;;
+    o2) o2 ;;
     *) echo "unknown target $1"; return 1 ;;
     esac
 }

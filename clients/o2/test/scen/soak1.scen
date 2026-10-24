@@ -1,0 +1,8 @@
+# live, a one-round server (SERVER_SRC): autoplay from the lobby to game over
+wait 240
+press fire          # the first table
+wait 60
+auto 60000
+wait 300
+snap end
+xram 3C 4

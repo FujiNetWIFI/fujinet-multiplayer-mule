@@ -1,0 +1,41 @@
+# live, a one-round server (SERVER_SRC): to game over, its two views
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+wait 60
+press fire          # seen
+until 3C 3 6000     # the development
+wait 300
+press fire          # our turn, when it comes (it runs out)
+wait 600
+press fire
+wait 600
+press fire
+wait 600
+press fire
+until 3C 7 40000    # the last summary
+wait 120
+snap g0
+press right
+wait 60
+xram 51 1           # SU_COL
+press right
+wait 60
+xram 51 1
+snap g0l            # LAND, after a grant
+press fire          # seen
+until 3C 8 3000     # game over
+xram 51 1
+wait 60
+xram 51 1
+snap g1             # FIRST FOUNDER
+watch 44 600 2      # HPE: the phase's clock
+xram 56 2           # SU_VIEW SU_DRAWN
+xram 74 1           # DRAWQ
+xram 51 1
+snap g2             # the final table
+press fire
+wait 60
+snap g3             # the founder again

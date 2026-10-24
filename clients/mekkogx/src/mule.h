@@ -172,6 +172,15 @@ void leave_table(void);        /* main.c: leave, then the table list */
 void test_start(uint8_t ph, uint8_t arg, uint8_t pev);
 void test_poll(void);
 void autoplay(void);
+#ifdef MULE_AUTOPLAY
+extern uint16_t ap_t0;          /* the frame the phase began */
+#define ap_since() ((uint16_t)(frame_count - ap_t0))
+uint8_t ap_every(uint8_t n);
+void ap_status(void);
+void ap_grant(void);
+void ap_auction(void);
+void ap_develop(void);
+#endif
 
 /* develop state the poll rate needs */
 #define DV_WAIT   0

@@ -1,0 +1,22 @@
+# live: the land grant, our claim
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+wait 700
+press fire          # the summary: seen
+wait 1100
+snap c1
+xram 4D 11
+press fire          # claim the plot under the cursor
+wait 30
+xram 4D 11
+wait 300
+snap c2
+xram 4D 11
+wait 200
+snap c3
+xram 4D 11
+wait 600
+snap c4
+xram 3C 4

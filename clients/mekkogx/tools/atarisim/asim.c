@@ -18,6 +18,9 @@
  *   gtia FILE | off        log GTIA/ANTIC colour, position and size writes likewise
  *   wav FILE | off         record the sound (16-bit mono)
  *   trace FILE [ADDRS] | off   per-frame CSV of the given RAM addresses (hex, comma separated)
+ *   film FILE | off        append every frame's screen (384x240 colour indices) to FILE
+ *   filmlog FILE [ADDRS] | off  per frame: frame, wall clock and monotonic ns, the RAM bytes
+ *   untilfile PATH [MAX]   run until PATH exists (checked every 60 frames), or SIGTERM
  *   cpu                    print the 6502's registers (and the stack)
  *   brkcont 1|0            carry on at a BRK (else libatari800 stops there)
  *   coldstart              power off and on (boot again: FujiNet is there now)
@@ -32,6 +35,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
+#include <unistd.h>
 #include "libatari800.h"
 #include "colours.h"
 #include "gtia.h"
@@ -42,10 +47,13 @@
 
 static input_template_t in;
 static const char *outdir;
-static FILE *pokeyf, *gtiaf, *wavf, *tracef;
+static FILE *pokeyf, *gtiaf, *wavf, *tracef, *filmf, *flogf;
 static long wavbytes;
-static int nextra;
-static unsigned extra[64];
+static int nextra, nflog;
+static unsigned extra[64], flog[64];
+static volatile sig_atomic_t stop;      /* SIGTERM: wind up (the WAV's header) */
+
+static void on_term(int sig) { (void)sig; stop = 1; }
 
 static UBYTE *mem(void) { return libatari800_get_main_memory_ptr(); }
 
@@ -112,6 +120,17 @@ static void frame(void)
 		int n = libatari800_get_sound_buffer_len();
 		fwrite(libatari800_get_sound_buffer(), 1, n, wavf);
 		wavbytes += n;
+	}
+	if (filmf)
+		fwrite(libatari800_get_screen_ptr(), 1, 384 * 240, filmf);
+	if (flogf) {
+		struct timespec rt, mt;
+		clock_gettime(CLOCK_REALTIME, &rt);
+		clock_gettime(CLOCK_MONOTONIC, &mt);
+		fprintf(flogf, "%d %lld %lld", libatari800_get_frame_number(),
+			(long long)rt.tv_sec * 1000000000LL + rt.tv_nsec, (long long)mt.tv_sec * 1000000000LL + mt.tv_nsec);
+		for (int i = 0; i < nflog; i++) fprintf(flogf, " %d", mem()[flog[i]]);
+		fputc('\n', flogf);
 	}
 	if (tracef) {
 		fprintf(tracef, "%d,%04x", libatari800_get_frame_number(), ANTIC_dlist);
@@ -201,14 +220,16 @@ int main(int argc, char **argv)
 		for (int i = 0; i < 256; i++) { int c = Colours_table[i]; fputc((c >> 16) & 255, pf); fputc((c >> 8) & 255, pf); fputc(c & 255, pf); }
 		fclose(pf);
 	}
+	signal(SIGTERM, on_term);
+	signal(SIGINT, on_term);
 	FILE *sf = fopen(argv[ai + 1], "r");
 	if (!sf) { perror(argv[ai + 1]); return 1; }
 	char line[512], cmd[32], a1[256], a2[256], a3[64];
-	while (fgets(line, sizeof line, sf)) {
+	while (!stop && fgets(line, sizeof line, sf)) {
 		a1[0] = a2[0] = a3[0] = 0;
 		if (sscanf(line, "%31s %255s %255s %63s", cmd, a1, a2, a3) < 1 || cmd[0] == '#') continue;
 		int v = atoi(a1);
-		if (!strcmp(cmd, "wait")) for (int i = 0; i < v; i++) frame();
+		if (!strcmp(cmd, "wait")) for (int i = 0; i < v && !stop; i++) frame();
 		else if (!strcmp(cmd, "joy0")) in.joy0 = v;
 		else if (!strcmp(cmd, "trig0")) in.trig0 = v;
 		else if (!strcmp(cmd, "start")) in.start = v;
@@ -238,6 +259,17 @@ int main(int argc, char **argv)
 			nextra = 0;
 			for (char *t = strtok(a2, ","); t && nextra < 64; t = strtok(NULL, ",")) extra[nextra++] = strtoul(t, NULL, 16);
 		}
+		else if (!strcmp(cmd, "film")) filmf = reopen(filmf, a1, "wb");
+		else if (!strcmp(cmd, "filmlog")) {
+			flogf = reopen(flogf, a1, "w");
+			nflog = 0;
+			for (char *t = strtok(a2, ","); t && nflog < 64; t = strtok(NULL, ",")) flog[nflog++] = strtoul(t, NULL, 16);
+		}
+		else if (!strcmp(cmd, "untilfile")) {
+			long maxf = a2[0] ? atol(a2) : 0x7fffffffL, n = 0;
+			while (!stop && n < maxf && (n % 60 || access(a1, F_OK))) { frame(); n++; }
+			fprintf(stderr, "untilfile %s: %ld frames (frame %d)\n", a1, n, libatari800_get_frame_number());
+		}
 		else if (!strcmp(cmd, "coldstart")) Atari800_Coldstart();
 		else if (!strcmp(cmd, "brkcont")) libatari800_continue_emulation_on_brk(v);
 		else if (!strcmp(cmd, "cpu")) {
@@ -265,6 +297,8 @@ int main(int argc, char **argv)
 	if (pokeyf) fclose(pokeyf);
 	if (gtiaf) fclose(gtiaf);
 	if (tracef) fclose(tracef);
+	if (filmf) fclose(filmf);
+	if (flogf) fclose(flogf);
 	libatari800_exit();
 	return 0;
 }

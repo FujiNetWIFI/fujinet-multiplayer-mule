@@ -1,0 +1,37 @@
+# live: through the development to the goods auctions; declare a seller
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+wait 60
+press fire          # seen
+until 3C 3 6000     # the development
+wait 300
+press fire          # our turn, when it comes (it runs out)
+wait 600
+press fire
+wait 600
+press fire
+until 3C 5 20000    # declaring
+wait 60
+snap a0
+xram 75 1           # AUSTG
+wait 400
+snap a1
+xram 75 1
+press up            # a seller
+wait 120
+snap a2
+xram 75 1
+until 3C 6 6000     # trading
+wait 200
+snap a3
+xram 75 1
+wait 300
+snap a4
+xram 4D 16          # AV_POS, AV_TGT
+xram 75 1
+wait 600
+snap a5
+xram 75 1

@@ -899,3 +899,156 @@ void develop_tick(void)
     if (ev_key == KEY_END)
         act_send(ACT_END, 0);
 }
+
+#ifdef MULE_AUTOPLAY
+/* ---------------------------------------------------------------------------
+ * Autoplay: our turn as a player walks it, the stick held a frame at a
+ * time. Buy a M.U.L.E. at the corral, outfit it for our first empty plot
+ * (river: food, mountains: smithore, plains: food on the odd seats, energy
+ * on the even), leave town on the plot's side, walk down or up to its row
+ * and along to it (which never crosses the store), install, then back
+ * into town to the pub if there is time, else end the turn. Short of
+ * time, money, M.U.L.E.s or empty land: straight to the pub.
+ * ------------------------------------------------------------------------- */
+#define AP_CORRAL 0
+#define AP_SHOP   1
+#define AP_OUT    2
+#define AP_PLOT   3
+#define AP_HOME   4
+#define AP_PUB    5
+#define AP_END    6
+#define AP_DONE   7
+#define AP_WAIT   8             /* a moment in town before setting off */
+#define AP_PROMPT 9
+#define AP_OFF    10            /* not our turn */
+static uint8_t ap_st = AP_OFF, ap_good, ap_in, ap_tx, ap_ty, ap_side;
+
+/* along the street to door x, then in (up: an outfitter, down: the rest) */
+static uint8_t ap_door(uint8_t x, uint8_t in)
+{
+    if (w_x < x) return DIR_RIGHT;
+    if (w_x > x) return DIR_LEFT;
+    return in;
+}
+
+/* The turn begins (t: 256ths of it left): a moment standing in town,
+ * then our first empty plot, and what it grows. 1 while standing. */
+static uint8_t ap_plan(uint8_t t)
+{
+    uint8_t p, k;
+    if (ap_st != AP_WAIT) {
+        ap_st = AP_WAIT;
+        ap_t0 = frame_count;
+    }
+    if (ap_since() < 40)
+        return 1;
+    ap_st = AP_PUB;
+    ap_in = 0;
+    for (p = 0; p < NUM_PLOTS; ++p)
+        if (OWNER(p) == my_seat && p != STORE_PLOT && MULEOF(p) >= 4)
+            break;
+    if (p >= NUM_PLOTS || t < 4 || !st.store.mules)
+        return 0;
+    k = st.map.terrain[p] & 3;
+    ap_good = k == TERRAIN_RIVER ? GOOD_FOOD : k == TERRAIN_MOUNTAIN ? GOOD_SMITHORE :
+              (my_seat & 1) ? GOOD_FOOD : GOOD_ENERGY;
+    if (PL(my_seat).money < st.store.mulePrice + 25 * (ap_good + 1))
+        return 0;
+    k = p % 9;
+    ap_side = k <= 4 ? DIR_LEFT : DIR_RIGHT;
+    ap_tx = k * 16 + 16;
+    ap_ty = (p / 9) * 16 + 20;
+    ap_st = AP_CORRAL;
+    return 0;
+}
+
+#ifdef __NES__
+#pragma code-name (push, "CODE")      /* the fixed bank: no room in OVERLAY5 */
+#endif
+void ap_develop(void)
+{
+    uint8_t d = 0, t;
+    uint16_t w;
+    if (dv_state == DV_PROMPT) {
+        if (ap_st != AP_PROMPT) {
+            ap_st = AP_PROMPT;
+            ap_t0 = frame_count;
+        } else if (ap_since() > 60 && ap_every(45)) {
+            ev_btn = 1;
+        }
+        return;
+    }
+    if (dv_state != DV_WALK) {
+        ap_st = AP_OFF;
+        return;
+    }
+    if (dv_bwait) {
+        ap_in = 1;              /* in a doorway: the server has it */
+        return;
+    }
+    if (w_hold || w_in || w_event)
+        return;
+    w = since_rx();
+    t = dv_left > w ? (uint8_t)((dv_left - w) >> 8) : 0;    /* left, in 256ths */
+    if (ap_st >= AP_WAIT && ap_plan(t))
+        return;
+    switch (ap_st) {
+    case AP_CORRAL:
+        if (w_mule) {
+            ap_st = AP_SHOP;
+            ap_in = 0;
+        } else {
+            d = ap_door(116, DIR_DOWN);
+            if (ap_in)
+                ap_st = AP_PUB;     /* none for us */
+        }
+        break;
+    case AP_SHOP:
+        if (st.turn.carrying == (int8_t)ap_good)
+            ap_st = AP_OUT;
+        else if (ap_in)
+            ap_st = AP_PUB;
+        else
+            d = ap_door(door_lo[ap_good], DIR_UP);
+        break;
+    case AP_OUT:
+        if (!w_town)
+            ap_st = AP_PLOT;
+        d = ap_side;
+        break;
+    case AP_PLOT:
+        if (!w_mule)
+            ap_st = t >= 3 ? AP_HOME : AP_END;      /* installed */
+        else if (w_y != ap_ty)
+            d = w_y < ap_ty ? DIR_DOWN : DIR_UP;
+        else if (w_x + 1 < ap_tx)
+            d = DIR_RIGHT;
+        else if (w_x > ap_tx + 1)
+            d = DIR_LEFT;
+        else if (ap_every(45))
+            ev_btn = 1;
+        break;
+    case AP_HOME:
+        if (w_town)
+            ap_st = AP_PUB;
+        else if (w_y != 52)
+            d = w_y < 52 ? DIR_DOWN : DIR_UP;
+        else
+            d = w_x < 88 ? DIR_RIGHT : DIR_LEFT;
+        break;
+    case AP_PUB:
+        d = ap_door(88, DIR_DOWN);
+        if (!w_town)
+            ap_st = AP_HOME;
+        break;
+    case AP_END:
+        ev_key = KEY_END;
+        ap_st = AP_DONE;
+        break;
+    }
+    inp_dir = d;
+}
+#ifdef __NES__
+#pragma code-name (pop)
+#endif
+#endif

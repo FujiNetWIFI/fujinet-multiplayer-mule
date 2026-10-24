@@ -327,6 +327,12 @@ h89-boot: r2r/h89-cpm/$(PRODUCT)
 # by sector (src/atari/bank.c). Memory: src/atari/mule-atari.cfg.
 CFLAGS_EXTRA_ATARI += -Os -Cl -DPLAT_NETSTREAM
 LDFLAGS_EXTRA_ATARI += -C src/atari/mule-atari.cfg -m build/mule-atari.map
+# AUTOPLAY: its turn walker makes PHASE.5 the biggest overlay; the offline
+# test mode's resident half (test.c) makes the room for the larger window
+ifeq ($(AUTOPLAY),1)
+  CFLAGS_EXTRA_ATARI += -DMULE_NOTEST
+  LDFLAGS_EXTRA_ATARI += -Wl -D,__OVLSIZE__=0x1BC0
+endif
 EXECUTABLE_EXTRA_DEPS_ATARI += src/atari/mule-atari.cfg
 ifeq ($(PLATFORM),atari)
   # jhallen/atari-tools' atr, which mekkogx/platforms/atari.mk wants
@@ -391,6 +397,11 @@ CFLAGS_EXTRA_NES += -Os -Cl -DPLAT_NETSTREAM -DPLAT_NO_KEYBOARD \
                     -DKEY_END_NAME='"START"' -DBUTTON_NAME='"A"' -DLEAVE_KEY_NAME='"SELECT"' \
                     -DQUIT_HINT='"SELECT: QUIT"' -DLOBBY_HINT='"<->SPECIES A READY SELECT LEAVE"'
 EXTRA_INCLUDE_NES += build/fnlib-nes/include
+# AUTOPLAY: its turn walker goes in the fixed bank (src/develop.c), in the
+# room of the offline test mode's resident half (test.c)
+ifeq ($(AUTOPLAY),1)
+  CFLAGS_EXTRA_NES += -DMULE_NOTEST
+endif
 LDFLAGS_EXTRA_NES += -C src/nes/mule-nes.cfg -m build/mule-nes.map
 EXECUTABLE_EXTRA_DEPS_NES += src/nes/mule-nes.cfg build/fnlib-nes/fujinet-nes.lib
 

@@ -218,3 +218,23 @@ void grant_tick(void)
         }
     }
 }
+
+#ifdef MULE_AUTOPLAY
+/* Autoplay: claim the first plot of the terrain this seat farms (river,
+ * mountains, plains, plains: food, smithore, energy), from the third row
+ * any plains too, and from the last row anything, so every seat gets land.
+ * Never in the frames after a step, when the press would count for the
+ * plot before. */
+static const uint8_t ap_land[4] = { TERRAIN_RIVER, TERRAIN_MOUNTAIN, TERRAIN_PLAIN, TERRAIN_PLAIN };
+
+void ap_grant(void)
+{
+    uint8_t t;
+    if (gr_claimed || gr_depart || !g_show || g_cur >= NUM_PLOTS ||
+        (uint8_t)((uint8_t)frame_count - g_stepf) < 3)
+        return;
+    t = st.map.terrain[g_cur] & 3;
+    if (t == ap_land[my_seat] || (g_cur >= 18 && t == TERRAIN_PLAIN) || g_cur >= 36)
+        ev_btn = 1;
+}
+#endif

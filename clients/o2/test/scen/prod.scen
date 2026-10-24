@@ -1,0 +1,28 @@
+# live: the grant's titles, then on to the production phase
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+wait 700
+press fire          # the summary: seen
+wait 200
+snap p1             # the ship leaving
+until 4E 12 1500    # (G_NEXT: the cursor's first step)
+wait 30
+snap p2             # the grant
+until 3C 3 5000     # the development
+wait 600
+press fire          # our turn, when it comes (it runs out)
+wait 600
+press fire
+wait 600
+press fire
+wait 600
+press fire
+until 3C 4 12000    # PHS = production
+wait 40
+snap p3             # the event, or the production
+xram 6D 3
+wait 300
+snap p4
+xram 3C 4

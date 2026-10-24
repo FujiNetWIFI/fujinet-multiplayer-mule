@@ -1,0 +1,18 @@
+# live: join, ready, the summary, then the land grant
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+wait 700
+xram 3C 4
+press fire          # the summary: seen
+wait 400
+snap g1
+xram 3C 4
+xram 4D 11
+wait 200
+snap g2
+xram 4D 11
+wait 600
+snap g3
+xram 3C 4

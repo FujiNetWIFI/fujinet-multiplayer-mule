@@ -1,0 +1,9 @@
+# live: boot, first table, join, the lobby; ready up
+wait 240
+press fire          # the first table
+wait 180
+snap lobby
+press fire          # ready
+wait 120
+snap ready
+xram 3C 14          # HOT header

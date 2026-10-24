@@ -1,0 +1,15 @@
+# live, a one-round server: autoplay to the goods; the arena in trading
+wait 240
+press fire          # the first table
+wait 60
+auto 20000 3C 6     # to trading
+auto 3000 75 3      # to its bidding (AUSTG ACTIVE)
+wait 200
+snap x1
+xram 4D 16          # AV_POS, AV_TGT
+xram 5D 4           # AV_BASE, AV_KIND, AV_STG
+xram 6D 4           # AV_ROLE
+xram 77 1           # AV_STEPV
+xram 7B 2           # AV_LN1, AV_LN2
+cart 4D7 40         # STATTAB
+burst b 60

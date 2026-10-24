@@ -1,0 +1,20 @@
+# live: the lobby's countdown, then the summary's four columns
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+wait 90
+snap s0             # STARTING IN n
+until 3C 7 3000     # the summary
+wait 120
+snap s1             # TOTAL
+press right
+wait 60
+snap s2             # MONEY
+press right
+wait 60
+snap s3             # LAND
+press right
+wait 60
+snap s4             # GOODS
+xram 4D 10

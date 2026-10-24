@@ -1,0 +1,12 @@
+wait 240
+press fire
+wait 120
+press fire
+wait 700
+press fire
+wait 300
+cart 65D 95
+xram 61 36
+xram 58 9
+cart 4C0 40
+xram 3C 4

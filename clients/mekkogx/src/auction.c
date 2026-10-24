@@ -847,3 +847,56 @@ void auction_tick(void)
             act_send(ACT_COLLUDE, 0);
     }
 }
+
+#ifdef MULE_AUTOPLAY
+/* Autoplay, through the stick as a player would: in a land auction bid a
+ * little over the opening price (a seat with fewer than six plots and the
+ * money for it), each seat stopping at its own limit; declare a seller with
+ * more of the good than next month needs, a buyer with less; then a seller
+ * walks its line down until it has sold its surplus (to a buyer whose line
+ * it meets, or the store), a buyer up to the store's price until it has
+ * enough. */
+void ap_auction(void)
+{
+    uint8_t me = my_seat, n = 0, mp, want;
+    uint16_t have, need, w;
+    if (au_kind == 1) {
+        if (au_stage == STAGE_SHOW) {
+            if (ap_since() > 90 && ap_every(45))
+                ev_btn = 1;
+            return;
+        }
+        if (au_role[me] != ROLE_BUYER || au_stage < STAGE_LEAD)
+            return;
+        for (mp = 0; mp < NUM_PLOTS; ++mp)
+            if (OWNER(mp) == me)
+                ++n;
+        w = st.auction.start;
+        if (n < 6 && au_pl(me)->money > w + 300 && au_pos[me] < w + (me + 2) * 4 * au_stepv)
+            inp_dir = DIR_UP;
+        return;
+    }
+    have = au_pl(me)->goods[au_good];
+    need = au_need(me, rnd + 1);
+    if (au_stage == STAGE_DECLARE) {
+        if (ap_since() < 40)
+            return;
+        want = have > need ? ROLE_SELLER : need > have ? ROLE_BUYER : ROLE_NONE;
+        if (want == au_role[me])
+            return;
+        if (want == ROLE_SELLER)
+            inp_dir = DIR_UP;
+        else if (want == ROLE_BUYER)
+            inp_dir = DIR_DOWN;
+        else if (ap_every(45))
+            ev_key = KEY_SITOUT;
+        return;
+    }
+    if (au_stage != STAGE_LEAD && au_stage != STAGE_ACTIVE)
+        return;
+    if (au_role[me] == ROLE_SELLER && have > need)
+        inp_dir = DIR_DOWN;
+    else if (au_role[me] == ROLE_BUYER && need > have && au_pos[me] < st.auction.storeSell)
+        inp_dir = DIR_UP;
+}
+#endif

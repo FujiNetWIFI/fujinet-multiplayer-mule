@@ -1,0 +1,11 @@
+# offline: no appkey, so the name picker; pick "BC" and end with '.'
+wait 90
+snap picker
+hold down 10        # B
+press fire
+hold down 10        # C
+press fire
+wait 10
+snap picked
+xram 20 9           # SCNAME
+iram 20 29

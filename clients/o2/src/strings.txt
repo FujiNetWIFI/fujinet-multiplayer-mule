@@ -1,0 +1,114 @@
+# strings.txt -- what the game says, in the Atari's wording
+# (clients/mekkogx/src/strings.c) where it fits the O2's 16-column line and
+# its font (no ! , ' or #), reworded where it doesn't. tools/mkstr.py: NAME
+# text; '|' breaks a line, '%' is the request's number. T_ (titles), E_
+# (player events) and W_ (the town's words) are one line, or the build stops.
+
+S_NONE
+
+# titles
+T_GRANT     LAND GRANT
+T_LAUCT     LAND AUCTION %
+T_DEVEL     DEVELOPMENT %
+T_PROD      PRODUCTION %
+T_SHIP      TRANSPORT SHIP
+# colony events 1-9: titles, then messages
+T_EV1       PEST ATTACK
+T_EV2       PIRATE SHIP
+T_EV3       ACID RAIN STORM
+T_EV4       PLANETQUAKE
+T_EV5       SUNSPOT ACTIVITY
+T_EV6       METEORITE
+T_EV7       RADIATION
+T_EV8       FIRE IN STORE
+T_EV9       TRANSPORT SHIP
+M_EV1       PESTS RUIN THE|FOOD ON A PLOT.
+M_EV2       PIRATES TAKE ALL|CRYSTITE.
+M_EV3       FOOD OUTPUT UP.|ENERGY REDUCED.
+M_EV4       MINING OUTPUT IS|CUT IN HALF.
+M_EV5       ENERGY OUTPUT IS|INCREASED
+M_EV6       A HUGE CRYSTITE|DEPOSIT IS MADE
+M_EV7       MULE GOES CRAZY.
+M_EV8       ALL STOCK IN THE|STORE IS LOST.
+M_EV9       THE SHIP IS|BACK.
+
+# auctions
+M_BIDST     BIDS START AT|$%
+T_AUCT      AUCTION %
+T_STATUS    STATUS %
+S_GOOD0     FOOD
+S_GOOD1     ENERGY
+S_GOOD2     SMITHORE
+S_GOOD3     CRYSTITE
+M_DECL      UP SELL DOWN BUY
+M_AUOVER    AUCTION IS OVER
+M_SOLD      PLOT IS SOLD.
+M_NOBIDS    NO BIDS TENDERED
+M_COLLUDE   COLLUSION
+M_CRIT      SELLER CRITICAL
+M_BIDAT     BIDS AT $%
+M_HIGHBID   HIGH BID $%
+M_SALEP     SOLD FOR $%
+M_STORE     STORE HAS %
+M_STORE0    STORE HAS NONE
+
+# the grant
+M_LANDING   NOW LANDING ON|PLANET IRATA.
+M_DEPART    THE SHIP RETURNS|IN 12 MONTHS.
+M_SELECT    PRESS THE BUTTON|TO SELECT A PLOT
+M_NOPLOTS   NO NEW PLOTS|FOR SALE.
+
+@bank
+# the colony's rating at game over (0-6), four lines at most
+R_0         THE COLONY|FAILED. NO SHIP|WILL COME. YOU|ARE LEFT TO DIE.
+R_1         THE COLONY|FAILED. YOU MUST|PAY REPARATIONS.
+R_2         THE COLONY|BARELY SURVIVED|UNDER NEW|LEADERS.
+R_3         THE COLONY WAS A|SUCCESS. NEW|COLONISTS WILL|COME.
+R_4         THE COLONY WAS A|GREAT SUCCESS.|YOU WILL BE|HONORED.
+R_5         THE COLONY WAS A|TREMENDOUS|SUCCESS. ALL ARE|MADE CITIZENS.
+R_6         THE COLONY WAS A|PHENOMENAL|SUCCESS. IRATA|IS A LANDMARK.
+
+# the development
+M_START     PRESS THE BUTTON|TO START
+M_CPU       THE COMPUTER IS|TAKING HIS TURN
+M_RANOFF    YOUR M.U.L.E.|RAN OFF
+M_CAUGHT    YOU CAUGHT THE|WAMPUS  $%
+M_LISTED    PLOT LISTED|FOR SALE
+M_SAMPLE    SAMPLE TAKEN
+M_TIMEUP    TIME HAS RUN OUT
+M_GAMBLE    WON $%|GAMBLING
+W_NOMONEY   NOT ENOUGH MONEY
+W_NOMULES   NO MULES LEFT
+W_NOSAMP    SAMPLE FIRST
+W_OFFICE    ON A PLOT: FIRE
+W_ASSAY0    ASSAY: NONE
+W_ASSAY1    ASSAY: LOW
+W_ASSAY2    ASSAY: MEDIUM
+W_ASSAY3    ASSAY: HIGH
+W_ASSAY4    ASSAY: VERY HIGH
+
+@bank
+# player events 1-22 (turn.event), one line each: the town's top line as
+# our turn begins (mekkogx strings.c pevents, in the O2's few words)
+E_1         +3 FOOD 2 ENERGY
+E_2         +2 SMITHORE
+E_3         FAIR WIN +$%
+E_4         TAP DANCE +$%
+E_5         FARM AID +$%
+E_6         WART WORM +$%
+E_7         MUSEUM +$%
+E_8         EEL WIN +$%
+E_9         CHARITY +$%
+E_10        DIVIDENDS +$%
+E_11        LEGACY +$%
+E_12        RAT HIDE +$%
+E_13        +1 PLOT OF LAND
+E_14        HALF FOOD STOLEN
+E_15        BOLT LOST -$%
+E_16        MINES FIX -$%
+E_17        SOLAR FIX -$%
+E_18        IN-LAWS -$%
+E_19        CAT-BUGS -$%
+E_20        BAD BET -$%
+E_21        BAT BITE -$%
+E_22        A PLOT IS LOST

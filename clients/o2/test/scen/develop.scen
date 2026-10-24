@@ -1,0 +1,38 @@
+# live: our development turn: the prompt, the town, the map, the pub
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+wait 60
+press fire          # seen
+until 3C 3 12000    # the development
+until 4D 1 12000    # DV_ST: our prompt
+wait 30
+snap d0             # PRESS THE BUTTON TO START
+press fire
+until 4E 1 300      # DV_TOWN: in town
+wait 30
+snap d1             # the town
+xram 4D 4
+xram 6D 4
+hold left 110       # off the street's west end
+wait 30
+snap d2             # the map, west of the store
+xram 4D 4
+xram 6D 4
+hold right 30       # back into the store: the street's west end
+wait 30
+snap d3
+xram 4E 1
+xram 6D 4
+hold right 120      # along to the pub's door (column 5)
+xram 6D 4
+hold down 40        # down, and in
+wait 60
+snap d4
+xram 6D 4
+xram 1A 1           # ACTSENT
+wait 200
+snap d5             # the pub's answer: the turn over, on the map
+xram 4D 4
