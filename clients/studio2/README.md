@@ -48,9 +48,10 @@ same PR carries the MAME device (`pico/studio2/emu`, grafted into
   across.
 - **Auctions**: the store's prices either side of the good's name; the
   players in four columns, feet on their price; the sellers' and buyers'
-  lines dashed; each player's BUY, SELL or price, then money and units,
-  odd seats' fields inverted so the four read apart. A good's status is a
-  bar per player, next month's need dashed beside it.
+  lines dashed; each player's BUY, SELL or price (odd seats' fields white,
+  so the four read apart); money in full on two staggered lines (5 digits
+  never touch), then units. A good's status is a bar per player, next
+  month's need dashed beside it and how far short or over under it.
 - **Summary**: the colonists walk in and climb to their bands in rank order;
   cash, land, goods and the total; the colony; FIRST FOUNDER and the rating
   at game over.
