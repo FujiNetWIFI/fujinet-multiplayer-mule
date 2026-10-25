@@ -1,0 +1,20 @@
+; p_stub.inc -- a page not written yet: every entry returns.
+        RETC,UN
+        NOP
+        NOP
+        RETC,UN
+        NOP
+        NOP
+        RETC,UN
+        NOP
+        NOP
+        RETC,UN
+        NOP
+        NOP
+        RETC,UN
+        NOP
+        NOP
+        RETC,UN
+        NOP
+        NOP
+        RETC,UN

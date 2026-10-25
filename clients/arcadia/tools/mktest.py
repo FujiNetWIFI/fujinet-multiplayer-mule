@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""mktest.py -- the offline test mode's fake state (mekkogx teststart.c), as
+the bytes the test page streams into cart RAM.
+
+usage: mktest.py mule_proto.h OUT.inc
+
+The same state teststart.c builds: round 1 on a generated map, four
+players (seat 3 a computer), some land and M.U.L.E.s, a turn, a goods
+auction. Laid out as the client keeps it (tools/mkproto.py: RAM-L from
+$0600, the wampus list in RAM-H), big-endian. The test page patches what
+depends on the test's phase, argument and player event.
+
+  TSTL: 433 bytes for RAM-L $0600..   TSTW: 72 bytes for RAM-H $2900..
+
+TESTBIG=1: money, goods and scores as large as the fields must show.
+"""
+import os
+import struct
+import sys
+
+BIG = os.environ.get("TESTBIG") == "1"
+
+sys.path.insert(0, __file__.rsplit("/", 1)[0])
+import mkproto  # noqa: E402
+
+TERRAIN_PLAIN, TERRAIN_RIVER, TERRAIN_MOUNTAIN, TERRAIN_STORE = 0, 1, 2, 3
+
+
+def state(structs):
+    st = bytearray(550)
+    lay = {}
+
+    def put(off, fmt, *v):
+        struct.pack_into(">" + fmt, st, off, *v)
+
+    top = {f: o for f, o, t, n in mkproto.layout(structs, "MuleState")}
+    h = top["h"]
+    put(h, "BBBBBbBBHHhh", ord("M"), 2, 1, 3, 1, 0, 0, 0, 0, 0, -1, 0)
+    psz = mkproto.size_of(structs, "MulePlayer")
+    for i in range(4):
+        p = top["players"] + i * psz
+        st[p:p + 3] = b"PL" + bytes([0x30 + i])
+        pl = {f: o for f, o, t, n in mkproto.layout(structs, "MulePlayer", p)}
+        st[pl["species"]] = (1 + i * 2) & 7
+        st[pl["color"]] = i
+        st[pl["flags"]] = 1 if i == 3 else 0
+        put(pl["money"], "H", 1000)
+        st[pl["goods"]] = 1 + i * 2
+        put(pl["score"], "H", 5000 - i * 700)
+        if BIG:                 # the largest the fields must show
+            put(pl["money"], "H", (12345, 987, 45678, 65535)[i])
+            for g in range(4):
+                st[pl["goods"] + g] = (250, 7, 120, 99)[(i + g) & 3]
+            put(pl["score"], "H", (65000, 43210, 9999, 123)[i])
+        st[pl["rank"]] = i + 1
+        st[pl["prod"]] = 3 + i
+        st[pl["spoil"]] = i
+    mp = {f: o for f, o, t, n in mkproto.layout(structs, "MuleMap", top["map"])}
+    for p in range(45):
+        c = TERRAIN_PLAIN
+        if p % 9 == 4:
+            c = TERRAIN_RIVER
+        if p == 22:
+            c = TERRAIN_STORE
+        if p % 9 == (p // 9) % 4:
+            c = TERRAIN_MOUNTAIN + ((p // 9) % 3 + 1) * 4
+        if p % 9 == 5 + (p // 9) % 4:
+            c = TERRAIN_MOUNTAIN + ((p // 9 + 1) % 3 + 1) * 4
+        st[mp["terrain"] + p] = c
+        st[mp["owner"] + p] = 0xFF
+        st[mp["mule"] + p] = 0xFF
+        st[mp["crystite"] + p] = 0xFF
+    for p, o, g, pr in ((10, 0, 0, 5), (12, 1, 1, 3), (30, 3, 1, 0), (20, 0, 2, 8), (14, 2, None, 0),
+                        (34, 2, 3, 2)):
+        st[mp["owner"] + p] = o
+        if g is not None:
+            st[mp["mule"] + p] = g
+        st[mp["prod"] + p] = pr
+    so = {f: o for f, o, t, n in mkproto.layout(structs, "MuleStore", top["store"])}
+    st[so["mules"]] = 14
+    put(so["mulePrice"], "H", 100)
+    for i in range(4):
+        put(so["price"] + 2 * i, "H", 20 + i * 20)
+        st[so["stock"] + i] = 8
+    au = {f: o for f, o, t, n in mkproto.layout(structs, "MuleAuction", top["auction"])}
+    st[au["kind"]] = 2
+    st[au["step"]] = 1
+    put(au["storeBuy"], "H", 30)
+    put(au["storeSell"], "H", 65)
+    for i in range(4):
+        st[au["role"] + i] = 1
+        put(au["pos"] + 2 * i, "H", 20 + i * 5)
+        put(au["target"] + 2 * i, "H", 40 + i * 5)
+    st[au["role"] + 1] = 2
+    st[au["ticks"]] = 70
+    put(au["hi"], "H", 66)
+    put(au["lo"], "H", 20)
+    gr = {f: o for f, o, t, n in mkproto.layout(structs, "MuleGrant", top["grant"])}
+    st[gr["cursor"]] = 0xFF
+    st[gr["step"]] = 12
+    put(gr["next"], "H", 186 + 726)
+    for i in range(4):
+        st[gr["claimed"] + i] = 0xFF
+    tu = {f: o for f, o, t, n in mkproto.layout(structs, "MuleTurn", top["turn"])}
+    st[tu["flags"]] = 1
+    put(tu["length"], "H", 2828)
+    put(tu["left"], "H", 2828)
+    st[tu["pTU"]] = 28
+    st[tu["carrying"]] = 0xFF
+    st[tu["nWampus"]] = 1
+    wsz = mkproto.size_of(structs, "MuleWampus")
+    put(tu["wampus"] + 4, "H", 2815)                 # wampus[0]: plot 0, mount 0, from 0, to 2815
+    co = {f: o for f, o, t, n in mkproto.layout(structs, "MuleColony", top["colony"])}
+    st[co["plot"]] = 10
+    st[co["rating"]] = 4
+    put(co["total"], "I", 123456)
+    return st, top, mp, tu, wsz
+
+
+def main():
+    src, dst = sys.argv[1], sys.argv[2]
+    _, structs, _ = mkproto.parse(src)
+    st, top, mp, tu, wsz = state(structs)
+    # as mkproto places it: header, players + terrain/owner/mule, then
+    # prod .. the turn's head, then the colony; the wampus list apart
+    ram = bytearray(st[0:16]) + st[16:mp["crystite"]] + st[mp["prod"]:tu["wampus"]] + st[top["colony"]:top["colony"] + 10]
+    wam = st[tu["wampus"]:tu["wampus"] + 12 * wsz]
+    out = ["; GENERATED by tools/mktest.py -- do not edit."]
+    for label, b in (("TSTL", ram), ("TSTW", wam)):
+        out.append("%s:" % label)
+        for k in range(0, len(b), 16):
+            out.append("        DB      " + ",".join("$%02X" % v for v in b[k:k + 16]))
+        out.append("%sN EQU %d" % (label, len(b)))
+    open(dst, "w").write("\n".join(out) + "\n")
+
+
+if __name__ == "__main__":
+    main()
