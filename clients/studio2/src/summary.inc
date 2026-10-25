@@ -109,7 +109,7 @@ se0:    SETV    SU_LAND, 1              ; "you're landing on the planet Irata."
 se1:    FJMP    su_begin
 
 ; su_begin: the walk-ins, or (arriving late) the table at once.
-        RFIT    81
+        RFIT    87
 su_begin:
         SETV    ANIM, AN_NONE
         FCALL   fx_stop_all
@@ -121,6 +121,7 @@ su_begin:
         SETV    SCRNOW, SCR_SUM
         SETV    SU_DRAWN, 0
         SETV    MSGROW, 9
+        SETV    MSG1, 1
         FCALL   su_rank
         GETV    RND                     ; late: straight to the table
         BZ      sb1
@@ -358,7 +359,7 @@ sv_small:
 
 ; su_landof: R9 = seat D's land: 500 a plot, the outfit + 35 for each
 ; M.U.L.E. on one (the server's ScoreOf).
-        RFIT    72
+        RFIT    68
 su_landof:
         PUTV    SU_K
         LDI     0
@@ -575,7 +576,7 @@ stt3:   FCALL   msg_tick
 stt9:   FRET
 
 ; ---- game over: FIRST FOUNDER, then the final table and the rating ----------------
-        RFIT    159
+        RFIT    165
 gameover_enter:
         SETV    ANIM, AN_NONE
         FCALL   fx_stop_all
@@ -583,6 +584,7 @@ gameover_enter:
         SETV    SCRNOW, SCR_FOUND
         SETV    GO_STG, 0
         SETV    MSGROW, 9
+        SETV    MSG1, 1
         FCALL   su_rank
         LDI     B_FIRST                 ; FIRST, the winner, FOUNDER
         FCALL   str_get

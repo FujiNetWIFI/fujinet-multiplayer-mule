@@ -9,7 +9,7 @@ BARTOP  EQU     MAPY0
 BARH    EQU     80
 
 ; map_enter: the map screen, drawn a few plots a frame from here.
-        RFIT    66
+        RFIT    69
 map_enter:
         SETV    ANIM, AN_NONE
         FCALL   fx_stop_all
@@ -17,8 +17,9 @@ map_enter:
         SETV    SCRNOW, SCR_MAP
         SETV    MAPBLINK, NOBODY
         SETV    MAPBLON, 0
-        SETV    BARLAST, 0FFH
+        FCALL   bar_map
         SETV    MSGROW, 8
+        SETV    MSG1, 0
         SETV    MAPQ, 0
         LDR     R8, MAPDIRTY
         LDI     6
@@ -328,14 +329,38 @@ plotxy: DB      0,MAPY0,7,MAPY0,14,MAPY0,21,MAPY0,28,MAPY0,35,MAPY0,42,MAPY0,49,
         DB      0,MAPY0+48,7,MAPY0+48,14,MAPY0+48,21,MAPY0+48,28,MAPY0+48,35,MAPY0+48,42,MAPY0+48,49,MAPY0+48,56,MAPY0+48
         DB      0,MAPY0+64,7,MAPY0+64,14,MAPY0+64,21,MAPY0+64,28,MAPY0+64,35,MAPY0+64,42,MAPY0+64,49,MAPY0+64,56,MAPY0+64
 
-; ---- the time bar: one line for each PTU of turn time left (mekkogx bar_draw) ----
-; bar_draw: D lines of the bar lit, from the bottom.
-        RFIT    90
+; ---- the time bar: one unit for each PTU of turn time left (mekkogx bar_draw) ----
+; Down the map's right edge, from the bottom; across under the town.
+; bar_map / bar_town: where it is (it is drawn again in full next time).
+        RFIT    63
+bar_map:
+        SETV    BARO, 0
+        SETV    BARMAX, BARH
+        SETV    BARTOPV, BARTOP
+        SETV    BARLAST, 0FFH
+        FRET
+; bar_arena: down the right edge from line D, BARMAX long (the auctions).
+bar_arena:
+        PUTV    BARTOPV
+        SETV    BARO, 0
+        SETV    BARLAST, 0FFH
+        FRET
+bar_town:
+        SETV    BARO, 1
+        SETV    BARMAX, 64
+        SETV    BARLAST, 0FFH
+        FRET
+
+; bar_draw: D units of the bar lit.
+        RFIT    188
 bar_draw:
         PLO     R9
-        SMI     BARH+1
-        BNF     bd1
-        LDI     BARH
+        GETV    BARMAX
+        STR     R2
+        GLO     R9
+        SD
+        BDF     bd1
+        GETV    BARMAX
         PLO     R9
 bd1:    GETV    BARLAST
         STR     R2
@@ -344,21 +369,31 @@ bd1:    GETV    BARLAST
         BZ      bd9
         GLO     R9
         STR     RA                      ; BARLAST
-        PARS                            ; the dark part
+        GETV    BARO
+        BNZ     bd5
+        PARS                            ; down the right edge: the dark part
         P       BARX
-        P       BARTOP
+        GETV    BARTOPV
+        PD
         P       1
+        GETV    BARMAX
+        STR     R2
         GLO     R9
-        SDI     BARH
+        SD
         PD
         P       TM_CLEAR
         GOP     TOP_RECT
-        GLO     R9                      ; the lit part
+        GLO     R9                      ; the lit part, from the bottom
         BZ      bd9
         PARS
         P       BARX
+        GETV    BARTOPV
+        STR     R2
+        GETV    BARMAX
+        ADD
+        STR     R2
         GLO     R9
-        SDI     BARTOP+BARH
+        SD
         PD
         P       1
         GLO     R9
@@ -366,6 +401,25 @@ bd1:    GETV    BARLAST
         P       TM_SET
         GOP     TOP_RECT
 bd9:    FRET
+bd5:    PARS                            ; across under the town: lit from the left
+        P       0
+        P       TBARY
+        P       64
+        P       2
+        P       TM_CLEAR
+        GOP     TOP_RECT
+        GLO     R9
+        BZ      bd9
+        PARS
+        P       0
+        P       TBARY
+        GLO     R9
+        PD
+        P       2
+        P       TM_SET
+        GOP     TOP_RECT
+        FRET
+TBARY   EQU     94
 
 ; bar_tick: the original's tick (its VBI, $5E98): with D units of the bar
 ; left (PTU on a turn, ticks in an auction) and D under 30, a tick every D

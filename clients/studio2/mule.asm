@@ -37,6 +37,10 @@ RT_SEGEND:
         INCLUDE "grant.inc"
         INCLUDE "lobby.inc"
         INCLUDE "summary.inc"
+        INCLUDE "develop.inc"
+        INCLUDE "town.inc"
+        INCLUDE "auction.inc"
+        INCLUDE "auction2.inc"
         INCLUDE "phstub.inc"
         RFIT    80
         INCLUDE "endpoint.inc"

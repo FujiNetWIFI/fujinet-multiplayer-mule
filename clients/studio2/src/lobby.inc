@@ -13,13 +13,14 @@ LB_K    EQU     PH+9
 LB_Y    EQU     PH+10
 LB_F    EQU     PH+11
 
-        RFIT    94
+        RFIT    100
 lobby_enter:
         SETV    ANIM, AN_NONE
         FCALL   fx_stop_all
         FCALL   scr_clear
         SETV    SCRNOW, SCR_TEXT
         SETV    MSGROW, 8
+        SETV    MSG1, 0
         LDR     R8, LB_LAST
         LDI     4
         PLO     R9

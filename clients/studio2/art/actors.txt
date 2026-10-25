@@ -1,0 +1,58 @@
+; actors.txt -- the M.U.L.E. (town: big, two steps; map: small, two
+; steps), the wampus, and the town's signs.
+@IM_MULEA
+.....##.
+....###.
+#######.
+#######.
+.######.
+.#....#.
+.#....#.
+.##...##
+@IM_MULEB
+.....##.
+....###.
+#######.
+#######.
+.######.
+..#..#..
+..#..#..
+..##.##.
+@IM_SMULEA
+...#
+.###
+####
+#..#
+@IM_SMULEB
+...#
+.###
+####
+.##.
+@IM_WAMPUS
+.#.#.
+#####
+#.#.#
+#####
+.#.#.
+@IM_MUG
+#####.
+#...##
+#...#.
+#...##
+#####.
+@IM_FLASK
+.##.
+.##.
+#..#
+####
+####
+@IM_FLAG
+##...
+####.
+#####
+#....
+#....
+@IM_MULEAL mirror IM_MULEA
+@IM_MULEBL mirror IM_MULEB
+@IM_SMULEAL mirror IM_SMULEA
+@IM_SMULEBL mirror IM_SMULEB

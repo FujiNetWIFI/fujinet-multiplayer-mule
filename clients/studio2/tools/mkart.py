@@ -8,6 +8,8 @@ Each art file holds pictures drawn in '#' (lit) and '.' (dark):
     @IM_NAME            a picture: the rows follow, each a line of the image
     ##..
     .##.
+    @IM_LEFT mirror IM_NAME   the same picture flipped left for right (the
+                              cart's sprites have no flip)
 
 Up to 8 pixels wide and 24 lines tall (the cart's IMAGE op). A name ending
 in _MSK is the mask of the picture before it, for S2T_MASK (it must get the
@@ -36,8 +38,16 @@ def parse(path):
         if not line or line.startswith("#!") or line.startswith(";"):
             continue
         if line.startswith("@"):
-            cur = (line[1:].split()[0], [], "%s:%d" % (path, ln))
+            w = line[1:].split()
+            cur = (w[0], [], "%s:%d" % (path, ln))
             pics.append(cur)
+            if len(w) == 3 and w[1] == "mirror":
+                src = next((p for p in pics if p[0] == w[2]), None)
+                if src is None:
+                    sys.exit("mkart: %s:%d: no %s to mirror" % (path, ln, w[2]))
+                width = max(len(r) for r in src[1])
+                cur[1].extend(r.ljust(width, ".")[::-1] for r in src[1])
+                cur = None
             continue
         if cur is None:
             sys.exit("mkart: %s:%d: rows before a @NAME" % (path, ln))

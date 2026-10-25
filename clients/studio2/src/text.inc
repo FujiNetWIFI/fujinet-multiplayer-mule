@@ -454,14 +454,17 @@ tc9:    FRET
 
 ; ---- the message rows (mekkogx msg_*) ---------------------------------------------------
 ; msg_clear: both message rows blank, nothing scrolling.
-        RFIT    66
+        RFIT    89
 msg_clear:
         SETV    MSGSCR, 0
         GETV    MSGROW
         FCALL   clrrow
+        GETV    MSG1
+        BNZ     mc9
         GETV    MSGROW
         ADI     1
         FJMP    clrrow
+mc9:    FRET
 
 ; msg_show: message D (V1, V2 its numbers): on one row, two, or scrolling.
 msg_show:
@@ -470,10 +473,16 @@ msg_show:
 ; second (mekkogx msg_start).
 msg_start:
         FCALL   msg_clear
+        GETV    MSG1                    ; one row: longer than it scrolls
+        BZ      ms0
         GETV    TXTLEN
+        SMI     TCOLS+1
+        BDF     ms1
+        BR      ms0a
+ms0:    GETV    TXTLEN
         SMI     2*TCOLS+1
         BDF     ms1
-        GETV    MSGROW
+ms0a:   GETV    MSGROW
         FJMP    text_center
 ms1:    SETV    MSGSCR, 1
         SETV    MSGPOS, 0
@@ -483,7 +492,7 @@ ms1:    SETV    MSGSCR, 1
 
 ; msg_tick: a scrolling message moves a character every 4 frames: the
 ; second row shows TXT[pos-16 .. pos-1], blanks around it.
-        RFIT    182
+        RFIT    188
 msg_tick:
         GETV    MSGSCR
         BZ      mt9
@@ -495,8 +504,11 @@ msg_tick:
         BNF     mt9
         GETV    FCL
         PUTV    MSGT
+        GETV    MSG1                    ; the second row, or the one
+        XRI     1
+        STR     R2
         GETV    MSGROW
-        ADI     1
+        ADD
         SHL
         SHL
         SHL

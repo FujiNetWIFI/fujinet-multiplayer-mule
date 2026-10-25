@@ -27,7 +27,7 @@ CRAM    EQU     0DA00H          ; the client's own
 CR_NAME EQU     CRAM+00H        ; 9: the player's name (appkey 1/1/0)
 CR_TABLE EQU    CRAM+10H        ; 9: the table id
 CR_ENDPT EQU    CRAM+20H        ; 66: the room's server (appkey 1/1/10), "" none
-CRAMEND EQU     0DB00H          ; the cart RAM pages the image carries
+CRAMEND EQU     0DC00H          ; the cart RAM pages the image carries
 
 ; ---- the network --------------------------------------------------------------
 NETDEV  EQU     71H             ; N1:
