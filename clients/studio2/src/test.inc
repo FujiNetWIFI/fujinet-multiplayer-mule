@@ -1,5 +1,4 @@
-; test.inc -- bank 1: the offline test mode (mekkogx teststart.c, test.c)
-; and autoplay. When the harness pokes $5A into TESTHK during the title, the
+; test.inc -- bank 1: the offline test mode (mekkogx teststart.c, test.c). When the harness pokes $5A into TESTHK during the title, the
 ; game skips FujiNet and fakes a state: round 1 on a generated map (build/
 ; teststate.inc). TESTHK+1 is the phase + 1 (0: develop), +2 the colony
 ; event / auction stage / seat whose turn it is, +3 the player event.
@@ -8,7 +7,6 @@
 
         FJMP    test_start              ; E_TSTART
         FJMP    test_poll               ; E_TPOLL
-        FJMP    autoplay                ; E_AUTO
 
 ; tp8: SNAP byte at R9 = D. tp16: the word at R9 = RB (LE).
 tp8:    FJMP    cr_poke
@@ -288,7 +286,7 @@ tq_addw:
 
 ; tq_grant: as the server's cursor: it waits (-1) for the ship, then steps
 ; every 12 (next: jiffies to its next step). T2:T3 = v.
-        RFIT    256
+        RFIT    255
 tq_grant:
         SLD     G_CURSOR
         ANI     80H
@@ -387,8 +385,6 @@ tg7:    LDR     R9, G_CURSOR
 tg9:    SETV    ACT, ACT_NONE
         FRET
 
-autoplay:
-        FRET
 
 TSTST_SEGEND:                           ; (data from here: no page rules)
         INCLUDE "teststate.inc"

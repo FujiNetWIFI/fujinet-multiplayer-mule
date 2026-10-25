@@ -87,7 +87,7 @@ ml1:
         IF      AUTOPLAY
         GETV    STOK
         BZ      ml1a
-        BCALL   BK_TEST, E_AUTO
+        BCALL   BK_AP, E_AUTO
 ml1a:
         ENDIF
         FCALL   catchup                 ; what moves by itself

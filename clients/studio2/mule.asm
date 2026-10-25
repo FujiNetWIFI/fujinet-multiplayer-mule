@@ -66,6 +66,18 @@ BK1_SEGEND:
 BK2_SEGEND:
         SEGEND  0D000H
         ENDIF
+        IF      BANK == BK_AP
+        ORG     0C400H
+        FJMP    autoplay                ; E_AUTO
+        IF      AUTOPLAY
+        INCLUDE "aplay.inc"
+        ELSE
+autoplay:
+        FRET
+        ENDIF
+BK6_SEGEND:
+        SEGEND  0D000H
+        ENDIF
         INCLUDE "str.inc"
 
 ; ---- the cart's RAM: image pages the client writes ----------------------------------

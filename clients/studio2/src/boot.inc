@@ -757,7 +757,7 @@ tbm3:   HOT     TX_PUTC
         FRET
 
 ; tb_take: the chosen table's id (8, NUL-padded) to the cart's RAM.
-        RFIT    65
+        RFIT    64
 tb_take:
         SND     SND_SELECT
         GETV    TB_SEL                  ; entry: 1 + 33 * sel
@@ -788,6 +788,84 @@ tbt3:   LDA     R8
         LDR     R9, CR_TABLE
         FJMP    cr_puts
 
-; menu: key 0 in a game (C7).
-menu:   FRET
+; ---- the menu (0): 2 leaves the table (asked first when seated in a game),
+; 3 the sound, 4 ends our turn; any other key carries on. The game stands
+; still meanwhile (mekkogx leave_ask). It is a message: the one shown
+; before is gone.
+        RFIT    146
+menu:   GETV    PHASE
+        XRI     PHASE_DEVELOP
+        BNZ     mnu1
+        SLD     TN_SEAT
+        STR     R2
+        GETV    MYSEAT
+        XOR
+        BNZ     mnu1
+        LDI     B_MENU2                 ; our turn: 4 too
+        BR      mnu2
+mnu1:    LDI     B_MENU
+mnu2:    FCALL   msg_show
+        FCALL   mn_key
+        XRI     2
+        BZ      mn_lv
+        XRI     2!3
+        BZ      mn_snd
+        XRI     3!4
+        BNZ     mnu9
+        GETV    PHASE                   ; 4: our turn ends
+        XRI     PHASE_DEVELOP
+        BNZ     mnu9
+        LDI     0
+        PLO     R9
+        PHI     R9
+        LDI     ACT_END
+        FCALL   act_send
+mnu9:    FJMP    msg_clear
+mn_snd: GETV    MUTE
+        XRI     1
+        STR     RA
+        BNZ     mnu9
+        LDI     SND_SELECT
+        FCALL   snd_play
+        BR      mnu9
+mn_lv:  GETV    MYSEAT                  ; watching, or the lobby: no question
+        SMI     4
+        BDF     mn_go
+        GETV    PHASE
+        BZ      mn_go
+        LDI     M_LEAVEASK
+        FCALL   msg_show
+        FCALL   mn_key
+        XRI     2
+        BNZ     mnu9
+mn_go:  GETV    TESTM
+        BNZ     mnu9
+        FCALL   msg_clear
+        FJMP    leave_table
+; mn_key: D = the next key pressed (the sound and a scrolling message go on).
+mn_key: FCALL   frame_wait
+        FCALL   snd_tick
+        FCALL   msg_tick
+        FCALL   keys
+        GETV    KEDGE
+        XRI     K_NONE
+        BZ      mn_key
+        GETV    KEDGE
+        FRET
+
+; leave_table: the server gives the computer our seat; then another table
+; (mekkogx leave_table).
+        RFIT    30
+leave_table:
+        SETV    ANIM, AN_NONE
+        FCALL   fx_stop_all
+        FCALL   spr_hide
+        LDI     0
+        PLO     R9
+        PHI     R9
+        LDI     ACT_LEAVE
+        FCALL   act_send
+        FCALL   net_sync
+        FCALL   rechoose
+        FJMP    game_start
 

@@ -3,11 +3,12 @@
 ; build/art.inc; the cart's in fujinet.inc.
 
 ; ---- banks ($C400-$CFFF) -----------------------------------------------------
-NBANKS  EQU     6               ; build.sh assembles mule.asm once for each
+NBANKS  EQU     7               ; build.sh assembles mule.asm once for each
 BK_BOOT EQU     0               ; title, name, tables, the menu
-BK_TEST EQU     1               ; test mode, autoplay
+BK_TEST EQU     1               ; test mode
 BK_ART  EQU     2               ; the pictures (gfx_load)
 STRBK   EQU     3               ; the strings, NSTRBK banks from here
+BK_AP   EQU     6               ; AUTOPLAY builds' player
 
 ; A code bank starts with its entries, an FJMP each: fixed code reaches the
 ; bank through these (BCALL bank, entry), never by its labels, which the
@@ -19,7 +20,7 @@ E_MENU     EQU  0C409H
 E_GFXLOAD  EQU  0C400H          ; BK_ART
 E_TSTART   EQU  0C400H          ; BK_TEST
 E_TPOLL    EQU  0C403H
-E_AUTO     EQU  0C406H
+E_AUTO     EQU  0C400H          ; BK_AP
 
 ; ---- the cart's RAM ($D400-$DFFF: image pages the client writes) ---------
 PREV    EQU     SNAP+PRVOFF     ; the state before (the cart copies SNAP there)
