@@ -153,8 +153,9 @@ abt_good:
         FRET
 
 ; au_needdraw: next month's need: a dotted line at that height beside the
-; bar, and under the player how far short (-) or over (+) (mekkogx au_need_draw).
-        RFIT    235
+; bar, and in its label field how far short (-) or over (+) (mekkogx
+; au_need_draw).
+        RFIT    245
 au_needdraw:
         LDI     0
         PUTV    AV_I
@@ -203,30 +204,39 @@ and3:   PUTV    T4
 and4:   SDI     0
         PLO     R9
         LDI     '-'
-and5:   PUTV    T4                      ; blanks, the sign, the digits: the
-        LDI     0                       ; field's 4 cells (odd seats inverse)
+and5:   PUTV    T4                      ; the sign and the digits, right in
+        LDI     0                       ; the label field
         PHI     R9
         FCALL   fmt_num
-        SDI     3
-        PLO     RB
+        ADI     1                       ; x = 16i + 16 - 4 (length + 1)
+        SHL
+        SHL
+        SDI     16
+        STR     R2
         GETV    AV_I
         SHL
         SHL
-        ORI     70H
-        HOT     TX_CURSOR
+        SHL
+        SHL
+        ADD
+        PUTV    T5
         GETV    AV_I
-        FCALL   au_inv
-and6:   GLO     RB
-        BZ      and7
-        LDI     ' '
-        HOT     TX_PUTC
-        DEC     RB
-        BR      and6
-and7:   GETV    T4
-        HOT     TX_PUTC
+        FCALL   au_field
+        PUTV    T3
+        PARS
+        GETV    T5
+        PD
+        P       AULBLY
+        GETV    T3
+        PD
+        GETV    T4
+        PD
         LDR     R8, NUMBUF
-        FCALL   d_puts
-        OPN     TOP_INV_OFF
+and6:   LDA     R8
+        BZ      and7
+        PD
+        BR      and6
+and7:   GOP     TOP_PTEXT
 and9:   GETV    AV_I
         ADI     1
         STR     RA

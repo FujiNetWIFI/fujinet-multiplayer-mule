@@ -17,6 +17,16 @@ RFIT    MACRO   size
         ENDIF
         ENDM
 
+; Keep a data block of `size` bytes out of $x000-$x3FF (no page rule).
+DFIT    MACRO   size
+        IF      (($) & 0C00H) == 0
+        ORG     (($) & 0F000H) + 0400H
+        ENDIF
+        IF      ($) + (size) > (($) & 0F000H) + 1000H
+        ORG     (($) & 0F000H) + 1400H
+        ENDIF
+        ENDM
+
 ; ---- console RAM --------------------------------------------------------
 VAR     MACRO   v               ; RA -> v (page $08)
         LDI     LO(v)

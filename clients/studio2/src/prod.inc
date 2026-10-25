@@ -373,6 +373,7 @@ pqk3:   SMI     NUM_PLOTS
 pqk9:   FRET
 
 ; ---- the set pieces' scripts (mekkogx events.c; Studio II pixels, lines) ---------
+        DFIT    300
 PROD_SEGEND:
 fx_pirate:
         DB      FX_LOOK, FK_SHIP, 5, IM_PSHIPL, 0, 0

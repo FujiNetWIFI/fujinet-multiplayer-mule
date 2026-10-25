@@ -655,6 +655,7 @@ u_tables: DB    "/tables?bin=1", 0
 u_table: DB     "?table=", 0
 u_player: DB    "&player=", 0
 u_bin:  DB      "&bin=1", 0
+        DFIT    300
 ROUTES_SEGEND:                          ; (data from here: no page rules)
 routes: DW      r_none, r_state, r_ready1, r_ready0, r_species, r_claim, r_push
         DW      r_declare, r_collude, r_begin, r_buymule, r_outfit, r_install

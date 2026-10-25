@@ -2,12 +2,14 @@
 ; auction.c). The screen:
 ;   row 0           the good and STATUS or AUCTION (land: the title; its
 ;                   price line, small, under it)
-;   lines 12-80     the arena: a price step a line, the base (the store's
-;                   buying price, the land's opening) at 67, 41 steps over it
+;   lines 12-74     the arena: a price step a line, the base (the store's
+;                   buying price, the land's opening) at 61, 35 steps over it
 ;                   and 13 under; each player in a 16-pixel column, feet on
 ;                   its price line
-;   row 7           BUY / SELL, or each player's price
-;   row 8           money and units, small        row 9  the message
+;   lines 75-86     BUY / SELL, or each player's price (odd seats white)
+;   lines 88-104    money in full, small, on two lines (seats 0 and 2, then
+;                   1 and 3, so 5 digits never touch); then units
+;   row 9           the message
 ; 2 pushes the line up (sell: lower your price... up is up), 8 down; let go
 ; and it stays. Declaring: 2 a seller, 8 a buyer, 5 sits it out.
 
@@ -47,16 +49,19 @@ AV_BART EQU     PH+56                   ; 4: where they go
 AV_LBLI EQU     PH+60
 AV_I    EQU     PH+61
 AV_W    EQU     PH+62
-AUYBASE EQU     67
-AUYSELL EQU     AUYBASE-35              ; the sellers' start
-AUYTOP  EQU     AUYBASE-41
-AUYBOT  EQU     AUYBASE+13
-AUUP    EQU     41
+AUYBASE EQU     61
+AUUP    EQU     35
 AUDOWN  EQU     13
+AUYTOP  EQU     AUYBASE-AUUP
+AUYSELL EQU     AUYTOP+6                ; the sellers' start
+AUYBOT  EQU     AUYBASE+AUDOWN
+AULBLY  EQU     AUYBOT+1                ; the labels' line
+AUMONY  EQU     AULBLY+13               ; money: seats 0 and 2; 1 and 3 six under
+AUUNIY  EQU     AUMONY+12               ; units
 AULX    EQU     6                       ; the dotted lines
 AULW    EQU     52
-AUBARB  EQU     80                      ; the status bars' foot
-AUBARM  EQU     50                      ; 2 lines a unit, 25 units at most
+AUBARB  EQU     AUYBOT                  ; the status bars' foot
+AUBARM  EQU     48                      ; 2 lines a unit, 24 units at most
 
         IF      AV_W >= PH+67
         ERROR   "the auction's variables run past the phases' union"
@@ -660,26 +665,13 @@ alt6:   LDI     LO(AV_LBLL)
         STR     RA
         FJMP    au_lbldraw
 
-; au_lbldraw: seat RC's label, R9 (0 the word, 1 none, else the price).
-        RFIT    110
+; au_lbldraw: seat RC's label, R9 (0 the word, 1 none, else the price), big,
+; in its field (au_field).
+        RFIT    86
 au_lbldraw:
-        GLO     RC                      ; its field: row 7, 4 cells
-        FCALL   au_inv
         GLO     RC
-        SHL
-        SHL
-        ORI     70H
-        PUTV    AV_W
-        HOT     TX_CURSOR
-        LDI     4
-        PLO     RB
-ald1:   LDI     ' '
-        HOT     TX_PUTC
-        DEC     RB
-        GLO     RB
-        BNZ     ald1
-        GETV    AV_W
-        HOT     TX_CURSOR
+        FCALL   au_field
+        PUTV    AV_W                    ; (AV_W: the text's mode)
         GHI     R9
         BNZ     ald3
         GLO     R9
@@ -696,12 +688,57 @@ ald2:   LDI     LO(AV_ROLE)             ; BUY / SELL
         BR      ald2b
 ald2a:  LDI     W_BUY
 ald2b:  FCALL   str_get
-        LDR     R8, TXT
-        FCALL   d_puts
-        BR      ald9
-ald3:   LDI     4                       ; the price, 4 cells
-        FCALL   put_num
-ald9:   OPN     TOP_INV_OFF
+        PARS
+        GETV    AV_LBLI                 ; (RC is gone: the seat)
+        SHL
+        SHL
+        SHL
+        SHL
+        PD
+        P       AULBLY
+        GETV    AV_W
+        PD
+        FJMP    lb_ptxt
+ald3:   GLO     RC                      ; the price, right in the field
+        SHL
+        SHL
+        SHL
+        SHL
+        ADI     16
+        PLO     RC
+        LDI     AULBLY
+        PHI     RC
+        GETV    AV_W
+        FJMP    pt_num
+ald9:   FRET
+
+; au_field: seat D's label field (16 x 12 at x 16i, line AULBLY) blank: black,
+; or white for the odd seats so the four read apart. D = the text's mode.
+        RFIT    62
+au_field:
+        PLO     RB
+        PARS
+        GLO     RB
+        SHL
+        SHL
+        SHL
+        SHL
+        PD
+        P       AULBLY
+        P       16
+        P       12
+        GLO     RB
+        ANI     1
+        BZ      afd1
+        LDI     TM_SET
+        PD
+        GOP     TOP_RECT
+        LDI     TM_CLEAR
+        FRET
+afd1:   LDI     TM_CLEAR
+        PD
+        GOP     TOP_RECT
+        LDI     TM_OR
         FRET
 
 ; au_labels: the labels all again; the store's prices at the arena's ends.
@@ -719,8 +756,9 @@ alb_1:  LDI     0FFH
         FCALL   au_lbltick
 alb_9:  FRET
 
-; au_money: money and (goods) units, small, under the players (mekkogx au_money).
-        RFIT    216
+; au_money: money and (goods) units, small, under the players (mekkogx
+; au_money): every number in full; money on two lines, units on a third.
+        RFIT    232
 au_money:
         GETV    AV_MALL
         BNZ     am0
@@ -732,9 +770,9 @@ am0:    SETV    AV_MALL, 0
         HOLD1
         PARS
         P       0
-        P       96
+        P       AUMONY
         P       64
-        P       12
+        P       AUUNIY+5-AUMONY
         P       TM_CLEAR
         GOP     TOP_RECT
         LDI     0
@@ -746,12 +784,23 @@ am1:    LDR     R9, S_PLAYERS+PL_MONEY
         INC     R8
         LDN     R8
         PHI     R9
+        GETV    AV_I                    ; its right edge; seats 1 and 3 lower
+        ADI     LO(am_x)
+        PLO     R8
+        LDI     HI(am_x)
+        ADCI    0
+        PHI     R8
+        LDN     R8
+        PLO     RC
         GETV    AV_I
-        FCALL   am_x
-        LDI     96
-        PHI     RC
+        ANI     1
+        BZ      am1a
+        LDI     AUMONY+6
+        BR      am1b
+am1a:   LDI     AUMONY
+am1b:   PHI     RC
         LDI     TM_OR|TM_SHORT
-        FCALL   pt_numk
+        FCALL   pt_num
         GETV    AV_KIND                 ; units, in a goods auction once it goes
         XRI     2
         BNZ     am2
@@ -761,7 +810,6 @@ am1:    LDR     R9, S_PLAYERS+PL_MONEY
         LDR     R9, S_PLAYERS+PL_GOODS
         GETV    AV_I
         FCALL   pl_byte
-        STR     R2
         GETV    AV_GOOD
         STR     R2
         GLO     R8
@@ -775,48 +823,24 @@ am1:    LDR     R9, S_PLAYERS+PL_MONEY
         LDI     0
         PHI     R9
         GETV    AV_I
-        FCALL   am_x
-        LDI     102
-        PHI     RC
-        LDI     TM_OR|TM_SHORT
-        FCALL   pt_numk
-am2:    GETV    AV_I
-        ADI     1
-        STR     RA
-        XRI     4
-        BNZ     am1
-        LDI     16
-        FCALL   au_zeb8
-        LDI     48
-        FCALL   au_zeb8
-        HOLD0
-am9:    FRET
-; au_inv: odd seats' fields (1, 3) inverse, so the four read apart: row 7
-; in the text's inverse, row 8 (au_zeb8: the field at x D) by XOR.
-        RFIT    56
-au_inv: SHR
-        BNF     az9
-        OPN     TOP_INV_ON
-        FRET
-au_zeb8:
-        PLO     RB
-        PARS
-        GLO     RB
-        PD
-        P       96
-        P       16
-        P       12
-        P       TM_XOR
-        GOP     TOP_RECT
-az9:    FRET
-; am_x: RC.0 = the right edge of seat D's field.
-am_x:   SHL
+        SHL
         SHL
         SHL
         SHL
         ADI     16
         PLO     RC
-        FRET
+        LDI     AUUNIY
+        PHI     RC
+        LDI     TM_OR|TM_SHORT
+        FCALL   pt_num
+am2:    GETV    AV_I
+        ADI     1
+        STR     RA
+        XRI     4
+        BNZ     am1
+        HOLD0
+am9:    FRET
+am_x:   DB      20, 34, 50, 64
 
 ; ---- the clock (mekkogx au_ticks_now, au_timebar): a line a tick left ----------
         RFIT    134

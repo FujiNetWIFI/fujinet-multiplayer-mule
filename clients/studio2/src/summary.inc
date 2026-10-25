@@ -16,7 +16,7 @@ SU_Y    EQU     PH+10
 GO_STG  EQU     PH+11                   ; game over: 0 the founder, 1 the table
 SU_LANDL EQU    PH+12                   ; a seat's land value
 SU_LANDH EQU    PH+13
-SUBANDY EQU     19                      ; band i's top: 19 + 18i
+SUBANDY EQU     19                      ; band i's top: 19 + 19i
 
 ; su_rank: the seats in rank order (rank 1 first), anyone unranked last.
         RFIT    115
@@ -138,7 +138,7 @@ sb0:    FJMP    su_table
 sb1:    FJMP    su_walkin
 
 ; su_walkin: actor i walks in for band i.
-        RFIT    196
+        RFIT    199
 su_walkin:
         SETV    SU_I, 0
 sb2:    GETV    SU_I
@@ -165,7 +165,9 @@ sb2:    GETV    SU_I
         FPUT    FXD2
         LDI     64
         FPUT    FXX
-        LDI     100
+        GLO     RC                      ; (odd bands: from an odd line)
+        ANI     1
+        ADI     100
         FPUT    FXY
         GETV    SU_I                    ; its script
         SHL
@@ -198,14 +200,14 @@ su_seat:
 ; the walk-ins: in 30 frames apart, left along the bottom, up to the band
 su_walks:
         DW      su_w0, su_w1, su_w2, su_w3
-su_w0:  DB      FX_WAIT, 1, FX_MOVE, -1, 0, 3, 63, FX_MOVE, 0, -2, 3, 40, FX_END
-su_w1:  DB      FX_WAIT, 30, FX_MOVE, -1, 0, 3, 63, FX_MOVE, 0, -2, 3, 31, FX_END
+su_w0:  DB      FX_WAIT, 1, FX_MOVE, -1, 0, 3, 63, FX_MOVE, 0, -2, 3, 41, FX_END
+su_w1:  DB      FX_WAIT, 30, FX_MOVE, -1, 0, 3, 63, FX_MOVE, 0, -2, 3, 32, FX_END
 su_w2:  DB      FX_WAIT, 60, FX_MOVE, -1, 0, 3, 63, FX_MOVE, 0, -2, 3, 22, FX_END
 su_w3:  DB      FX_WAIT, 90, FX_MOVE, -1, 0, 3, 63, FX_MOVE, 0, -2, 3, 13, FX_END
 
 ; su_table: the table (mekkogx su_table): the players standing at their
 ; bands, the title, the headings, the numbers; the summary asks for 5.
-        RFIT    222
+        RFIT    228
 su_table:
         SETV    SU_DRAWN, 1
         FCALL   fx_stop_all
@@ -223,8 +225,8 @@ stb1:    PARS                            ; band i's player, standing
         ADI     IM_STAND_MECHTRON
         PD
         P       1
-        FCALL   su_bandy
-        ADI     1
+        FCALL   su_bandy                ; a line over the band: clear of its numbers
+        SMI     1
         PD
         P       TM_OR
         GOP     TOP_SPRITE
@@ -241,7 +243,7 @@ stb1:    PARS                            ; band i's player, standing
         LDI     B_SUMHEAD               ; CASH LAND GOOD, small, over their fields
         FCALL   str_get
         PARS
-        P       8
+        P       6
         P       13
         P       TM_OR|TM_SHORT
         FCALL   lb_ptxt
@@ -263,7 +265,7 @@ stb9:    FRET
 
 ; su_bandy: D = band SU_I's top line.
 su_bandy:
-        GETV    SU_I
+        GETV    SU_I                    ; 19i = 18i + i
         SHL
         SHL
         SHL
@@ -271,6 +273,9 @@ su_bandy:
         GETV    SU_I
         ADD
         SHL
+        STR     R2
+        GETV    SU_I
+        ADD
         ADI     SUBANDY
         FRET
 
@@ -284,11 +289,11 @@ sv1:    FCALL   su_bandy
         FCALL   su_seat
         PUTV    SU_K
         PARS                            ; the band's numbers cleared
-        P       8
+        P       2
         GETV    SU_Y
         PD
-        P       56
-        P       18
+        P       62
+        P       19
         P       TM_CLEAR
         GOP     TOP_RECT
         PARS                            ; the name
@@ -330,7 +335,7 @@ sv3:    GOP     TOP_PTEXT
         INC     R8
         LDN     R8
         PHI     R9
-        LDI     24
+        LDI     22
         FCALL   sv_small
         GETV    SU_K                    ; land
         FCALL   su_landof
@@ -338,7 +343,7 @@ sv3:    GOP     TOP_PTEXT
         FCALL   sv_small
         GETV    SU_K                    ; goods: each good's units at its price
         FCALL   su_goodsof
-        LDI     62
+        LDI     64
         FCALL   sv_small
         GETV    SU_I
         ADI     1
@@ -348,14 +353,15 @@ sv3:    GOP     TOP_PTEXT
         HOLD0
         FRET
 
-; sv_small: R9 small (4 characters), ending at x D, on the band's second line.
+; sv_small: R9 small, in full, ending at x D, under the band's name (three
+; 5-digit fields fit with 2 pixels between).
 sv_small:
         PLO     RC
         GETV    SU_Y
-        ADI     12
+        ADI     13
         PHI     RC
         LDI     TM_OR|TM_SHORT
-        FJMP    pt_numk
+        FJMP    pt_num
 
 ; su_landof: R9 = seat D's land: 500 a plot, the outfit + 35 for each
 ; M.U.L.E. on one (the server's ScoreOf).
@@ -576,17 +582,23 @@ stt3:   FCALL   msg_tick
 stt9:   FRET
 
 ; ---- game over: FIRST FOUNDER, then the final table and the rating ----------------
-        RFIT    165
+        RFIT    38
 gameover_enter:
         SETV    ANIM, AN_NONE
         FCALL   fx_stop_all
-        FCALL   scr_clear
-        SETV    SCRNOW, SCR_FOUND
         SETV    GO_STG, 0
         SETV    MSGROW, 9
         SETV    MSG1, 1
         FCALL   su_rank
-        LDI     B_FIRST                 ; FIRST, the winner, FOUNDER
+        FCALL   go_founder
+        LDI     SND_FOUND
+        FJMP    snd_play
+; go_founder: FIRST, the winner, FOUNDER; the others down the left.
+        RFIT    131
+go_founder:
+        FCALL   scr_clear
+        SETV    SCRNOW, SCR_FOUND
+        LDI     B_FIRST
         FCALL   str_get
         LDI     1
         FCALL   text_center
@@ -630,8 +642,7 @@ ge1:    PARS
         STR     RA
         XRI     4
         BNZ     ge1
-        LDI     SND_FOUND
-        FJMP    snd_play
+        FRET
 
 ; go_name: the name at R8 (8 at most) centred on row D.
         RFIT    43
@@ -655,12 +666,19 @@ gn2:    GLO     R9
         GETV    T0
         FJMP    text_center
 
-; gameover_tick: the winner pulses; after 540, the table and the rating.
-        RFIT    118
+; gameover_tick: the winner pulses; after 540, the table and the rating. Then
+; 5 goes back to the founder (GO_STG 2) and to the table again.
+        RFIT    154
 gameover_tick:
         GETV    GO_STG
-        BNZ     gt5
-        PARS                            ; the winner, in the middle, pulsing
+        XRI     1
+        BNZ     gt0
+        FCALL   msg_tick
+        FCALL   go_key
+        BNZ     gt9
+        SETV    GO_STG, 2
+        FJMP    go_founder
+gt0:    PARS                            ; the winner, in the middle, pulsing
         P       0
         SETV    SU_I, 0
         FCALL   su_seat
@@ -681,7 +699,12 @@ gameover_tick:
 gt1:    LDI     TM_OR
 gt2:    PD
         GOP     TOP_SPRITE
-        FCALL   pe_now
+        GETV    GO_STG                  ; back to the founder: 5 the table
+        BZ      gt2a
+        FCALL   go_key
+        BNZ     gt9
+        BR      gt3
+gt2a:   FCALL   pe_now
         GHI     R9
         SMI     HI(540)
         BNF     gt9
@@ -696,8 +719,11 @@ gt3:    SETV    GO_STG, 1
         SMI     7
         BDF     gt9
         FJMP    go_rating
-gt5:    FJMP    msg_tick
 gt9:    FRET
+; go_key: D = 0 if 5 went down.
+go_key: GETV    KEDGE
+        XRI     K_FIRE
+        FRET
 
 ; go_rating: "OVERALL, " and the rating, scrolling.
         RFIT    36

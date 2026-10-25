@@ -369,6 +369,7 @@ fl2:    INC     R9                      ; done: on past n, back
         FJMP    fx_fetch
 
 ; ---- the transport ship (mekkogx fx.c), on the map: the store is plot 22 ----
+        DFIT    100
 SHIPS_SEGEND:                           ; (data from here: no page rules)
 SHIPY   EQU     MAPY0+31                ; the hull's top, over the store
 DOCKX   EQU     28                      ; the store's plot
