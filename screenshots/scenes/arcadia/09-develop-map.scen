@@ -1,0 +1,7 @@
+test 3 0
+wait 60
+hold right 96
+hold down 40
+hold left 6
+wait 30
+snap 09-develop-map

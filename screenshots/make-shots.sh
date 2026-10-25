@@ -84,6 +84,7 @@ run() {
     intv) shoot intv "$ROOT/clients/intv" python3 tools/intvsim.py mule.rom ;;
     astrocade) shoot astrocade "$ROOT/clients/astrocade" python3 tools/astrosim.py ;;
     channelf) shoot channelf "$ROOT/clients/channelf" python3 tools/chfsim.py ;;
+    arcadia) shoot arcadia "$ROOT/clients/arcadia" python3 tools/arcsim.py ;;
     atari-2600) a2600 ;;
     o2) o2 ;;
     *) echo "unknown target $1"; return 1 ;;
@@ -91,7 +92,7 @@ run() {
 }
 
 MAME_DEFAULT=${MAME:-$HOME/Workspace/mame}
-TARGETS=${*:-apple2 coco msdos-cga msdos-pcjr adam msx atari lynx nes sms h89 intv astrocade channelf}
+TARGETS=${*:-apple2 coco msdos-cga msdos-pcjr adam msx atari lynx nes sms h89 intv astrocade channelf arcadia}
 for t in $TARGETS; do
     run "$t" &
 done

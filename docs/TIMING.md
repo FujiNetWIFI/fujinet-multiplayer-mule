@@ -152,7 +152,7 @@ The original's countdown tick runs every jiffy from the VBI (`$5D07` calls `$5E9
 | Where it runs | development (`$67E3`), land auction and trading (`$9E14`), declare (`$656B`). Not the land grant | C |
 | At 0 | voices 1 and 2 silenced, the tick disabled | C |
 
-Every client plays it this way (MekkoGX `map.c` `bar_tick`, the Intellivision's `map.bas` `bar_tick`, the Astrocade's `mappg.inc` `XBARTICK`, the Channel F's `map.inc` `BARTICK`, the 2600's `devbar.inc` and `auction.asm`, the web's `barTick`).
+Every client plays it this way (MekkoGX `map.c` `bar_tick`, the Intellivision's `map.bas` `bar_tick`, the Astrocade's `mappg.inc` `XBARTICK`, the Channel F's `map.inc` `BARTICK`, the 2600's `devbar.inc` and `auction.asm`, the Odyssey 2's `tbar.inc`, the Arcadia's `fixb.inc` `BARTICK`, the web's `barTick`).
 
 ## Where the server departs from these timings
 
