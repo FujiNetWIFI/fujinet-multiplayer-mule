@@ -41,7 +41,7 @@ RT_SEGEND:
         INCLUDE "town.inc"
         INCLUDE "auction.inc"
         INCLUDE "auction2.inc"
-        INCLUDE "phstub.inc"
+        INCLUDE "prod.inc"
         RFIT    80
         INCLUDE "endpoint.inc"
 FIX_SEGEND:

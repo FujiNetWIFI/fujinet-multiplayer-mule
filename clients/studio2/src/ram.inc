@@ -98,6 +98,7 @@ BARO    EQU     V_APP+40H       ; the time bar: 0 down the map, 1 across the tow
 BARMAX  EQU     V_APP+41H       ; its length
 BARTOPV EQU     V_APP+42H       ; down an edge: its top line
 MSG1    EQU     V_APP+43H       ; the message has one row (MSGROW), not two
+SEED    EQU     V_APP+44H       ; rand8's
 ; the actors (fx.inc): an array of 4 a field
 FXST    EQU     V_APP+66H
 FXX     EQU     FXST+4

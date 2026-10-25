@@ -254,8 +254,8 @@ mdp7:   FCALL   mp_stamp2
         SMI     9
         BNF     mdp8
         LDI     8-9
-mdp8:   ADI     9+IM_DOTS1-1
-        FCALL   mp_stamp3
+mdp8:   ADI     9                       ; n (1-8)
+        FJMP    mp_dots
 mdp9:   FRET
 
 ; mp_stamp / 1 / 2 / 3: picture D, ORed at the plot's corner / 3 lines
@@ -295,6 +295,68 @@ mps2:   PD
         P       TM_OR
         GOP     TOP_STAMP
         FRET
+
+; mp_dots: D dots (1-8) in rows of two over the icon, the terrain under
+; them cleared: dotted rects (the cart's dot pattern lights the even
+; pixels of every other line; a plot's line 3 is a multiple of 4).
+        RFIT    152
+mp_dots:
+        PLO     RB                      ; RB.0 = n, RB.1 = the full rows
+        PARS
+        GETV    MPX
+        ADI     1
+        PD
+        GETV    MPY
+        ADI     2
+        PD
+        P       5
+        P       8
+        P       TM_CLEAR
+        GOP     TOP_RECT
+        LDI     0
+        PHI     RB
+mpd1:   GLO     RB
+        SMI     2
+        BNF     mpd2
+        PLO     RB
+        GHI     RB
+        ADI     1
+        PHI     RB
+        BR      mpd1
+mpd2:   GHI     RB
+        BZ      mpd3
+        PARS
+        GETV    MPX
+        ADI     1
+        PD
+        GETV    MPY
+        ADI     3
+        PD
+        P       4
+        GHI     RB
+        SHL
+        SMI     1
+        PD
+        P       TM_OR|TP_DOT
+        GOP     TOP_RECT
+mpd3:   GLO     RB                      ; the rest
+        BZ      mpd9
+        PARS
+        GETV    MPX
+        ADI     1
+        PD
+        GHI     RB
+        SHL
+        STR     R2
+        GETV    MPY
+        ADI     3
+        ADD
+        PD
+        P       2
+        P       1
+        P       TM_OR|TP_DOT
+        GOP     TOP_RECT
+mpd9:   FRET
 
 ; mp_terrain / mp_owner / mp_mule / mp_prod: plot D's, from the state.
         RFIT    111
