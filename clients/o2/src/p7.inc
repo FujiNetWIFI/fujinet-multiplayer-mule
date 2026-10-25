@@ -497,6 +497,7 @@ on_state:
     mov a,r6
     movx @r0,a
     call scr_text
+    call su_cue
     clr a
     mov r0,#SU_COL
     movx @r0,a
@@ -879,5 +880,26 @@ ln_next:
 pw24:                           ; -10^6 .. -10^1, 24 bits, low byte first
     db 0C0h,0BDh,0F0h, 060h,079h,0FEh, 0F0h,0D8h,0FFh
     db 018h,0FCh,0FFh, 09Ch,0FFh,0FFh, 0F6h,0FFh,0FFh
+
+; su_cue: a new phase's sound (mekkogx status.c): the summary's ALERT, if
+; it waits on our button; game over's FOUNDER. Clobbers A, r0, r1.
+su_cue:
+    mov r0,#PHS
+    movx a,@r0
+    xrl a,#PHASE_GAMEOVER
+    jz suc_go
+    xrl a,#PHASE_GAMEOVER!PHASE_SUMMARY
+    jnz suc_x
+    mov r0,#MYSEAT
+    movx a,@r0
+    jb7 suc_x
+    mov a,#SND_ALERT
+    jmp suc_b
+suc_go:
+    mov a,#SND_FOUNDER
+suc_b:
+    FCALL beep
+suc_x:
+    ret
 
     PAGE_TAIL

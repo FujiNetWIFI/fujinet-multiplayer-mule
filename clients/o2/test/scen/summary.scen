@@ -6,6 +6,7 @@ press fire          # ready
 wait 90
 snap s0             # STARTING IN n
 until 3C 7 3000     # the summary
+until 7E 135 1500   # (FXSH 87h: the ship has landed)
 wait 120
 snap s1             # TOTAL
 press right

@@ -2,10 +2,11 @@
 ; screen. Phases without a page of their own yet show their number here.
 ;
 ;   0  LOBBY IRATA
-;   1  1 ALICE      READY       a seat a line, in the seat's colour
-;   ..
+;   1  1 ALICE      READY  @    a seat a line, in the seat's colour, its
+;   ..                          species' figure at the end
 ;   5  FIRE: READY              the button toggles our ready; STARTING IN 12
-;                               once the countdown runs
+;                               once the countdown runs; every other 2 s
+;                               STICK: HUMANOID, left and right our species
 
 E_STATE equ 0
 E_TICK  equ 1
@@ -42,6 +43,37 @@ my_flags:
     jmp st_byte
 mf_none:
     clr a
+    ret
+
+; my_spec: A = our species, as last sent or as the state said (the reply
+; window is only ours while a state is read: the ticks keep it here).
+; Clobbers r0.
+my_spec:
+    mov r0,#LB_SPEC
+    movx a,@r0
+    anl a,#7
+    ret
+
+; lb_myspec: (a state) our species, the state's, unless we have sent one.
+; Clobbers A, r0, r2, r3, r6.
+lb_myspec:
+    mov r0,#LB_SPEC
+    movx a,@r0
+    jb7 lms_st
+    ret
+lms_st:
+    mov r0,#MYSEAT
+    movx a,@r0
+    jb7 lms_x
+    call pl_off
+    mov a,r2
+    add a,#PL_SPECIES
+    mov r2,a
+    call st_byte
+    anl a,#7
+    mov r0,#LB_SPEC
+    movx @r0,a
+lms_x:
     ret
 
 ; pl_off: r3:r2 = the offset of player A in the state. Clobbers A, r6.
@@ -81,15 +113,39 @@ tk_dev:
     mov a,#ACT_BEGIN
     jmp tk_send
 tk_lobby:
-    mov r0,#JOYEV
-    movx a,@r0
-    anl a,#J_FIRE
-    jz tk_x
     mov r0,#MYSEAT
     movx a,@r0
     jb7 tk_x                    ; watching
-    call my_flags
-    anl a,#PF_READY
+    mov r0,#JOYEV
+    movx a,@r0
+    mov r5,a
+    anl a,#J_LEFT|J_RIGHT
+    jz tk_fire
+    mov a,r5                    ; our species, one on or back
+    anl a,#J_RIGHT
+    mov r5,#1
+    jnz tk_sp
+    mov r5,#7
+tk_sp:
+    call my_spec
+    add a,r5
+    anl a,#7
+    mov r0,#LB_SPEC
+    movx @r0,a
+    mov r0,#ACTARG
+    movx @r0,a
+    inc r0
+    clr a
+    movx @r0,a
+    mov a,#ACT_SPEC
+    jmp tk_send
+tk_fire:
+    mov a,r5
+    anl a,#J_FIRE
+    jz tk_x
+    mov r0,#LB_CD               ; ready, as the last state said
+    movx a,@r0
+    anl a,#1
     jnz tk_unr
     mov a,#ACT_READY
     jmp tk_send
@@ -115,6 +171,25 @@ s_open:   db "---",0
 s_phase:  db "PHASE",0
 s_startn: db "STARTING IN",0
 s_watch:  db "WATCHING GAME",0
+s_stick:  db "STICK:",0
+
+; lb_spname: species A's name into LINEBUF from column 7. Clobbers A, r0,
+; r1.
+lb_spname:
+    add a,#spn_tab&0FFh
+    movp a,@a
+    mov r0,#LINEBUF+7
+    jmp lb_at
+spn_tab:
+    db sp0&0FFh, sp1&0FFh, sp2&0FFh, sp3&0FFh, sp4&0FFh, sp5&0FFh, sp6&0FFh, sp7&0FFh
+sp0: db "MECHTRON",0
+sp1: db "GOLLUMER",0
+sp2: db "PACKER",0
+sp3: db "BONZOID",0
+sp4: db "SPHEROID",0
+sp5: db "FLAPPER",0
+sp6: db "LEGGITE",0
+sp7: db "HUMANOID",0
 
 ; ===========================================================================
     org 0C00h
@@ -172,65 +247,6 @@ ld2_one:
     inc r0
     ret
 
-; ===========================================================================
-    org 0D00h
-
-; on_state: a state has come. A new phase gets a fresh screen.
-on_state:
-    mov r0,#PHS
-    movx a,@r0
-    mov r6,a
-    mov r0,#LASTPH
-    movx a,@r0
-    xrl a,r6
-    jz os_same
-    mov a,r6
-    movx @r0,a
-    call scr_text
-os_same:
-    mov r0,#PHS
-    movx a,@r0
-    jz os_lobby
-    ; not ours: the phase's number
-    call lb_clear
-    mov a,#s_phase&0FFh
-    call lb_str
-    mov r0,#PHS
-    movx a,@r0
-    add a,#'0'
-    mov r0,#LINEBUF+6
-    movx @r0,a
-    mov r4,#2
-    jmp say_line
-os_lobby:
-    mov r0,#DRAWQ               ; drawn by the ticks
-    movx @r0,a
-    ret
-
-; lb_more: the lobby's next line, if a state's are not all drawn: the
-; table, the four seats, the prompt. A line a tick, so a press is never
-; missed while a state draws. Clobbers A, r0-r7.
-lb_more:
-    mov r0,#DRAWQ
-    movx a,@r0
-    mov r5,a
-    add a,#256-6
-    jc lm_x
-    mov a,r5
-    inc a
-    movx @r0,a
-    mov a,r5
-    jz lobby
-    xrl a,#5
-    jz lb_prompt
-    mov a,r5
-    dec a
-    mov r0,#TMP0
-    movx @r0,a
-    jmp seat_line
-lm_x:
-    ret
-
 ; lobby: line 0, LOBBY and the table's name.
 lobby:
     call lb_clear               ; LOBBY <table>   START n
@@ -256,10 +272,87 @@ lb_t:
 lb_td:
     mov r4,#0
     jmp say_line
+; ===========================================================================
+    org 0D00h
+
+; on_state: a state has come. A new phase gets a fresh screen.
+on_state:
+    mov r0,#PHS
+    movx a,@r0
+    mov r6,a
+    mov r0,#LASTPH
+    movx a,@r0
+    xrl a,r6
+    jz os_same
+    mov a,r6
+    movx @r0,a
+    call scr_text
+    mov r0,#LB_SPEC             ; nothing sent yet, no countdown seen
+    mov a,#0FFh
+    movx @r0,a
+    inc r0
+    clr a
+    movx @r0,a
+os_same:
+    mov r0,#PHS
+    movx a,@r0
+    jz os_lobby
+    ; not ours: the phase's number
+    call lb_clear
+    mov a,#s_phase&0FFh
+    call lb_str
+    mov r0,#PHS
+    movx a,@r0
+    add a,#'0'
+    mov r0,#LINEBUF+6
+    movx @r0,a
+    mov r4,#2
+    jmp say_line
+os_lobby:
+    mov r0,#DRAWQ               ; drawn by the ticks
+    movx @r0,a
+    mov r0,#FXSH                ; a game to come: its ship not yet seen
+    movx @r0,a
+    call lb_myspec
+    jmp lb_cd
+
+; lb_more: the lobby's next line, if a state's are not all drawn: the
+; table, the four seats, the prompt. A line a tick, so a press is never
+; missed while a state draws. Clobbers A, r0-r7.
+lb_more:
+    mov r0,#DRAWQ
+    movx a,@r0
+    mov r5,a
+    add a,#256-7
+    jc lm_x
+    mov a,r5
+    inc a
+    movx @r0,a
+    mov a,r5
+    jnz lm_seat
+    jmp lobby
+lm_seat:
+    xrl a,#5
+    jz lb_prompt
+    xrl a,#5!6
+    jnz lm_line
+    jmp lb_figs
+lm_line:
+    mov a,r5
+    dec a
+    mov r0,#TMP0
+    movx @r0,a
+    jmp seat_line
+lm_x:
+    ret
+
 lb_prompt:
     mov r0,#MYSEAT
     movx a,@r0
     jb7 lb_watch
+    mov r1,#FRAMES              ; every other 2 s: STICK: <our species>
+    mov a,@r1
+    jb7 lb_stick
     mov r0,#HCD+1               ; the countdown: STARTING IN <seconds>
     movx a,@r0
     jb7 lb_rdy                  ; -1: not running
@@ -267,8 +360,9 @@ lb_prompt:
     mov r4,#5
     jmp say_line
 lb_rdy:
-    call my_flags               ; ready? the prompt says the other
-    anl a,#PF_READY
+    mov r0,#LB_CD               ; ready? the prompt says the other
+    movx a,@r0
+    anl a,#1
     mov r4,#5
     mov r5,#s_ready&0FFh
     jz lb_say
@@ -280,6 +374,14 @@ lb_watch:
     mov r4,#5
     mov a,#s_watch&0FFh
     jmp say
+lb_stick:
+    call lb_clear
+    mov a,#s_stick&0FFh
+    call lb_str
+    call my_spec
+    call lb_spname
+    mov r4,#5
+    jmp say_line
 
 ; seat_line: line 1+TMP0 for seat TMP0: its number, its name, READY or CPU
 ; or nothing; "---" for an empty seat. In the seat's colour.
@@ -348,5 +450,134 @@ sl_col:
 
 seatcol:
     SEATCOL
+
+; ===========================================================================
+    org 0E00h
+
+; lb_cd: the countdown begun since the last state: a seated player called
+; to the stick (ALERT). LB_CD keeps whether it runs, and our ready (bit 0:
+; the ticks may not read the state). Clobbers A, r0-r3, r5-r7.
+lb_cd:
+    call my_flags
+    anl a,#PF_READY
+    mov r5,#0
+    jz lc_r
+    inc r5
+lc_r:
+    mov r0,#HCD+1
+    movx a,@r0
+    cpl a
+    anl a,#80h                  ; 80h: counting down
+    mov r6,a
+    mov r0,#LB_CD
+    movx a,@r0
+    cpl a
+    anl a,r6                    ; and not at the last state
+    xch a,r6
+    orl a,r5
+    movx @r0,a
+    mov a,r6
+    jz lc_x
+    mov r0,#MYSEAT
+    movx a,@r0
+    jb7 lc_x
+    mov a,#SND_ALERT
+    FCALL beep
+lc_x:
+    ret
+
+; lb_figs: each seat's figure at the end of its line, its species' (ours as
+; last sent), in its colour; none for an empty seat. Clobbers A, r0-r7.
+lb_figs:
+    mov r2,#SPRTAB>>8
+    mov a,#SPRTAB&0FFh
+    call poke_at
+    mov r7,#0
+lf_l:
+    mov a,r7
+    call pl_off
+    call st_byte                ; its name's first letter: none, no player
+    mov r5,a
+    mov a,r2
+    add a,#PL_SPECIES
+    mov r2,a
+    call st_byte
+    anl a,#7
+    mov r4,a
+    mov r0,#MYSEAT
+    movx a,@r0
+    xrl a,r7
+    jnz lf_sp
+    mov r0,#LB_SPEC
+    movx a,@r0
+    jb7 lf_sp
+    mov r4,a
+lf_sp:
+    call poke_sel
+    mov a,r5
+    jz lf_none
+    mov a,r7                    ; Y = 66 + 36 k: its line's
+    rl a
+    rl a
+    mov r6,a
+    rl a
+    rl a
+    rl a
+    add a,r6
+    add a,#66
+    call poke_b
+    mov a,#148
+    call poke_b
+    mov a,r7
+    add a,#figcol&0FFh
+    movp a,@a
+    call poke_b
+    call lf_shape
+    jmp lf_n
+lf_none:
+    mov a,#0F8h
+    call poke_b
+    clr a
+    call poke_b
+    call poke_b
+lf_n:
+    inc r7
+    mov a,r7
+    xrl a,#4
+    jnz lf_l
+    ret
+
+; lf_shape: species r4's figure into sprite r7's shape. Clobbers A, r0, r1,
+; r6.
+lf_shape:
+    mov a,r4
+    rl a
+    rl a
+    rl a
+    add a,#figs&0FFh
+    mov r1,a
+    mov a,r7
+    rl a
+    rl a
+    rl a
+    add a,#vdc_spr0_shape
+    mov r0,a
+    mov a,#P1_VDC
+    outl p1,a
+    mov r6,#8
+lfs_l:
+    mov a,r1
+    movp a,@a
+    movx @r0,a
+    inc r0
+    inc r1
+    djnz r6,lfs_l
+    mov a,#P1_MAIN
+    outl p1,a
+    ret
+figcol:                         ; a sprite's colour, attribute bits 3-5
+    db C_RED<<3, C_GREEN<<3, C_TAN<<3, C_VIOLET<<3
+figs:
+    FIGS_STAND
 
     PAGE_TAIL

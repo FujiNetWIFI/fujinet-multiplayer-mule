@@ -119,50 +119,24 @@ gc_dn:
 
     include "sayq.inc"
 
-; gr_dep: the title and message: the ship leaving (round 1, the phase's
-; first 700 jiffies: mekkogx gr_depart), then the grant. Said when that
-; changes. Clobbers A, r0, r5-r7.
+; gr_dep: the grant's title and message, said once (GR_DEP 0FFh before),
+; and a seated player called to the stick. (The ship leaving before round
+; 1's is page 15's.) Clobbers A, r0, r1, r5-r7.
 gr_dep:
-    call dep_now
-    mov r5,a
     mov r0,#GR_DEP
     movx a,@r0
-    xrl a,r5
     jz gd_x
-    mov a,r5
+    clr a
     movx @r0,a
-    jz gd_grant
-    SAY T_SHIP, L_MAP, 1, C_WHITE
-    SAY M_DEPART, L_MAP+1, 2, C_WHITE
-    ret
-gd_grant:
+    mov r0,#MYSEAT
+    movx a,@r0
+    jb7 gd_say
     mov a,#SND_ALERT
     FCALL beep
+gd_say:
     SAY T_GRANT, L_MAP, 1, C_WHITE
     SAY M_SELECT, L_MAP+1, 2, C_WHITE
 gd_x:
-    ret
-
-; dep_now: A = 1 while the ship leaves, else 0. Clobbers r0.
-dep_now:
-    mov r0,#RND
-    movx a,@r0
-    xrl a,#1
-    jnz dn_no
-    mov r0,#HPE+1               ; elapsed < 700 ($2BC)
-    movx a,@r0
-    add a,#256-2
-    jnc dn_yes
-    jnz dn_no
-    mov r0,#HPE
-    movx a,@r0
-    add a,#256-0BCh
-    jc dn_no
-dn_yes:
-    mov a,#1
-    ret
-dn_no:
-    clr a
     ret
 
 ; ===========================================================================
@@ -547,7 +521,7 @@ gt_2:
     mov a,#1                    ; hold the cursor there until the server
     mov r0,#GR_CLD              ; answers
     movx @r0,a
-    mov a,#SND_SELECT
+    mov a,#SND_BUY
     FCALL beep
 
     mov a,r4

@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${OUT:-$HERE/build}"
 ASL="${ASL:-$HOME/asl/asl}"
 P2BIN="${P2BIN:-$HOME/asl/p2bin}"
-NPAGES=15
+NPAGES=16
 mkdir -p "$OUT"
 
 python3 "$HERE/tools/checkflags.py" "$HERE"/src/*.inc

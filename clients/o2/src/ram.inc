@@ -58,6 +58,15 @@ PICK    equ 037h                ; the name picker's letter
 NAMEN   equ 038h                ; its length
 SEL     equ 039h                ; a list's selection
 NTBL    equ 03Ah                ; tables listed
+; the lobby's (p3.inc), over the boot's
+LB_SPEC equ 036h                ; our species as last sent (0FFh: the state's)
+LB_CD   equ 037h                ; 80h the countdown ran at the last state, 1 our ready
+; the time bar (tbar.inc), over the boot's: the auctions, the development
+TB_U    equ 036h                ; units left (ticks, PTU); 0 none
+TB_PER  equ 037h                ; frames a unit
+TB_CNT  equ 038h                ; frames to the next unit
+TB_SEG  equ 039h                ; units a segment of the bar (0: no bar)
+TB_TK   equ 03Ah                ; frames to the next tick; bit 7 the tock's
 TMP0    equ 03Bh                ; a loop's index across calls that keep nothing
 ; the state's header, kept (HOT): what the per-frame code reads
 PHS     equ 03Ch                ; the phase
@@ -116,11 +125,11 @@ SAYA    equ 061h                ; SAY_SIZE each: SAY_* below
 SAYB    equ 066h
 SV_PTR  equ 06Bh                ; the string being said: its offset (0 done)
 SV_PG   equ 06Ch                ; and its data page
-; the production phase (p4.inc)
+; the production phase (p15.inc)
 PR_WAIT equ 06Dh                ; frames the colony event stays up
 PR_EV   equ 06Eh                ; the event (CE_*), its plot
 PR_PLOT equ 06Fh
-GR_DEP  equ 070h                ; the grant: 1 the ship leaving, 0 not (gr_dep)
+GR_DEP  equ 070h                ; the grant: 0FFh its words not yet said (gr_dep)
 LAGH    equ 071h                ; LAGB is set (rx_age)
 TICKF   equ 072h                ; FRAMES at the last tick (or state)
 TICKN   equ 073h                ; frames since then, for this tick: a state
@@ -136,7 +145,17 @@ AV_GOOD equ 07Ah                ; the good (0-3)
 AV_LN1  equ 07Bh                ; the sellers' line's Y on screen (0FFh none)
 AV_LN2  equ 07Ch                ; the buyers'
 AV_MSG  equ 07Dh                ; the message on screen (0FFh none, 0 units)
-AV_BAR  equ 07Eh                ; the time bar's segments
+AV_TRD  equ 07Eh                ; units traded so far (a click each)
+; the map's set pieces (p15.inc), over the auction's and the development's
+FX_PC   equ 077h                ; the actor's script: its op (0: stopped)
+FX_X    equ 078h                ; its top left
+FX_Y    equ 079h
+FX_CNT  equ 07Ah                ; frames to the op's end, or a MOVE's step
+FX_N    equ 07Bh                ; a MOVE's steps left
+FX_LP   equ 07Ch                ; a LOOP's count left
+FX_COL  equ 07Dh                ; its colour; FX_HID; its pieces << 6
+FXSH    equ 07Eh                ; the ship's phase: PHS while it shows (page
+                                ; 15), | 80h once it's gone (p2.inc pp_ship)
 DV_PH   equ 07Fh                ; the round whose development is under way
 ; the development (p11.inc, p12.inc), over the grant's ($4D-$57), the
 ; production's ($6D-$70) and the auction's ($77-$7A)
@@ -158,6 +177,7 @@ DV_FR   equ 077h                ; the walking frame
 DV_WP   equ 078h                ; the wampus showing (0FFh none) ...
 DV_WPX  equ 079h                ; ... and where
 DV_WPY  equ 07Ah
+DV_SPEC equ 07Bh                ; our species (its figure: p11.inc dv_fig)
 
 SAY_ID  equ 0                   ; the string (S_*, T_*, M_*; 0 none)
 SAY_LN  equ 1                   ; its first line (L_*), and lines << 4

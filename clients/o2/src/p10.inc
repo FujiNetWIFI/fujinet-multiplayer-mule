@@ -18,10 +18,12 @@ e_none:
 ; title and the line under it, its message the state after (the say queue
 ; holds two: AV_MSG 0FEh meanwhile).
 on_state:
+    call au_trade
     mov r0,#AV_MSG
     movx a,@r0
     xrl a,#0FFh
     jnz os_t
+    call au_cue
     call au_title
     call au_line2
     mov r0,#AV_MSG
@@ -217,8 +219,8 @@ s_buy:  db " BUY"
 ; ===========================================================================
     org 0B00h
 
-; au_units: T2, each seat's units of the good, in its colour. Clobbers A,
-; r0-r7.
+; au_units: T2, each seat's units of the good -- a land auction's: its
+; money -- in its colour. Clobbers A, r0-r7.
 au_units:
     call lb_clear
     mov r7,#0
@@ -229,9 +231,7 @@ au_ul:
     movx a,@r0
     jz au_un
     mov a,r7
-    call pl_goods               ; A = its units
-    mov r4,a
-    mov r5,#0
+    call pl_val
     mov a,r7
     rl a
     rl a
@@ -251,64 +251,9 @@ au_un:
     mov r4,#226
     jmp tx_build
 
-; num4: r5:r4 right-aligned in the four columns from r0 (9999 at most: the
-; low four digits). Clobbers A, r0-r3, r5, r6.
-num4:
-    mov r1,#n4tab&0FFh
-    clr f0
-n4_d:
-    mov r6,#'0'
-n4_s:
-    mov a,r1                    ; r5:r4 + -10^k: no carry, the digit is done
-    movp a,@a
-    add a,r4
-    mov r2,a
-    mov a,r1
-    inc a
-    movp a,@a
-    addc a,r5
-    jnc n4_p
-    mov r5,a
-    mov a,r2
-    mov r4,a
-    inc r6
-    jmp n4_s
-n4_p:
-    mov a,r1
-    xrl a,#n4tab&0FFh           ; (thousands past 9: the low four)
-    jnz n4_q
-    mov a,r6
-    add a,#256-'9'-1
-    jnc n4_q
-    mov r6,#'9'
-n4_q:
-    mov a,r6
-    xrl a,#'0'
-    jnz n4_o
-    jf0 n4_o
-    mov a,#' '
-    jmp n4_w
-n4_o:
-    clr f0
-    cpl f0
-    mov a,r6
-n4_w:
-    movx @r0,a
-    inc r0
-    inc r1
-    inc r1
-    mov a,r1
-    xrl a,#(n4tab+6)&0FFh
-    jnz n4_d
-    mov a,r4
-    add a,#'0'
-    movx @r0,a
-    ret
-n4tab:
-    db 018h,0FCh, 09Ch,0FFh, 0F6h,0FFh              ; -1000 -100 -10
-
-; pl_goods: A = seat A's units of AV_GOOD. Clobbers r0, r2, r3, r6.
-pl_goods:
+; pl_val: r5:r4 = seat A's money (land), or its units of AV_GOOD.
+; Clobbers A, r0, r2, r3, r6.
+pl_val:
     mov r6,a                    ; 29 * seat = 32 s - 2 s - s
     swap a
     rl a
@@ -320,62 +265,112 @@ pl_goods:
     cpl a
     inc a
     add a,r6
-    add a,#ST_PLAYERS+PL_GOODS
-    mov r2,a
-    mov r0,#AV_GOOD
-    movx a,@r0
-    add a,r2
+    add a,#ST_PLAYERS+PL_MONEY
     mov r2,a
     mov r3,#0
-    jmp st_byte
+    mov r0,#AV_KIND
+    movx a,@r0
+    xrl a,#1
+    jz pv_m
+    mov r0,#AV_GOOD
+    movx a,@r0
+    add a,#PL_GOODS-PL_MONEY
+    add a,r2
+    mov r2,a
+    call st_byte
+    mov r4,a
+    mov r5,#0
+    ret
+pv_m:
+    call st_byte
+    mov r4,a
+    inc r2
+    call st_byte
+    mov r5,a
+    ret
 
-; au_bar: the time bar, the grid's right-hand column: a segment for every
-; 14 ticks left (the bidding's 70 fill it), while declaring or bidding.
-; Clobbers A, r0-r3, r6.
+; au_bar: the time bar's units (tbar.inc), as mekkogx au_ticks_now: the
+; tick under way has tickLeft jiffies left, each after lasts 25 (6 while
+; declaring, or idle), and this state is RXAGE old. While declaring or
+; bidding; empty else. Clobbers A, r0-r7.
 au_bar:
-    mov r6,#0
+    mov r0,#TB_SEG              ; a segment: 8 of the bidding's 70 ticks
+    mov a,#8
+    movx @r0,a
     mov r0,#AV_STG
     movx a,@r0
+    mov r7,#6
     xrl a,#STAGE_DECLARE
-    jz ab_t
+    jz ab_dec
     xrl a,#STAGE_DECLARE!STAGE_ACTIVE
-    jnz ab_n
-ab_t:
-    STB ST_AUCTION+AU_TICKS
-    add a,#13
-ab_d:
-    add a,#256-14
-    jnc ab_n
-    inc r6
-    jmp ab_d
-ab_n:
-    mov a,r6
-    add a,#256-6
-    jnc ab_c
-    mov r6,#5
-ab_c:
-    mov r0,#AV_BAR
-    movx a,@r0
-    xrl a,r6
-    jz ab_x
-    mov a,r6
+    jnz ab_none
+    STB ST_AUCTION+AU_FLAGS
+    anl a,#AF_IDLE
+    jnz ab_per
+    mov r7,#25
+    jmp ab_per
+ab_dec:
+    mov r0,#TB_SEG              ; 4 of the declaring's 30
+    mov a,#4
     movx @r0,a
-    add a,#barbits&0FFh
-    movp a,@a
-    mov r6,a
-    mov r2,#(GRIDTAB+27)>>8     ; $E9: the right-hand column's segments
-    mov a,#(GRIDTAB+27)&0FFh
-    call poke_at
-    mov a,r6
-    call poke_b
-    mov r1,#DIRTY
-    mov a,@r1
-    orl a,#DIRTY_GRID
-    mov @r1,a
-ab_x:
+ab_per:
+    mov r0,#RXAGE               ; y = age + per
+    movx a,@r0
+    add a,r7
+    mov r4,a
+    STB ST_AUCTION+AU_TICKLEFT
+    mov r5,a
+    cpl a
+    add a,r4                    ; y > tickLeft: a carry
+    jc ab_div
+    mov a,r4                    ; none gone yet: the next in tickLeft - age
+    cpl a
+    add a,r5
+    inc a
+    add a,r7
+    mov r5,a
+    mov r4,#0
+    jmp ab_put
+ab_div:
+    inc a                       ; x = y - tickLeft: x / per gone, the next in
+    mov r4,#0                   ; per - x mod per
+ab_dl:
+    mov r5,a
+    mov a,r7
+    cpl a
+    inc a
+    add a,r5
+    jnc ab_rem
+    inc r4
+    jmp ab_dl
+ab_rem:
+    mov a,r5
+    cpl a
+    inc a
+    add a,r7
+    mov r5,a
+ab_put:
+    STB ST_AUCTION+AU_TICKS     ; units = ticks - gone, 0 at least
+    mov r2,a
+    mov a,r4
+    cpl a
+    add a,r2
+    jnc ab_none
+    inc a
+    mov r0,#TB_U
+    movx @r0,a
+    mov r0,#TB_PER
+    mov a,r7
+    movx @r0,a
+    mov r0,#TB_CNT
+    mov a,r5
+    movx @r0,a
     ret
-barbits:                        ; rows 1-5, from the bottom up
-    db 0, 20h, 30h, 38h, 3Ch, 3Eh
+ab_none:
+    clr a
+    mov r0,#TB_U
+    movx @r0,a
+    ret
 
 ; ===========================================================================
     org 0C00h
@@ -482,10 +477,10 @@ ami_land:
 ami_x:
     ret
 ami_act:
-    mov r0,#AV_KIND
+    mov r0,#AV_KIND             ; land: each bidder's money
     movx a,@r0
     xrl a,#2
-    jnz ami_none
+    jnz ami_units
     mov r0,#AV_STG
     movx a,@r0
     xrl a,#STAGE_ACTIVE
@@ -510,6 +505,156 @@ ami_units:
     jc ami_x
 ami_none:
     mov a,#S_NONE
+    ret
+
+; ===========================================================================
+    org 0D00h
+
+; num4: r5:r4 right-aligned in the four columns from r0; 10000 and more in
+; thousands: " 12K". Clobbers A, r0-r3, r5, r6.
+num4:
+    mov a,r4                    ; 10000 ($2710) or more: no borrow
+    add a,#0F0h
+    mov a,r5
+    addc a,#0D8h
+    jc n4_kilo
+    mov r1,#n4tab&0FFh
+    clr f0
+n4_d:
+    mov r6,#'0'
+n4_s:
+    mov a,r1                    ; r5:r4 + -10^k: no carry, the digit is done
+    movp a,@a
+    add a,r4
+    mov r2,a
+    mov a,r1
+    inc a
+    movp a,@a
+    addc a,r5
+    jnc n4_p
+    mov r5,a
+    mov a,r2
+    mov r4,a
+    inc r6
+    jmp n4_s
+n4_p:
+    mov a,r1
+    xrl a,#n4tab&0FFh           ; (thousands past 9: the low four)
+    jnz n4_q
+    mov a,r6
+    add a,#256-'9'-1
+    jnc n4_q
+    mov r6,#'9'
+n4_q:
+    mov a,r6
+    xrl a,#'0'
+    jnz n4_o
+    jf0 n4_o
+    mov a,#' '
+    jmp n4_w
+n4_o:
+    clr f0
+    cpl f0
+    mov a,r6
+n4_w:
+    movx @r0,a
+    inc r0
+    inc r1
+    inc r1
+    mov a,r1
+    xrl a,#(n4tab+6)&0FFh
+    jnz n4_d
+    mov a,r4
+    add a,#'0'
+    movx @r0,a
+    ret
+n4tab:
+    db 018h,0FCh, 09Ch,0FFh, 0F6h,0FFh              ; -1000 -100 -10
+
+n4_kilo:
+    mov r6,#0                   ; thousands: 1000 off until it borrows
+n4_k:
+    mov a,r4
+    add a,#018h
+    mov r2,a
+    mov a,r5
+    addc a,#0FCh
+    jnc n4_kd
+    mov r5,a
+    mov a,r2
+    mov r4,a
+    inc r6
+    jmp n4_k
+n4_kd:
+    mov a,#' '
+    movx @r0,a
+    inc r0
+    mov r2,#'0'                 ; 10-65: two digits, then K
+    mov a,r6
+n4_t:
+    add a,#256-10
+    jnc n4_u
+    inc r2
+    jmp n4_t
+n4_u:
+    add a,#10+'0'
+    mov r6,a
+    mov a,r2
+    movx @r0,a
+    inc r0
+    mov a,r6
+    movx @r0,a
+    inc r0
+    mov a,#'K'
+    movx @r0,a
+    ret
+
+
+; au_cue: a new stage's sound (mekkogx auction.c): declaring, and the lines
+; about to go, call a seated player to the stick (ALERT); the end is
+; AUCTION OVER. Clobbers A, r0, r1.
+au_cue:
+    mov r0,#AV_STG
+    movx a,@r0
+    xrl a,#STAGE_DONE
+    jz ac_over
+    xrl a,#STAGE_DONE!STAGE_DECLARE
+    jz ac_call
+    xrl a,#STAGE_DECLARE!STAGE_LEAD
+    jnz ac_x
+ac_call:
+    mov r0,#MYSEAT
+    movx a,@r0
+    jb7 ac_x
+    mov a,#SND_ALERT
+    jmp ac_b
+ac_over:
+    mov a,#SND_AUOVER
+ac_b:
+    FCALL beep
+ac_x:
+    ret
+
+; au_trade: a click when the units traded have gone up since the last state
+; (AV_TRD 0FFh: the arena's first, only noted). Clobbers A, r0-r3, r6, r7.
+au_trade:
+    STB ST_AUCTION+AU_TRADED
+    mov r7,a
+    mov r0,#AV_TRD
+    movx a,@r0
+    xch a,r7
+    movx @r0,a
+    mov r6,a
+    mov a,r7
+    xrl a,#0FFh
+    jz at_x
+    mov a,r7                    ; now + ~before carries: more than before
+    cpl a
+    add a,r6
+    jnc at_x
+    mov a,#SND_TRADE
+    FCALL beep
+at_x:
     ret
 
     PAGE_TAIL

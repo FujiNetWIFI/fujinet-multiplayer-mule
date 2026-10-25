@@ -26,6 +26,7 @@ e_tick:
 ; on_state: a state has come: the map (a new phase or page puts it up),
 ; then the turn (its words: page 13's, after this one).
 on_state:
+    call dv_spec
     call dv_setup
     call map_build
     jmp dv_turn
@@ -120,14 +121,15 @@ ds_t:
 ds_x:
     ret
 
-; dv_shapes: sprites 0-2: the figure, the M.U.L.E., the wampus; all hidden.
-; Clobbers A, r0, r1, r4, r6.
+; dv_shapes: sprites 0-2: the figure (ours), the M.U.L.E., the wampus; all
+; hidden. Clobbers A, r0, r1, r4, r6.
 dv_shapes:
+    call dv_fig
     mov a,#P1_VDC
     outl p1,a
-    mov r0,#vdc_spr0_shape
+    mov r0,#vdc_spr0_shape+8
     mov r4,#dv_shp&0FFh
-    mov r6,#24
+    mov r6,#16
 dsh_l:
     mov a,r4
     movp a,@a
@@ -139,7 +141,6 @@ dsh_l:
     outl p1,a
     jmp spr_hide
 dv_shp:                         ; bit 0 the leftmost pixel
-    db 018h, 018h, 03Ch, 05Ah, 018h, 024h, 024h, 000h   ; the figure
     db 060h, 0E0h, 07Fh, 03Fh, 012h, 012h, 000h, 000h   ; a M.U.L.E.
     db 03Ch, 07Eh, 0DBh, 0FFh, 07Eh, 042h, 000h, 000h   ; the wampus
 
@@ -184,6 +185,70 @@ do_no:
 
     include "dvturn.inc"
 
+; dv_spec: (a state) our species, kept for our figure. Clobbers A, r0, r2,
+; r3, r6.
+dv_spec:
+    mov r0,#MYSEAT
+    movx a,@r0
+    anl a,#3
+    add a,#spoff&0FFh
+    movp a,@a
+    mov r2,a
+    mov r3,#0
+    call st_byte
+    mov r0,#DV_SPEC
+    movx @r0,a
+    ret
+spoff:                          ; each seat's species in the state
+    db ST_PLAYERS+PL_SPECIES, ST_PLAYERS+PL_SIZE+PL_SPECIES
+    db ST_PLAYERS+2*PL_SIZE+PL_SPECIES, ST_PLAYERS+3*PL_SIZE+PL_SPECIES
+
+; dv_fig: our figure, walking frame DV_FR, into sprite 0's shape. Clobbers
+; A, r0, r1, r4.
+dv_fig:
+    mov r0,#DV_SPEC
+    movx a,@r0
+    anl a,#7
+    rl a
+    rl a
+    rl a
+    mov r1,a
+    mov r0,#DV_FR
+    movx a,@r0
+    mov r4,a
+    mov a,#P1_VDC
+    outl p1,a
+    mov r0,#vdc_spr0_shape
+    mov a,r4
+    jb0 df_1
+    mov a,r1
+    call fig_w0
+    jmp df_x
+df_1:
+    mov a,r1
+    call fig_w1
+df_x:
+    mov a,#P1_MAIN
+    outl p1,a
+    ret
+
+; fig_w0, fig_w1: walking frame 0 / 1 of the figure at offset A (species *
+; 8) into the shape at r0 (VDC selected). Clobbers A, r0, r1, r4.
+fig_w0:
+    add a,#figw0&0FFh
+    mov r1,a
+    mov r4,#8
+fw0_l:
+    mov a,r1
+    movp a,@a
+    movx @r0,a
+    inc r0
+    inc r1
+    djnz r4,fw0_l
+    ret
+figw0:
+    FIGS_WALK0
+
 ; ===========================================================================
 MAPBASE equ 0B00h
     include "map.inc"
@@ -227,6 +292,8 @@ db_samp:
     mov r0,#DV_SAMPLE           ; a sample: the assay office reads it
     mov a,r5
     movx @r0,a
+    mov a,#SND_SAMPLE
+    FCALL beep
     SAY M_SAMPLE, L_MAP+1, 2, C_WHITE
 db_x:
     ret
@@ -245,6 +312,8 @@ db_act:
     inc r0
     clr a
     movx @r0,a
+    mov a,#SND_SELECT
+    FCALL beep
 db_busy:
     ret
 
@@ -313,6 +382,21 @@ dw_hide:
     mov a,#0F8h
     jmp poke_b
 
+fig_w1:
+    add a,#figw1&0FFh
+    mov r1,a
+    mov r4,#8
+fw1_l:
+    mov a,r1
+    movp a,@a
+    movx @r0,a
+    inc r0
+    inc r1
+    djnz r4,fw1_l
+    ret
+figw1:
+    FIGS_WALK1
+
 ; ===========================================================================
     org 0E00h
 
@@ -380,10 +464,13 @@ ds_d:
     add a,#DY_MAX+2
     movx @r0,a
 ds_s:
+    mov a,#SND_STEP
+    FCALL beep
     mov r0,#DV_FR
     movx a,@r0
     xrl a,#1
     movx @r0,a
+    call dv_fig
     call dv_store               ; into the store?
 ds_rest:
     ret

@@ -30,6 +30,7 @@ steps, one per line (# comments):
     pc                  print the PC, PSW and A
 
 O2SIM_SHOTS=N: `auto` also snaps every N frames (for picking screenshots).
+O2SIM_WAV=FILE: record the sound to FILE (tools/sndcheck.py reads it).
 
 Offline unless O2SIM_FUJINET=host:port (then FUJINET_TCP points there); the
 everyday fujinet-pc on 9995 is never used. Prints its lines prefixed so a
@@ -144,7 +145,7 @@ local function autoplay()
   local mask = 0
   if ph == 8 then autoleft = 0; return end
   if ph == 0 and age > 120 and not apdone.ready then mask = 0x10; apdone.ready = true
-  elseif ph == 7 and age > 90 and not apdone.seen then mask = 0x10; apdone.seen = true
+  elseif ph == 7 and age > 90 and (age %% 120) == 0 then mask = 0x10   -- (the landing first)
   elseif ph == 1 then
     if xram(0x4D) >= 20 and xram(0x4D) < 45 and xram(0x51) == 0 and not apdone.claim then
       mask = 0x10; apdone.claim = true; apclaim = xram(0x4D)
@@ -285,6 +286,8 @@ def main(scen, out, image=None):
            "-cfg_directory", os.path.join(out, "cfg"),
            "-nvram_directory", os.path.join(out, "nvram"),
            "-autoboot_script", luafile, "-skip_gameinfo"]
+    if os.environ.get("O2SIM_WAV"):
+        cmd += ["-wavwrite", os.path.abspath(os.environ["O2SIM_WAV"])]
     if not live:
         cmd.append("-nothrottle")
     r = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=MAME)

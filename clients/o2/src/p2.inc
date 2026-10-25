@@ -53,14 +53,19 @@ ml:
     movx @r0,a
     call st_header
     call rx_age
+    clr a                       ; no time bar, unless its page sets one
+    mov r0,#TB_SEG
+    movx @r0,a
     call st_page
     mov a,#E_STATE
     FCALL farcall
     call st_page2               ; its phase's second page, if any
     mov a,r7
-    jz ml_idle
+    jz ml_drawn
     mov a,#E_STATE
     FCALL farcall
+ml_drawn:
+    call tb_draw
 ml_idle:
     mov r0,#ACT                 ; an action goes at once; a poll waits its turn
     movx a,@r0
@@ -96,6 +101,8 @@ ml_tick:
     call phase_page
     mov a,#E_TICK
     FCALL farcall
+    call tb_frame
+    call snd_go
 ml_say:
     mov r0,#SAYA+SAY_ID         ; what the phase asked to be said: by the
     movx a,@r0                  ; strings page of its bank (id / 64)
@@ -199,53 +206,6 @@ st_page2:
 sp2_x:
     ret
 
-; phase_page: r7 = the page that runs phase PHS: an auction's plot is shown
-; on the map (page 6) and a good's status on the text screen (7) until
-; their bidding. Clobbers A, r0.
-phase_page:
-    mov r0,#AUSTG               ; (an auction showing its plot or good)
-    movx a,@r0
-    mov r0,#PHS
-    xrl a,#STAGE_SHOW
-    jnz pp_tab
-    movx a,@r0
-    mov r7,#6
-    xrl a,#PHASE_LANDAUCTION
-    jz pp_x
-    mov r7,#7
-    xrl a,#PHASE_LANDAUCTION!PHASE_DECLARE
-    jz pp_x
-    xrl a,#PHASE_DECLARE!PHASE_TRADING
-    jz pp_x
-pp_tab:
-    movx a,@r0
-    anl a,#0Fh
-    xrl a,#PHASE_DEVELOP
-    jz pp_dev
-    xrl a,#PHASE_DEVELOP
-    add a,#phase_tab&0FFh
-    movp a,@a
-    mov r7,a
-pp_x:
-    ret
-pp_dev:                         ; the development: the town while we walk
-    mov r0,#RND                 ; it (this round's: DV_PH), else the map
-    movx a,@r0
-    mov r7,a
-    mov r0,#DV_PH
-    movx a,@r0
-    xrl a,r7
-    mov r7,#11
-    jnz pp_x
-    mov r0,#DV_TOWN
-    movx a,@r0
-    xrl a,#1
-    jnz pp_x
-    mov r7,#12
-    ret
-
-phase_tab:                      ; PHASE_* -> its page
-    db 3, 4, 8, 11, 6, 8, 8, 7, 7, 3, 3, 3, 3, 3, 3, 3
 
 
 ; ===========================================================================
@@ -311,5 +271,114 @@ ra_put:
     mov r0,#RXAGE
     movx @r0,a
     ret
+
+; phase_page: r7 = the page that runs phase PHS: an auction's plot is shown
+; on the map (page 6) and a good's status on the text screen (7) until
+; their bidding; the ship (15) before round 0's summary and round 1's
+; grant. Clobbers A, r0, r1, r6.
+phase_page:
+    mov r0,#AUSTG               ; (an auction showing its plot or good)
+    movx a,@r0
+    mov r0,#PHS
+    xrl a,#STAGE_SHOW
+    jnz pp_tab
+    movx a,@r0
+    mov r7,#6
+    xrl a,#PHASE_LANDAUCTION
+    jz pp_x
+    mov r7,#7
+    xrl a,#PHASE_LANDAUCTION!PHASE_DECLARE
+    jz pp_x
+    xrl a,#PHASE_DECLARE!PHASE_TRADING
+    jz pp_x
+pp_tab:
+    movx a,@r0
+    anl a,#0Fh
+    xrl a,#PHASE_DEVELOP
+    jz pp_dev
+    xrl a,#PHASE_DEVELOP!PHASE_SUMMARY
+    jz pp_sum
+    xrl a,#PHASE_SUMMARY!PHASE_GRANT
+    jz pp_gr
+pp_own:
+    mov r0,#PHS
+    movx a,@r0
+    anl a,#0Fh
+    add a,#phase_tab&0FFh
+    movp a,@a
+    mov r7,a
+pp_x:
+    ret
+pp_sum:                         ; round 0's summary: the ship lands first
+    mov r0,#RND                 ; if it began under 300 jiffies ago
+    movx a,@r0
+    jnz pp_own
+    mov r1,#~(300-1)&0FFh
+    mov r6,#~((300-1)>>8)&0FFh
+    jmp pp_ship
+pp_gr:                          ; round 1's grant: it leaves first, within
+    mov r0,#RND                 ; 700 (mekkogx summary_enter, grant_enter)
+    movx a,@r0
+    xrl a,#1
+    jnz pp_own
+    mov r1,#~(700-1)&0FFh
+    mov r6,#~((700-1)>>8)&0FFh
+; pp_ship: the ship's page (15) while it shows: FXSH is the phase then, and
+; the phase | 80h once it has gone; else (a new phase) it shows if the
+; phase is under r6:r1 = ~(limit - 1) jiffies old. Clobbers A, r0, r7.
+pp_ship:
+    mov r0,#PHS
+    movx a,@r0
+    mov r7,a
+    mov r0,#FXSH
+    movx a,@r0
+    xrl a,r7
+    jz pp_15
+    xrl a,#80h
+    jz pp_own
+    mov r0,#HPE                 ; HPE + ~(limit - 1) carries: too late
+    movx a,@r0
+    add a,r1
+    inc r0
+    movx a,@r0
+    addc a,r6
+    mov a,r7
+    jc pp_late
+    mov r0,#FXSH
+    movx @r0,a
+pp_15:
+    mov r7,#15
+    ret
+pp_late:
+    orl a,#80h
+    mov r0,#FXSH
+    movx @r0,a
+    jmp pp_own
+pp_dev:                         ; the development: the town while we walk
+    mov r0,#RND                 ; it (this round's: DV_PH), else the map
+    movx a,@r0
+    mov r7,a
+    mov r0,#DV_PH
+    movx a,@r0
+    xrl a,r7
+    mov r7,#11
+    jnz pp_x
+    mov r0,#DV_TOWN
+    movx a,@r0
+    xrl a,#1
+    jnz pp_x
+    mov r7,#12
+    ret
+
+phase_tab:                      ; PHASE_* -> its page
+    db 3, 4, 8, 11, 15, 8, 8, 7, 7, 3, 3, 3, 3, 3, 3, 3
+
+; ===========================================================================
+    org 0D00h
+    include "snd.inc"
+
+; ===========================================================================
+    org 0E00h
+    include "tbar.inc"
 
     PAGE_TAIL

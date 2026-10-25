@@ -71,6 +71,7 @@ gp_nb:
     mov r1,a
     ret
 
+    ifndef DISP_MAP
 ; tx_build: LINEBUF into the text table at r2:r3, for the line at Y = r4.
 ; Colour TXCOL, or TXCOL2 for a character with bit 7 set; a colour with bit 7
 ; set (TX_SEATS) colours each four columns in its seat's colour (an
@@ -143,4 +144,5 @@ lbc_l:
 
 txorder:
     db 0,2,4,6, 1,3,5,7, 8,10,12,14, 9,11,13,15
+    endif                       ; (DISP_MAP: a map page, no text lines)
     include "charmap.inc"

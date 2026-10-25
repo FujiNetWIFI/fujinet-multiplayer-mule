@@ -19,7 +19,8 @@ are real, and the screens it never stops on are missing.
 The **Odyssey 2** has no test mode either. Its shots come from a live game
 against a private server, played by `clients/o2/tools/o2sim.py`'s autoplay
 (`make-shots.sh o2`, about 45 minutes, a snapshot every 600 frames), picked
-by hand. Its title is from an offline boot.
+by hand. Its title is from an offline boot, and its colony event (the pirate
+raid) from a run with that event forced in a scratch copy of the server.
 
 "—" means the screen isn't reachable that way:
 - **CoCo and Adam:** the ship has gone by the time the slow map draw or the

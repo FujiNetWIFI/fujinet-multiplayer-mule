@@ -298,6 +298,35 @@ gw_2:
     movx @r0,a
     ret
 
+; snd_vbl: the vblank's sound, A = SNDCNT (nonzero), r1 at it. A queued
+; one waits for the main loop; a playing one counts down and stops at 0;
+; ALERT's first note gives way to its second (983 Hz, then 1311) with
+; SND_A2 frames to go. VDC selected. Clobbers A, r0.
+snd_vbl:
+    jb7 sv_x
+    dec a
+    mov @r1,a
+    jb6 sv_two
+    jnz sv_x
+    mov r0,#vdc_soundctrl
+    movx @r0,a
+sv_x:
+    ret
+sv_two:
+    xrl a,#40h|SND_A2
+    jnz sv_x
+    mov @r1,#SND_A2
+    mov r0,#vdc_sound0          ; a 3-bit period on the fast clock
+    mov a,#92h
+    movx @r0,a
+    inc r0
+    mov a,#49h
+    movx @r0,a
+    inc r0
+    mov a,#24h
+    movx @r0,a
+    ret
+
 ; fx5_get: A = offset in page $5 -> the byte there (main program: FCALL).
 fx5_get:
     movp a,@a
@@ -374,43 +403,24 @@ T5: db TXT_TAB dup (0)
 ROWS    equ T3                  ; ... or, on a map screen, the five rows
 SPRTAB:                         ; 4 x (Y, X, attribute)
     db 12 dup (0)
-; beep: sound A (SND_*): a short blip from the VDC's shift register, its
-; pattern, length and control from sndtab; the vblank stops it (SNDCNT).
+; beep: queue sound A (SND_*) for the main loop (p2.inc snd_go), which
+; plays it from its table; the vblank counts it down and stops it. SNDCNT:
+; bit 7 a sound queued (its id below), else the frames it has left (bit 6:
+; ALERT's first note). The soft ones (SND_STEP on) never cut another sound.
 ; Main program: FCALL. Clobbers A, r0, r1.
 beep:
-    mov r1,a                    ; 3 bytes a sound
-    rl a
-    add a,r1
-    add a,#sndtab&0FFh
-    mov r1,a
-    mov a,#P1_VDC
-    outl p1,a
-    mov r0,#vdc_sound0
-    mov a,r1
-    movp a,@a                   ; the pattern, thrice: 24 bits
-    movx @r0,a
-    inc r0
-    movx @r0,a
-    inc r0
-    movx @r0,a
-    inc r1
-    mov a,r1
-    movp a,@a
-    mov r0,#SNDCNT
-    mov @r0,a                   ; its frames
-    inc r1
-    mov a,r1
-    movp a,@a
-    mov r0,#vdc_soundctrl
-    movx @r0,a                  ; on: bit 7; 6 high; 4 noise; 3-0 volume
-    mov a,#P1_MAIN
-    outl p1,a
+    mov r0,a
+    mov r1,#SNDCNT
+    add a,#256-SND_STEP
+    jnc bp_q
+    mov a,@r1
+    jnz bp_x
+bp_q:
+    mov a,r0
+    orl a,#80h
+    mov @r1,a
+bp_x:
     ret
-sndtab:                         ; pattern, frames, control
-    db 0AAh, 5, 0CFh            ; SND_SELECT: a high blip
-    db 0AAh, 14, 08Fh           ; SND_ALERT: a lower, longer one
-    db 0F0h, 12, 09Dh           ; SND_ERROR: a buzz
-    db 0CCh, 3, 0CBh            ; SND_TRADE: a click
 
     if $ > 700h
     error "page $6's tables have left the page"
@@ -445,14 +455,10 @@ vbl_isr:
     movp a,@a
     mov t,a
     mov r5,#BANDS&0FFh
-    mov r1,#SNDCNT              ; a sound's last frame: silence
+    mov r1,#SNDCNT              ; the sound's frame
     mov a,@r1
     jz vb_q
-    dec a
-    mov @r1,a
-    jnz vb_q
-    mov r0,#vdc_soundctrl
-    movx @r0,a
+    call snd_vbl
 vb_q:
     mov r1,#FRAMES
     inc @r1

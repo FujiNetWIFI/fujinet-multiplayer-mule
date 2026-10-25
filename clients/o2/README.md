@@ -22,18 +22,20 @@ carries the MAME device (`pico/o2/emu`, grafted into `~/Workspace/mame` by
 | 0 | boot: cart check, name (appkey or picker), table list, join |
 | 1 | the network: one request at a time through the mailbox |
 | 2 | the main loop: a frame, the network, the phase's page |
+| 2 | the main loop: a frame, the network, the phase's page; the sounds and the time bar |
 | 3 | the lobby (and placeholders) |
 | 4 | the land grant |
 | 5, 9, 14 | strings banks 0-2 (`src/strings.txt`, `tools/mkstr.py`): the say queue |
-| 6 | production, colony events, a land auction's plot |
+| 6 | a land auction's plot |
 | 7 | status summary, game over, a good's status |
 | 8, 10 | an auction's arena, and its text |
 | 11, 12, 13 | the development: the map, the town, its words |
+| 15 | the set pieces: production and its colony event, the ship landing and leaving |
 
-The image is 31K: the fixed 1K and 15 pages. Pages never call each other. The main loop calls a phase's page with each
-state (and a second page after it where one would not hold it) and every
-frame; what a page wants said goes in the say queue, which the main loop
-hands to the strings page.
+The image is 33K: the fixed 1K and 16 pages. Pages never call each other.
+The main loop calls a phase's page with each state (and a second page after
+it where one would not hold it) and every frame; what a page wants said goes
+in the say queue, which the main loop hands to the strings page.
 
 ## The screen
 
@@ -51,18 +53,35 @@ forced low, so the engine and every table it reads live in `$400-$7FF`.
   owner's colour, a M.U.L.E. its letter (F E S C), production its units.
   The river is a blue `=`, the store a `$`.
 - **Text screens**: six lines of 16 characters (two quads interleaved).
-- **Auctions**: the players are sprites in four columns, the sellers' and
-  buyers' lines dotted with static dashes, the time bar the grid's right
-  column; no text band crosses the arena, so the players never blank.
+- **Auctions**: the players are sprites in four columns, each its
+  species' figure, the sellers' and buyers' lines dotted with static dashes;
+  no text band crosses the arena, so the players never blank. Under the
+  prices, the land auction shows each bidder's money and a good's auction
+  its units; four columns a field, so 10000 and up shows as `15K`.
+- **Time bar**: the grid's bottom line, nine segments, run down every frame
+  (an auction's ticks, a turn's time), with mekkogx's tick and tock under 30
+  left.
 - **Town**: the buildings are the grid's, their letters two text lines
   (C S E F over A L P M).
+- **Set pieces** (page 15, mekkogx `fx.c` ported): the transport ship (four
+  sprites along the store's row) lands before round 1, leaves at its grant
+  and comes back in the last production; the pirate ship raids; each colony
+  event has its piece (a pest round its plot, the acid cloud along its row,
+  sunspot sparks, the meteorite, the M.U.L.E. gone mad, fire on the store,
+  quake cracks). The lobby shows each seat's species figure.
 
 Seat colours: red, green, tan, violet (blue is the river's). The font has
 no `! , ' #`, and the strings are worded around that: a player event is one
 line ("FAIR PRIZE +$75"), a rating four.
 
-Sound is short blips from the VDC's shift register (`beep` in the fixed
-half; the vblank ends them): select, alert, error.
+Sound is mekkogx's set (`src/snd.inc`): select, sample, error, buy, the
+two-note alert that calls you to the stick (the grant, declaring, the
+bidding, your turn, the countdown, the summary), auction over, trade,
+event, founder, a step, tick and tock. A page queues one with `beep`; the
+main loop plays it from a table of 24-bit patterns (1966 Hz down to 164 on
+the 8244's fast clock, 246 on its slow one); the vblank ends it. `O2SIM_WAV=file`
+records a scenario's sound and `tools/sndcheck.py` lists each one's frame,
+length and pitch.
 
 ## Building
 
@@ -98,9 +117,30 @@ It needs `~/Workspace/mame` with the cart grafted in (`apply-mame.sh`) and a
 fujinet-pc BoIP listener on `FUJINET_TCP` (default 127.0.0.1:9995). In MAME
 the arrow keys are the left joystick and Left Ctrl its button.
 
-| Control | Does |
-|---|---|
-| stick | walks; in the auctions pushes your line; declares (up seller, down buyer) |
-| button | ready, claim, the action on a plot (install, sample, list), begin a turn; sits a good out when declaring |
+| Screen | Stick | Button |
+|---|---|---|
+| your name (no lobby appkey) | up, down: the letter; left: rub out | take the letter; `.` ends |
+| table list | up, down: choose | join |
+| lobby | left, right: your species | ready, or not |
+| status summary | left, right: the column (total, money, land, goods) | seen: go on |
+| land grant | | claim the plot under the cursor |
+| land auction, its plot | | skip the wait |
+| land auction, bidding | up: bid higher; down: lower; let go: hold | |
+| a good's status | | seen: go on |
+| declaring | up: seller; down: buyer | sit it out |
+| trading | up, down: move your line (let go: hold) | collude |
+| development, your prompt | | begin your turn |
+| development, the map | walk; into the store: town | on the wampus: catch it; leading a M.U.L.E.: install it; after the land office: list the plot; else take an assay sample |
+| town | walk the street; up or down into a door | |
+| game over | | the other view |
 
-The pub ends a turn early.
+In town a door is its action: M the corral (buy a M.U.L.E., or return
+yours), C S E F outfit it (crystite, smithore, energy, food), A the assay
+office (reads your sample), L the land office (then list a plot on the
+map), P the pub (gamble: ends your turn). Walk off either end of the street
+to the map.
+
+## Screenshots
+
+Every major screen is in [`screenshots/o2/`](../../screenshots/o2/), with
+the other clients' in [`screenshots/README.md`](../../screenshots/README.md).

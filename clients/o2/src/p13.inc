@@ -138,11 +138,22 @@ dv_answer:
     mov r5,#W_NOMULES
     xrl a,#ERR_MONEY!ERR_NOSTOCK
     jz da_town
-    ret
+    mov a,#SND_ERROR            ; anything else turned down: a buzz
+    jmp da_snd
 da_ok:
     mov a,r7
     xrl a,#ACT_ASSAY
+    jz da_as
+    xrl a,#ACT_ASSAY!ACT_BUYM   ; a M.U.L.E. bought, outfitted
+    jz da_buy
+    xrl a,#ACT_BUYM!ACT_OUTF
     jnz da_map
+da_buy:
+    mov a,#SND_BUY
+da_snd:
+    FCALL beep
+    ret
+da_as:
     mov r0,#HRES                ; 0 none .. 4 very high
     movx a,@r0
     anl a,#7
@@ -170,12 +181,16 @@ da_map:
     mov r0,#HRES
     movx a,@r0
     xrl a,#1
-    jnz da_x
+    jnz da_buy                  ; installed
+    mov a,#SND_ERROR
+    FCALL beep
     mov r5,#M_RANOFF
     jmp da_m
 da_w:
     xrl a,#ACT_INST!ACT_WAMP
     jnz da_s
+    mov a,#SND_FOUNDER
+    FCALL beep
     mov r5,#M_CAUGHT
     jmp da_m
 da_s:
@@ -512,54 +527,79 @@ dvcol:
 ; ===========================================================================
     org 0D00h
 
-; dv_tbar: the turn's time bar, the grid's bottom line (y 216): a segment
-; for every 320 jiffies left of a turn under way, nine at most. Clobbers A,
-; r0-r6.
+; dv_tbar: the turn's time bar (tbar.inc), as mekkogx dv_bar: while a turn
+; is under way, its PTU left, (left - age) / pTU, a unit every pTU frames;
+; a segment is 320 jiffies' worth (320 / pTU units). Clobbers A, r0-r7.
 dv_tbar:
-    mov r5,#0
+    clr a
+    mov r0,#TB_U
+    movx @r0,a
+    STB ST_TURN+TU_PTU
+    jz dt_x
+    mov r7,a
+    mov r5,#1
+    mov r4,#40h
+    call dv_div
+    mov a,r3
+    mov r0,#TB_SEG
+    movx @r0,a
     mov r0,#DV_FLAGS
     movx a,@r0
     anl a,#TF_STARTED|TF_ENDED
     xrl a,#TF_STARTED
-    jnz tb_put
+    jnz dt_x
     STB ST_TURN+TU_LEFT
     mov r4,a
     STB ST_TURN+TU_LEFT+1
-    mov r3,a
-tb_l:
-    mov a,r4                    ; r3:r4 - 320 ($140) until it borrows
-    orl a,r3
-    jz tb_put
-    inc r5
-    mov a,r4
-    add a,#256-40h
+    mov r5,a
+    mov r0,#RXAGE               ; left - age - 1: no carry, none left
+    movx a,@r0
+    cpl a
+    add a,r4
     mov r4,a
+    mov a,r5
+    addc a,#0FFh
+    mov r5,a
+    jnc dt_x
+    inc r4
+    mov a,r4
+    jnz dt_d
+    inc r5
+dt_d:
+    call dv_div
     mov a,r3
-    addc a,#0FEh
-    mov r3,a
-    jc tb_l
-tb_put:
+    mov r0,#TB_U
+    movx @r0,a
+    mov a,r4                    ; the next unit in the remainder + 1 frames
+    inc a
+    mov r0,#TB_CNT
+    movx @r0,a
+    mov a,r7
+    mov r0,#TB_PER
+    movx @r0,a
+dt_x:
+    ret
+
+; dv_div: r3 = r5:r4 / r7 (255 at most), r4 the remainder. Clobbers A, r6.
+dv_div:
+    mov r3,#0
+dd_l:
+    mov a,r7
+    cpl a
+    inc a
+    add a,r4
+    mov r6,a
     mov a,r5
-    add a,#256-10
-    jnc tb_w
-    mov r5,#9
-tb_w:
-    mov r2,#(GRIDTAB+9)>>8      ; $D0-$D8: line 8's segments, bit 0
-    mov a,#(GRIDTAB+9)&0FFh
-    call poke_at
-    mov r6,#9
-tb_s:
-    mov a,r5
-    jz tb_0
-    dec r5
-    mov a,#1
-tb_0:
-    call poke_b
-    djnz r6,tb_s
-    mov r1,#DIRTY
-    mov a,@r1
-    orl a,#DIRTY_GRID
-    mov @r1,a
+    addc a,#0FFh
+    jnc dd_x
+    mov r5,a
+    mov a,r6
+    mov r4,a
+    inc r3
+    mov a,r3
+    inc a
+    jnz dd_l
+dd_x:
     ret
 
 ; dv_event: once a turn of ours (DV_MSG 0FEh after), its player event

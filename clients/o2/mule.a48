@@ -9,6 +9,7 @@
     include "strid.inc"
     include "ram.inc"
     include "page.inc"
+    include "figs.inc"
     include "fixed.inc"
 
     if PAGE=0
@@ -44,4 +45,6 @@ STRBANK equ 1
     elseif PAGE=14
 STRBANK equ 2
     include "pstr.inc"
+    elseif PAGE=15
+    include "p15.inc"
     endif

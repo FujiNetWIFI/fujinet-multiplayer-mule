@@ -179,23 +179,35 @@ asc_s:
     call poke_b
     call poke_b
     djnz r6,asc_s
-    mov a,#P1_VDC               ; the four players' shape
-    outl p1,a
-    mov r0,#vdc_spr0_shape
-    mov r7,#4
+    mov r7,#0                   ; the four players: their species' figures
+    mov r2,#ST_PLAYERS+PL_SPECIES
 asc_p:
-    mov r4,#man_shape&0FFh
-    mov r6,#8
-asc_m:
-    mov a,r4
-    movp a,@a
-    movx @r0,a
-    inc r0
-    inc r4
-    djnz r6,asc_m
-    djnz r7,asc_p
+    mov r3,#0
+    call st_byte
+    anl a,#7
+    rl a
+    rl a
+    rl a
+    mov r5,a
+    mov a,r7
+    rl a
+    rl a
+    rl a
+    add a,#vdc_spr0_shape
+    mov r0,a
+    mov a,#P1_VDC
+    outl p1,a
+    mov a,r5
+    call af_copy
     mov a,#P1_MAIN
     outl p1,a
+    mov a,r2
+    add a,#PL_SIZE
+    mov r2,a
+    inc r7
+    mov a,r7
+    xrl a,#4
+    jnz asc_p
     mov r0,#AV_LN1              ; nothing on screen yet
     mov a,#0FFh
     movx @r0,a
@@ -204,7 +216,7 @@ asc_m:
     inc r0
     movx @r0,a                  ; AV_MSG
     inc r0
-    movx @r0,a                  ; AV_BAR
+    movx @r0,a                  ; AV_TRD
     mov r0,#AV_STG
     movx @r0,a
     clr a
@@ -258,9 +270,6 @@ au_bands:
     db J_NONE, 0, 0
     db J_NONE, 0, 0
 
-; A colonist, 8 x 8 (bit 0 the leftmost pixel).
-man_shape:
-    db 01Ch, 01Ch, 008h, 03Eh, 05Dh, 014h, 014h, 036h
 
 ; ===========================================================================
     org 0B00h
@@ -970,5 +979,22 @@ as_k:
     movx @r0,a
 as_x:
     ret
+
+; af_copy: the figure at offset A of afigs into the shape at r0 (VDC
+; selected). Clobbers A, r0, r1, r4.
+af_copy:
+    add a,#afigs&0FFh
+    mov r1,a
+    mov r4,#8
+afc_l:
+    mov a,r1
+    movp a,@a
+    movx @r0,a
+    inc r0
+    inc r1
+    djnz r4,afc_l
+    ret
+afigs:                          ; by species, standing
+    FIGS_STAND
 
     PAGE_TAIL

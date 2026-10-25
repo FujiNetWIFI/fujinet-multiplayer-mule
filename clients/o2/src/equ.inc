@@ -82,10 +82,19 @@ DV_NONE equ 0                   ; the development's DV_ST (p11-p13)
 DV_PROMPT equ 1                 ; our turn, not begun: the button begins it
 DV_WALK equ 2                   ; our turn
 DV_WAIT equ 3                   ; another's turn, or ours over
-SND_SELECT equ 0                ; fixed.inc beep
-SND_ALERT equ 1
+SND_SELECT equ 0                ; fixed.inc beep, p2.inc snd_go: mekkogx's
+SND_SAMPLE equ 1                ; sound.h, in its order
 SND_ERROR equ 2
-SND_TRADE equ 3
+SND_BUY equ 3
+SND_ALERT equ 4                 ; the call to the stick: two notes
+SND_AUOVER equ 5
+SND_TRADE equ 6
+SND_EVENT equ 7
+SND_FOUNDER equ 8
+SND_STEP equ 9                  ; from here on, soft: they never cut another
+SND_TICK equ 10
+SND_TOCK equ 11
+SND_A2  equ 14                  ; ALERT's second note: its frames
 TX_SEATS equ 080h               ; a TXCOL: each four columns in a seat's colour
 ; the say queue's lines (pstr.inc slines)
 L_TXT   equ 0                   ; 0-5: the text screen

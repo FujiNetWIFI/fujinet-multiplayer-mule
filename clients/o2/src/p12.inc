@@ -191,14 +191,15 @@ tw_top: db " C   S     E   F"
 tw_low: db " A   L     P   M"
 
 
-; tw_shapes: sprites 0 and 1: the colonist, the M.U.L.E.; the rest hidden.
-; Clobbers A, r0, r1, r4, r6.
+; tw_shapes: sprites 0 and 1: the colonist (our figure), the M.U.L.E.; the
+; rest hidden. Clobbers A, r0, r1, r4, r6.
 tw_shapes:
+    call tw_fig
     mov a,#P1_VDC
     outl p1,a
-    mov r0,#vdc_spr0_shape
+    mov r0,#vdc_spr0_shape+8
     mov r4,#tw_shp&0FFh
-    mov r6,#16
+    mov r6,#8
 tsh_l:
     mov a,r4
     movp a,@a
@@ -221,7 +222,6 @@ tsh_h:
     djnz r6,tsh_h
     ret
 tw_shp:                         ; bit 0 the leftmost pixel
-    db 01Ch, 01Ch, 008h, 03Eh, 05Dh, 014h, 014h, 036h   ; a colonist
     db 060h, 0E0h, 07Fh, 03Fh, 012h, 012h, 000h, 000h   ; a M.U.L.E.
 
 ; ===========================================================================
@@ -241,9 +241,8 @@ ws_go:
     mov r1,#IR_IN
     mov a,@r1
     jz ws_stick
-    mov r0,#DV_CNT              ; walking in
-    mov a,#5
-    movx @r0,a
+    call ws_cnt                 ; walking in
+    mov r1,#IR_IN
     mov r0,#DV_Y
     mov a,@r1
     xrl a,#1
@@ -267,9 +266,7 @@ ws_stick:
     anl a,#J_UP|J_DOWN|J_LEFT|J_RIGHT
     jz ws_x
     mov r4,a
-    mov r0,#DV_CNT
-    mov a,#5
-    movx @r0,a
+    call ws_cnt
     mov r0,#DV_X                ; the M.U.L.E. follows where we were
     movx a,@r0
     mov r1,#DV_MX
@@ -522,5 +519,64 @@ twcol:                          ; a sprite's colour, attribute bits 3-5
     db C_RED<<3, C_GREEN<<3, C_TAN<<3, C_VIOLET<<3
 
     include "sayq.inc"
+
+; ===========================================================================
+    org 0D00h
+
+; ws_cnt: a step: the next in 6 frames, its sound, the figure's other
+; foot. Clobbers A, r0, r1, r6.
+ws_cnt:
+    mov r0,#DV_CNT
+    mov a,#5
+    movx @r0,a
+    mov a,#SND_STEP
+    FCALL beep
+    mov r0,#DV_FR
+    movx a,@r0
+    xrl a,#1
+    movx @r0,a
+    ; fall into tw_fig
+
+; tw_fig: our figure (p11.inc dv_spec), walking frame DV_FR, into sprite
+; 0's shape. Clobbers A, r0, r1, r6.
+tw_fig:
+    mov r0,#DV_SPEC
+    movx a,@r0
+    anl a,#7
+    rl a
+    rl a
+    rl a
+    mov r1,a
+    mov r0,#DV_FR
+    movx a,@r0
+    mov r6,a
+    mov a,#P1_VDC
+    outl p1,a
+    mov r0,#vdc_spr0_shape
+    mov a,r6
+    jb0 tf_1
+    mov a,r1
+    add a,#figw0&0FFh
+    jmp tf_c
+tf_1:
+    mov a,r1
+    add a,#figw1&0FFh
+tf_c:
+    mov r1,a
+    mov r6,#8
+tf_l:
+    mov a,r1
+    movp a,@a
+    movx @r0,a
+    inc r0
+    inc r1
+    djnz r6,tf_l
+    mov a,#P1_MAIN
+    outl p1,a
+    ret
+figw0:
+    FIGS_WALK0
+figw1:
+    FIGS_WALK1
 
     PAGE_TAIL

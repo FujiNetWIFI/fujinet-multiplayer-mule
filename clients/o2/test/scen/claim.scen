@@ -3,7 +3,8 @@ wait 240
 press fire          # the first table
 wait 120
 press fire          # ready
-wait 700
+until 7E 135 3000   # the summary, the ship landed (FXSH 87h)
+wait 60
 press fire          # the summary: seen
 wait 1100
 snap c1

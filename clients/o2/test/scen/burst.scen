@@ -4,6 +4,7 @@ press fire          # the first table
 wait 120
 press fire          # ready
 until 3C 7 3000     # the summary
+until 7E 135 1500   # (FXSH 87h: the ship has landed)
 wait 60
 press fire          # seen
 until 3C 1 3000     # the grant
