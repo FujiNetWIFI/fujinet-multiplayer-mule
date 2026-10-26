@@ -72,19 +72,19 @@ void input_poll(void)
         --space_t;
         btn = 1;
     }
-    eos_poll();
-    j = eos_ctl[0];             /* 1 north, 2 east, 4 south, 8 west */
+    joy_read();
+    j = joy_ctl[0];             /* 1 north, 2 east, 4 south, 8 west */
     if (j & 1) dir |= DIR_UP;
     if (j & 2) dir |= DIR_RIGHT;
     if (j & 4) dir |= DIR_DOWN;
     if (j & 8) dir |= DIR_LEFT;
-    if (eos_ctl[1] || eos_ctl[2])   /* fire, arm */
+    if (joy_ctl[1] || joy_ctl[2])   /* left, right fire */
         btn = 1;
-    pad = eos_ctl[3];
+    pad = joy_ctl[3];
     if (pad != pad_prev && key_latch == KEY_NONE) {
-        if (pad == 10)          /* * */
+        if (pad == 0x09)        /* * */
             key_latch = KEY_END;
-        else if (pad == 0)
+        else if (pad == 0x0A)   /* 0 */
             key_latch = KEY_SITOUT;
     }
     pad_prev = pad;

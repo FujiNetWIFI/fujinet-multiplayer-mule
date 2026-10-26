@@ -114,7 +114,7 @@ A joystick works too if one is centred when the game starts.
     python3 tools/a2sim/a2sim.py r2r/apple2/mule.po build/mule-apple2.map scenario.txt out/
 
 - A scenario that starts with `test <phase> [arg [event]]` runs the game on a fake state with no server. It covers walking the town and map, every colony event (`test 4 <event>`), the auctions, the summary and game over.
-- **Other commands:** `wait`, `snap`, `hold`, `press`, `key`, `peek`, `poke`, `pc`, `dump`, and `trace` (MAME's debugger trace).
+- **Other commands:** `wait`, `snap`, `hold`, `press`, `key`, `stick` and `pad` (the real controller 1 through MAME's ioport, Adam only), `peek`, `poke`, `pc`, `dump`, and `trace` (MAME's debugger trace).
 - **Frame budget.** `tools/a2sim/gaps.py` reads a trace and reports the longest stretches between clock checks, i.e. where frames get missed.
 - MAME needs the `apple2ee` ROMs.
 

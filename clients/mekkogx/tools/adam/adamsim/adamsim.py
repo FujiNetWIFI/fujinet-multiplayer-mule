@@ -25,6 +25,9 @@ offline test mode.
     vwatch FROM TO              print each VRAM write in FROM..TO (hex), with the PC
     type TEXT                   type on the real keyboard (\\n RETURN, \\s space)
     poke SYMBOL VALUE
+    stick DIRS [b1] [b2]        press the real controller 1 (MAME's ioport, not the
+                                test hook): DIRS as for hold, then fire buttons
+    pad KEY|none                press a keypad key (0-9 * #) on controller 1
 
 The input goes through the game's test hook (inp_hook in input.c), the
 addresses come from the linker map (r2r/adam/mule.map). MAME's settings go
@@ -98,6 +101,15 @@ def main():
             steps.append(("pc", int(w[1]) if len(w) > 1 else 1))
         elif c == "poke":
             steps.append(("poke", sym(w[1]), int(w[2], 0)))
+        elif c == "stick":
+            held = set() if w[1] == "none" else {ch for ch in w[1]}
+            for ch, nm in (("u", "P1 Up"), ("d", "P1 Down"), ("l", "P1 Left"), ("r", "P1 Right")):
+                steps.append(("io", ":joy1:hand:COMMON0", nm, int(ch in held)))
+            steps.append(("io", ":joy1:hand:COMMON0", "P1 Button 1", int("b1" in w[2:])))
+            steps.append(("io", ":joy1:hand:COMMON1", "P1 Button 2", int("b2" in w[2:])))
+        elif c == "pad":
+            for k in "0123456789*#":
+                steps.append(("io", ":joy1:hand:KEYPAD", "Keypad " + k, int(k == w[1])))
         else:
             sys.exit("unknown command: " + line)
 
@@ -105,6 +117,8 @@ def main():
     for s in steps:
         if s[0] == "poke":
             lua.append('{"poke", %d, %d},' % (s[1], s[2]))
+        elif s[0] == "io":
+            lua.append('{"io", "%s", "%s", %d},' % s[1:])
         elif s[0] == "wait":
             lua.append('{"wait", %d},' % s[1])
         elif s[0] == "snap":
@@ -172,6 +186,8 @@ emu.register_frame_done(function()
       if ((now - wait_until) & 0xFFFF) < 0x8000 then wait_until = nil; i = i + 1 else return end
     elseif s[1] == "poke" then
       mem:write_u8(s[2], s[3]); i = i + 1
+    elseif s[1] == "io" then
+      manager.machine.ioport.ports[s[2]].fields[s[3]]:set_value(s[4]); i = i + 1
     elseif s[1] == "snap" then
       manager.machine.video:snapshot()
       print("SNAP " .. s[2] .. " game frame " .. now .. " mame frame " .. frames)

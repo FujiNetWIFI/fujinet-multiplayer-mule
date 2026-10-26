@@ -5,13 +5,12 @@
 
         SECTION code_user
 
-        PUBLIC  _eos_blk, _eos_dst, _eos_dev, _eos_ctl
-        PUBLIC  _eos_read_blk, _eos_kbd_start, _eos_kbd_end, _eos_poll
+        PUBLIC  _eos_blk, _eos_dst, _eos_dev, _joy_ctl
+        PUBLIC  _eos_read_blk, _eos_kbd_start, _eos_kbd_end, _joy_read
 
         defc    READ_BLOCK   = $FCF3    ; A dev, HL to, BCDE block: Z ok, else A error
         defc    START_RD_KBD = $FCA8
         defc    END_RD_KBD   = $FC4B    ; C finished (then Z: A the character)
-        defc    POLLER       = $FD3E    ; A controllers, IX the map (10 bytes)
 
 ; uint8_t eos_read_blk(void): block eos_blk of eos_dev to eos_dst; 0 or an error
 _eos_read_blk:
@@ -57,19 +56,35 @@ kb_out:
         pop     ix
         ret
 
-; void eos_poll(void): controller 1 into eos_ctl (stick, fire, arm, keypad, spinner)
-_eos_poll:
-        push    ix
-        push    iy
-        ld      ix,_eos_ctl
-        ld      a,1
-        call    POLLER
-        pop     iy
-        pop     ix
+; void joy_read(void): controller 1 straight from its port (not EOS's POLLER,
+; which left the stick dead here) into joy_ctl: stick (1 north, 2 east, 4
+; south, 8 west), left fire, right fire, keypad (the raw code: 09h is *, 0Ah
+; is 0, 0Fh none). OUT $C0 strobes the stick, OUT $80 the keypad; IN $FC
+; reads controller 1, active low.
+_joy_read:
+        out     ($C0),a
+        in      a,($FC)
+        ld      l,a
+        cpl
+        and     $0F
+        ld      (_joy_ctl),a
+        ld      a,l
+        cpl
+        and     $40
+        ld      (_joy_ctl+1),a  ; left fire
+        out     ($80),a
+        in      a,($FC)
+        ld      l,a
+        cpl
+        and     $40
+        ld      (_joy_ctl+2),a  ; right fire
+        ld      a,l
+        and     $0F
+        ld      (_joy_ctl+3),a
         ret
 
         SECTION bss_user
 _eos_blk:       defs    2
 _eos_dst:       defs    2
 _eos_dev:       defs    1
-_eos_ctl:       defs    10
+_joy_ctl:       defs    4
