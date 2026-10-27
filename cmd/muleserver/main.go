@@ -61,6 +61,7 @@ func main() {
 			{Platform: "nes", Url: "tnfs://irata.online/mule/nes/mule.nes"},
 			{Platform: "sms", Url: "tnfs://irata.online/mule/sms/mule.sms"},
 			{Platform: "atari7800", Url: "tnfs://irata.online/mule/atari7800/mule.a78"},
+			{Platform: "atari5200", Url: "tnfs://irata.online/mule/atari5200/mule.a52"},
 			{Platform: "h89", Url: "tnfs://irata.online/mule/h89-cpm/mule-boot.h8d"},
 			{Platform: "intv", Url: "tnfs://irata.online/mule/intv/mule.rom"},
 			{Platform: "astrocade", Url: "tnfs://irata.online/mule/astrocade/mule.bin"},
