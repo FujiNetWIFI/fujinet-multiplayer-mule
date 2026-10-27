@@ -156,6 +156,9 @@ void table_select(void)
             name[5] = 0;
             gfx_text(TB_PLAYERS_X, 4 + i * 2, name, C_WHITE);
         }
+#ifdef KEYS_HINT
+        text_center(22, KEYS_HINT, C_WHITE);
+#endif
         text_center(23, "UP/DOWN, " BUTTON_NAME "   " QUIT_HINT, C_WHITE);
         sel = 0;
         for (;;) {
