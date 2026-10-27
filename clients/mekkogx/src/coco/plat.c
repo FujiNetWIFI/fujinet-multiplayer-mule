@@ -9,6 +9,10 @@
  * By the time plat_init runs, bank_init has put the machine in all-RAM
  * mode (see bank.c): the BASIC ROMs are gone, so the IRQ handler must not
  * chain to them.
+ *
+ * The CoCo 3 (COCO3) uses the same interrupt, vector ($010C) and keyboard;
+ * it asks for the monitor type instead of the artifact colors, and runs at
+ * 1.79 MHz (sound.c allows for it).
  */
 #include "mule.h"
 
@@ -120,6 +124,7 @@ void plat_irq_init(void)
     }
 }
 
+#ifndef COCO3
 /* Which artifact colour is which: show a bar and let the player say. */
 static void colour_check(void)
 {
@@ -136,11 +141,49 @@ static void colour_check(void)
             break;
     }
 }
+#endif
+
+#ifdef COCO3
+void gfx_swap_colours(void);    /* gfx3.c: RGB <-> composite */
+extern uint8_t gfx3_cmp;
+
+/* Which monitor: R, C, or ENTER (or the button) for the palette showing;
+ * CLEAR switches it here too (input.c). */
+static void monitor_check(void)
+{
+    gfx_clear();
+    text_center(12, "RGB OR COMPOSITE MONITOR?", C_WHITE);
+    text_center(14, "R: RGB   C: COMPOSITE", C_WHITE);
+    text_center(16, "CLEAR SWITCHES IT LATER", C_WHITE);
+    for (;;) {
+        frame_wait();
+        input_poll();
+        input_take();
+        if ((ev_key == 'R' || ev_key == 'C') && (ev_key == 'C') != gfx3_cmp)
+            gfx_swap_colours();
+        if (ev_key == 'R' || ev_key == 'C' || ev_key == KEY_END || ev_btn)
+            break;
+    }
+}
+#endif
+
+#ifdef MULE_GFXTEST
+void gfx_test(void);            /* gfxtest.c: never returns */
+#endif
 
 const char *plat_init(void)
 {
     gfx_init();
+#ifdef COCO3
+    *(volatile uint8_t *)0xFFD9 = 0;    /* 1.79 MHz (HDB-DOS has it on already) */
+#ifdef MULE_GFXTEST
+    *(volatile uint8_t *)0xFFA7 = 15;   /* the test's block (bank.c) */
+    gfx_test();
+#endif
+    monitor_check();
+#else
     colour_check();
+#endif
     return 0;
 }
 

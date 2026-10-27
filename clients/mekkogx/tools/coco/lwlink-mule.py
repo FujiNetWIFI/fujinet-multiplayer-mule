@@ -6,11 +6,21 @@ memory map), runs the real lwlink, checks every region's limit, and splits
 the DECB output into what the CoCo loads:
 
   mule.bin      low core (< $8000): LOADM'd by BASIC, has the exec address
-  mulehi.bin    high core ($8000-$BFEF): loaded by the game itself
-                (src/coco/bank.c) in all-RAM mode
+  mulehi.bin    high core ($8000 up): loaded by the game itself
+                (src/coco/bank.c)
   mule1..5.bin  the overlays, all linked at the window ($E000)
 
 All are DECB .bin files (segments of 00 len addr data, then FF 0000 exec).
+
+The CoCo 3 pass (MULE_LINK=coco3) uses src/coco/mule3.link: high core to
+$C000, window to $FE00, and one file per MMU block (src/coco/bank.c):
+  mule1.bin  town $E000..  ov1 $F000..     block 4
+  mule2.bin  ov3  $E000..  ov2 $EC00..     block 5
+  mule3.bin  ov4                           block 6
+  mule4.bin  ov5                           block 7
+  mule5.bin  gtest (GFXTEST=1 only)        block 15
+  mulea.bin  art3 $F800..                  block 3, behind the screen
+Each block at $E000 (or $F800) in the output starts a new file.
 """
 import os
 import re
@@ -19,16 +29,29 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "..", "..", "src", "coco", "mule.link")
+COCO3 = os.environ.get("MULE_LINK") == "coco3"
+SCRIPT = os.path.join(HERE, "..", "..", "src", "coco", "mule3.link" if COCO3 else "mule.link")
 
 # Regions: (name, first, end) -- a section starting in one must end in it.
+LOW_START = 0x2600      # the CoCo 3: $1F00, above the BASIC loader; its sprite
+                        # buffers are below that (gfx3.c)
 LOW_END = 0x7C00        # the stack is the 1K below $8000 (--initial-s)
-REGIONS = [
-    ("low",    0x2600, LOW_END),
-    ("high",   0x8000, 0xBFF0),     # the CPU vectors are at $BFF0 (SAM)
-    ("window", 0xE000, 0xFA00),     # the sprites' save-unders above (gfx.c)
-]
 WINDOW = 0xE000
+ART = 0xF800
+SECT_END = {}           # a section's own limit, where it shares a block
+if COCO3:
+    LOW_START = 0x1F00
+    HIGH_END = 0xC000
+    WINDOW_END = 0xFE00
+    SECT_END = {"town": 0xF000, "ov3": 0xEC00}
+else:
+    HIGH_END = 0xBFF0       # the CPU vectors are at $BFF0 (SAM)
+    WINDOW_END = 0xFA00     # the sprites' save-unders above (gfx.c)
+REGIONS = [
+    ("low",    LOW_START, LOW_END),
+    ("high",   0x8000, HIGH_END),
+    ("window", WINDOW, WINDOW_END),
+]
 OVERLAYS = 5
 
 
@@ -85,7 +108,7 @@ def main():
         return r
     # CMOC deletes its map: keep a copy (tools/cocosim reads it)
     if os.path.isdir("build"):
-        shutil.copy(mapf, os.path.join("build", "mule-coco.map"))
+        shutil.copy(mapf, os.path.join("build", "mule-coco3.map" if COCO3 else "mule-coco.map"))
 
     # Check the regions from the map.
     secs = {}
@@ -102,6 +125,7 @@ def main():
         if e == a:
             continue
         reg, lo, hi = region_of(a)
+        hi = SECT_END.get(name, hi)
         if reg is None or e > hi:
             print("lwlink-mule: section %s $%04X-$%04X is outside its region (%s, ends $%04X)"
                   % (name, a, e, reg, hi), file=sys.stderr)
@@ -111,39 +135,60 @@ def main():
 
     # Split the DECB file.
     blocks, exe = read_decb(out)
-    low, high, ovl = [], [], [[] for _ in range(OVERLAYS + 1)]
+    low, high, art, ovl = [], [], [], [[] for _ in range(OVERLAYS + 1)]
     ov = 0
+    dest = None
     for a, b in blocks:
         if a == WINDOW:
             ov += 1
             if ov > OVERLAYS:
                 print("lwlink-mule: more than %d overlays" % OVERLAYS, file=sys.stderr)
                 return 1
+            dest = ovl[ov]
+        elif a == ART and COCO3:
+            dest = art
         if a < 0x8000:
             low.append((a, b))
-        elif WINDOW <= a < 0xFA00:
-            if ov == 0:
+        elif WINDOW <= a < WINDOW_END:
+            if dest is None:
                 print("lwlink-mule: a block at $%04X in the window before overlay 1" % a,
                       file=sys.stderr)
                 return 1
-            ovl[ov].append((a, b))
+            dest.append((a, b))
         else:
             high.append((a, b))
     base = out[:-4] if out.endswith(".bin") else out
     write_decb(out, low, exe)
     write_decb(base + "hi.bin", high, exe)
     for n in range(1, OVERLAYS + 1):
-        write_decb("%s%d.bin" % (base, n), ovl[n], exe)
+        path = "%s%d.bin" % (base, n)
+        if ovl[n] or not COCO3:
+            write_decb(path, ovl[n], exe)
+        elif os.path.exists(path):
+            os.remove(path)          # (GFXTEST=1 builds the fifth)
+    if COCO3:
+        write_decb(base + "a.bin", art, exe)
 
     # A size table.
     def total(bl):
         return sum(len(b) for _, b in bl)
-    print("coco memory: low $2600-$%04X (bss to $%04X, limit $%04X)"
-          % (secs.get("rwdata", [0, 0])[1], secs.get("bss", [0, 0])[1], LOW_END))
-    print("  low %5d  high %5d (to $%04X, limit $BFF0)"
-          % (total(low), total(high), secs.get("hirodata", secs.get("hicode", [0, 0x8000]))[1]))
-    print("  overlays " + " ".join("%d:%d" % (n, total(ovl[n])) for n in range(1, OVERLAYS + 1))
-          + "  (window %d)" % (0xFA00 - WINDOW))
+    print("%s memory: low $%04X-$%04X (bss to $%04X, limit $%04X)"
+          % ("coco3" if COCO3 else "coco", LOW_START, secs.get("rwdata", [0, 0])[1],
+             secs.get("bss", [0, 0])[1], LOW_END))
+    print("  low %5d  high %5d (to $%04X, limit $%04X)"
+          % (total(low), total(high), secs.get("hirodata", secs.get("hicode", [0, 0x8000]))[1],
+             HIGH_END))
+    if COCO3:
+        print("  blocks " + " ".join("%d:%d" % (15 if n == 5 else n + 3, total(ovl[n]))
+                                     for n in range(1, OVERLAYS + 1) if ovl[n])
+              + "  art 3:%d (1536)" % total(art)
+              + "  (8192 each; town < $F000, ov1 < $FE00, ov3 < $EC00, ov2 < $FE00)")
+        print("  " + "  ".join("%s $%04X-$%04X" % (name, span[0], span[1])
+                               for name, span in sorted(secs.items())
+                               if name in ("town", "gtest", "art3", "ov1", "ov2", "ov3", "ov4", "ov5")))
+    else:
+        print("  overlays " + " ".join("%d:%d" % (n, total(ovl[n])) for n in range(1, OVERLAYS + 1))
+              + "  (window %d)" % (WINDOW_END - WINDOW))
     return 0
 
 

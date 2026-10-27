@@ -4,8 +4,8 @@
  * Coordinates are the Atari's: x in colour clocks (0..159 across the
  * playfield), y in scanlines (0..191). Text is a TCOLS x 24 grid of cells:
  * 40 across, a cell 4 colour clocks by 8 lines, except on the TMS9918A (the
- * Adam, the MSX), the CoCo and the NES, whose text is a whole 8 x 8 cell of
- * its own, 32 across.
+ * Adam, the MSX), the CoCo 1/2 and the NES, whose text is a whole 8 x 8 cell
+ * of its own, 32 across.
  * Each platform scales to its screen.
  *
  *   Map    plot p at x 8 + 16 * (p % 9), y 16 + 32 * (p / 9), 16 x 32
@@ -41,7 +41,7 @@
 /* The text grid. TCOLS cells across; BIGW cells a big character; TX(c)
  * is the cell over the same spot of the picture as the 40-column cell c
  * (text laid over the art: the town's prices, the auction's scale). */
-#if defined(__ADAM__) || defined(__MSX__) || defined(_CMOC_VERSION_) || defined(__NES__) || defined(__SMS__)
+#if defined(__ADAM__) || defined(__MSX__) || (defined(_CMOC_VERSION_) && !defined(COCO3)) || defined(__NES__) || defined(__SMS__)
 #define TCOLS 32
 #define BIGW  1
 #define TX(c) ((uint8_t)(((c) * 3 + 2) >> 2))

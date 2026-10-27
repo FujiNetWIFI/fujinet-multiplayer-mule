@@ -14,6 +14,7 @@
  * Namco font, as on the TMS9918).
  * Sprites of characters keep their 8 colour pixels. Scanlines are 1:1.
  */
+#ifndef COCO3
 #include <string.h>
 #include "mule.h"
 #include "gfxdata.h"
@@ -1403,3 +1404,4 @@ void gfx_swap_colours(void)
     for (p = SAVE, n = SPR_SLOTS * SAVE_MAX; n; --n, ++p)
         *p = xl[*p];
 }
+#endif

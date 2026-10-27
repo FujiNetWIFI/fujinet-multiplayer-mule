@@ -129,15 +129,16 @@ A joystick works too if one is centred when the game starts.
 **Building.**
 
     make coco                                  # r2r/coco/mule.dsk (Disk BASIC, 160K)
+    make coco3                                 # r2r/coco3/mule.dsk, the CoCo 3 half alone
     make coco ENDPOINT=http://myhost:8080
 
 - **What it needs:** CMOC 0.1.100 and lwtools (`lwasm`, `lwlink`), ToolShed's `decb` (found in `~/Workspace/toolshed/build/unix/decb/`, or `make DECB=...`), Python 3 with Pillow, and fujinet-lib built for `coco`.
-- **Graphics:** `tools/mkgfx_pmode4.py` converts them from the same Atari disk (`ATR=`, or `mule.atr`), into `gen/coco/`. The Atari extraction is `mkgfx_hgr.py`'s. As on the Apple, there is stand-in art without the disk.
+- **Graphics:** `tools/mkgfx_pmode4.py` converts them from the same Atari disk (`ATR=`, or `mule.atr`), into `gen/coco/`; for the CoCo 3, `tools/mkgfx_coco3.py` into `gen/coco3/`. The Atari extraction is `mkgfx_hgr.py`'s. As on the Apple, there is stand-in art without the disk.
 - **Optimisation:** the build uses `-O1`. CMOC 0.1.100's `-O2` has a bug: after `x = a[i]`, a following `b[i]` is indexed by `x`.
 - **Rebuilding:** a module's section (below) is set by the Makefile. Changing it doesn't rebuild the module: `make clean` first.
 - **Appkeys:** fujinet-lib's CoCo `fuji_write_appkey` always sends 64 bytes, whatever the count. `net.c` zeroes the buffer before each write, so clearing the table (on leaving) stores zeros, not the old URL.
 
-**Running.** Mount `mule.dsk` on the FujiNet and boot. HDB-DOS runs `AUTOEXEC.BAS`, which does `PCLEAR1:LOADM"MULE":EXEC`. The `PCLEAR1` moves the BASIC program out of the way of `MULE.BIN`.
+**Running.** Mount `mule.dsk` on the FujiNet and boot. HDB-DOS runs `AUTOEXEC.BAS`, which does `PCLEAR1` and then loads `MULEC3.BIN` on a CoCo 3, `MULE.BIN` otherwise. The `PCLEAR1` moves the BASIC program out of the way.
 
 **The screen: PMODE 4 at $0E00.**
 - **Colours:** two neighbouring pixels are one artifact colour pixel (128 across). The players are blue, orange, white, and blue/orange stripes (blue on even lines, orange on odd).
@@ -199,7 +200,7 @@ How it gets there:
 | BREAK | leave the table: at once in the lobby; in a game after asking (BREAK again). At the table list, quit (a cold start) |
 | 0 | declare: sit this good out |
 | LEFT | also rubs out when typing a name |
-| CLEAR | swap the artifact colours |
+| CLEAR | swap the artifact colors (CoCo 3: RGB / composite) |
 | SHIFT-CLEAR | sound off / on |
 
 ## The MS-DOS version

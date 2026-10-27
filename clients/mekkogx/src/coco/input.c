@@ -1,10 +1,10 @@
 /*
- * input.c -- keyboard and the right joystick on the CoCo 1/2.
+ * input.c -- keyboard and the right joystick on the CoCo 1/2 and 3.
  *
  * Keys: the arrows walk, SPACE (or the joystick button) is the button,
  * ENTER ends a turn, BREAK leaves the table, 0 sits out, CLEAR swaps the
- * artifact colours, SHIFT-CLEAR turns the sound off and on. LEFT is also
- * the rub-out key for typing a name.
+ * artifact colors (on the CoCo 3, RGB and composite), SHIFT-CLEAR turns
+ * the sound off and on. LEFT is also the rub-out key for typing a name.
  *
  * The keyboard is a matrix: PIA0 B ($FF02) drives a column low, A ($FF00)
  * reads the rows (0 = pressed). The IRQ scans it every frame (plat.c) and

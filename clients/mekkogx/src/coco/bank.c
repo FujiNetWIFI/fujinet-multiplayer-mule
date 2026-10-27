@@ -14,6 +14,13 @@
  * bank_overlay reads mule1..5.bin into the window at $E000 (src/coco/mule.link,
  * tools/coco/lwlink-mule.py). A file is DECB: blocks of 00 len addr data,
  * then FF 0000 exec.
+ *
+ * The CoCo 3 (COCO3) is already all-RAM, so nothing is copied, and $FFDE is
+ * left alone (ROM mode would fetch from a cartridge FujiNet). MULEC3HI.BIN,
+ * MULEC31..4.BIN and MULEC3A.BIN load once into blocks 4-7 and the end of
+ * block 3 (lwlink-mule.py); bank_overlay maps an overlay's block at $E000.
+ * Every CoCo 3 has blocks 0-7. GFXTEST's MULEC35.BIN goes in block 15,
+ * BASIC's, dead once the game runs.
  */
 #include <string.h>
 #include "bank.h"
@@ -30,11 +37,18 @@ void plat_irq_init(void);       /* plat.c */
 #define DCSTA  (*(uint8_t *)0x00F0)
 #define DEFDRV (*(uint8_t *)0x095A)     /* the drive BASIC last used */
 
+#ifdef COCO3
+/* DECB's disk buffers: nothing reads the disk once the game runs */
+#define sec ((uint8_t *)0x0600)
+#define fat ((uint8_t *)0x0700)
+#else
 static uint8_t sec[256];
 static uint8_t fat[68];
+#endif
 static uint8_t drive;
 static uint8_t ovl_cur;
 
+#ifndef COCO3
 /* Copy [a, a + n) from ROM to the RAM under it, a byte at a time. */
 static void rom_to_ram(uint16_t a, uint16_t n)
 {
@@ -55,6 +69,7 @@ static void rom_to_ram(uint16_t a, uint16_t n)
         puls    u
     }
 }
+#endif
 
 static uint8_t read_sector(uint8_t trk, uint8_t s)
 {
@@ -106,8 +121,8 @@ static void feed(const uint8_t *p, uint16_t n)
 
 /* Where each file starts, once found (the FAT is kept from the first
  * look: the disk doesn't change). */
-static uint8_t f_gran[6], f_known[6];
-static uint16_t f_last[6];
+static uint8_t f_gran[7], f_known[7];
+static uint16_t f_last[7];
 
 /* Load the DECB file NAME (8 chars, space padded) with extension BIN; f is
  * its slot in the cache above. Returns 0 if all went well. */
@@ -184,8 +199,17 @@ static void say(const char *s)
         *p++ = c < 0x40 ? c + 0x40 : c;     /* VDG: normal video */
 }
 
+#ifdef COCO3
+#define MMU7 (*(volatile uint8_t *)0xFFA7)
+static const uint8_t ovl_blk[6] = { 0, 4, 5, 5, 6, 7 };
+#endif
+
 const char *bank_init(void)
 {
+#ifdef COCO3
+    static char name[] = "MULEC30 ";
+    uint8_t num;
+#endif
     /* the stack's unused part ($7C00 up to here) gets a mark, so a dump
      * shows how deep it has been (tools/cocosim: dump 7C00 7FFF) */
     asm {
@@ -199,6 +223,27 @@ const char *bank_init(void)
     say("M.U.L.E. LOADING...");
     drive = DEFDRV;
     plat_irq_init();                /* our IRQ: BASIC's is about to go */
+#ifdef COCO3
+    if (load("MULEC3HI", 0)) {
+        say("CAN'T LOAD MULEC3HI.BIN");
+        for (;;)
+            ;
+    }
+#ifdef MULE_GFXTEST
+    for (num = 1; num <= 5; ++num) {
+        MMU7 = num == 5 ? 15 : 3 + num;
+#else
+    for (num = 1; num <= 4; ++num) {
+        MMU7 = 3 + num;
+#endif
+        name[6] = '0' + num;
+        while (load(name, num))
+            ;                       /* a disk error: try again */
+    }
+    MMU7 = 3;
+    while (load("MULEC3A ", 6))
+        ;
+#else
     asm { orcc #$50 }
     rom_to_ram(0xC000, 0x2000);
     rom_to_ram(0xBFF0, 0x10);
@@ -211,19 +256,27 @@ const char *bank_init(void)
         for (;;)
             ;
     }
+#endif
     ovl_cur = OV_NONE;
     return 0;
 }
 
 void bank_overlay(uint8_t n)
 {
+#ifndef COCO3
     static char name[] = "MULE0   ";
+#endif
     if (n == ovl_cur || n == OV_NONE || n > 5)
         return;
+#ifdef COCO3
+    ovl_cur = n;
+    MMU7 = ovl_blk[n];
+#else
     name[4] = '0' + n;
     ovl_cur = n;
     while (load(name, n))
         ;                           /* a disk error: try again */
+#endif
 }
 
 uint8_t bank_current(void)

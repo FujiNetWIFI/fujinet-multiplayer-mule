@@ -5,7 +5,7 @@
  * times the square wave, so an effect is played a slice at a time:
  * snd_tick() spends about SLICE_CYCLES of each frame on it. The table's
  * delays d give 36428 / d Hz; snd_tone's half period is 8 cycles a count
- * at 0.895 MHz, so the count is 1.5 d.
+ * at 0.895 MHz, so the count is 1.5 d (3 d on the CoCo 3, at 1.79 MHz).
  */
 #include "sound.h"
 #include "plat.h"
@@ -103,10 +103,14 @@ void snd_tick(void)
     uint8_t n;
     if (!cur_f)
         return;
-    n = (uint8_t)(SLICE_CYCLES / (24u * cur_d));   /* a wave is ~24 d cycles */
+    n = (uint8_t)(SLICE_CYCLES / (24u * (uint16_t)cur_d));   /* a wave is ~24 d cycles */
     if (n == 0)
         n = 1;
-    snd_tone(cur_d + (cur_d >> 1), n);
+#ifdef COCO3
+    snd_tone((uint16_t)cur_d * 3, n);
+#else
+    snd_tone((uint16_t)cur_d + (cur_d >> 1), n);
+#endif
     if (--cur_f == 0 && next_f) {
         cur_d = next_d;
         cur_f = next_f;
