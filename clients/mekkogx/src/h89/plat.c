@@ -50,20 +50,19 @@ void plat_quit(void)
     cpm_exit();
 }
 
-/* The card's 82C55: port C's EN (bit 2) low is an 82C55 whose ESP32 isn't
- * started yet (fujinet-lib starts it); high, the direction bit (PC0) must
- * follow a bit set/reset, or there is no 82C55 (an empty port reads FFh,
- * and fujinet-lib would wait on it for ever). ESC on the "no FujiNet"
- * screen goes back to CP/M. */
+/* The card's 82C55 set up (port A mode 2, port B an input; the ESP32
+ * doesn't see the mode word, its EN isn't wired), then the direction bit
+ * (PC0) must follow a bit set/reset, or there is no 82C55 (an empty port
+ * reads FFh, and every wait for a byte would see one at once). ESC on the
+ * "no FujiNet" screen goes back to CP/M. */
 uint8_t plat_net_probe(void)
 {
-    uint8_t c = z80_inp(PPI_C), ok;
+    uint8_t ok;
     int k;
     while ((k = kbd_get()) >= 0)
         if (k == 27)
             plat_quit();
-    if (!(c & 0x04))
-        return 1;
+    z80_outp(PPI_CTRL, 0xC2);
     z80_outp(PPI_CTRL, 0x01);       /* PC0 set */
     ok = z80_inp(PPI_C) & 0x01;
     z80_outp(PPI_CTRL, 0x00);       /* PC0 reset (ESP32 to H89) */

@@ -93,21 +93,11 @@ uint8_t fb_getc(void)
 extern const uint8_t fuji_field_numbytes_table[];  /* fujinet-lib's */
 static uint8_t card_up;
 
-/* The card's 82C55 set up, as fujinet-lib's port_init does: EN low is an
- * 82C55 not set up yet (a mode set clears port C and would restart a
- * running ESP32, so only then), and the ESP32 is started. */
+/* The card's 82C55 set up, as fujinet-lib's port_init does. The ESP32
+ * doesn't see the mode word (EN isn't wired to PC2), so it is always sent. */
 static void card_init(void)
 {
-    uint16_t t;
-    if (!(PPI_PC & 0x04)) {
-        PPI_CR = 0xC0;          /* port A mode 2, port C's low half out */
-        PPI_PC = 0x06;          /* the 245 off, EN high */
-        PPI_PC = 0x02;          /* EN low: the ESP32 in reset */
-        PPI_PC = 0x06;          /* and out of it */
-        t = ticks_now();
-        while ((uint16_t)(ticks_now() - t) < 100)
-            con_pump();
-    }
+    PPI_CR = 0xC2;              /* port A mode 2, port B an input */
     (void)PPI_PA;
     PPI_CR = 0x02;              /* the 245 on */
     PPI_CR = 0x00;              /* toward us */
