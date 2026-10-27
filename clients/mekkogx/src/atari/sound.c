@@ -1,12 +1,13 @@
 /*
- * sound.c -- the effects on POKEY's voice 1 (the Lynx: src/lynx/sound.c).
+ * sound.c -- the effects on POKEY's voice 1 (the Lynx: src/lynx/sound.c;
+ * the 7800: src/atari7800/sound.c, the cart's POKEY).
  *
  * The table is the Apple II's (src/apple2/sound.c): a delay d there is a
  * tone of 36428 / d Hz, which at POKEY's 64 kHz clock (63921 / 2 (N + 1)
  * Hz) is an AUDF of 0.877 d - 1. snd.s plays it in the VBI, so a tone ends
  * on time however long the game is busy.
  */
-#if defined(__ATARI__) || defined(__LYNX__)
+#if defined(__ATARI__) || defined(__LYNX__) || defined(__ATARI7800__)
 
 #include "sound.h"
 
@@ -44,6 +45,11 @@ void snd_init(void)
 {
     snd_nf = 0;
     snd_f = 0;
+#ifdef __ATARI7800__
+    *(volatile uint8_t *)0x045F = 0;    /* SKCTL: reset, then the keyboard/serial off but */
+    *(volatile uint8_t *)0x045F = 3;    /* the clocks on; AUDCTL: the 64 kHz clock */
+    *(volatile uint8_t *)0x0458 = 0;
+#endif
 }
 
 void snd_play(uint8_t id)

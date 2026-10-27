@@ -5,19 +5,27 @@
 ; the network stream (nstream.s) clock the serial port with voices 3 and 4.
 ;
 ; The Lynx assembles this too (src/lynx/snd.s): there voice 1 goes into a
-; POKEY shadow, which mikey.s plays on Mikey.
+; POKEY shadow, which mikey.s plays on Mikey. So does the 7800
+; (src/atari7800/snd.s), on its cart's POKEY, from the frame's DLI.
 ;
         .export _snd_vbi, _snd_f, _snd_fq, _snd_c, _snd_nf, _snd_nfq
 .ifdef __LYNX__
         .export _pk_out
         .import _mikey_out
         .define LOWBSS "BSS"
+.elseif .defined(__ATARI7800__)
+        .define LOWBSS "BSS"
 .else
         .define LOWBSS "BSS2"
 .endif
 
+.ifdef __ATARI7800__
+AUDF1   = $0450                 ; the FujiNet 7800 cart's POKEY
+AUDC1   = $0451
+.else
 AUDF1   = $D200
 AUDC1   = $D201
+.endif
 
         .segment LOWBSS         ; low memory, cleared by sprite.s's clrlow
 _snd_f:   .res 1        ; frames of this tone left (0: none)

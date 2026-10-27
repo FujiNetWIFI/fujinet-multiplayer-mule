@@ -11,3 +11,5 @@
 *.atr
 # tools/atarisim: the built harness
 /tools/atarisim/asim
+# tools/a78sim/probe: its build
+/tools/a78sim/probe/build/

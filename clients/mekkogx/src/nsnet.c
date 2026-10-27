@@ -476,11 +476,15 @@ uint8_t net_sync(void)
     return net_have;
 }
 
-#if defined(__APPLE2__) || defined(__NES__)
+#if defined(__APPLE2__) || defined(__NES__) || defined(__ATARI7800__)
 /* Only boot.c calls these: they live in its overlay (the Apple's main RAM,
- * the NES's fixed bank and R7's are full). */
+ * the NES's fixed bank and R7's, the 7800's fixed bank are full). */
 #pragma code-name (push, "OVERLAY1")
+#ifdef __ATARI7800__
+#pragma rodata-name (push, "OVL1RO")    /* (its constants apart: mkrom.py) */
+#else
 #pragma rodata-name (push, "OVERLAY1")
+#endif
 #endif
 
 /* Is there a FujiNet? (Once the stream is on, it answers for it.) */
@@ -522,7 +526,7 @@ uint8_t net_tables(uint8_t *buf, uint8_t max)
     return buf[0];
 }
 
-#if defined(__APPLE2__) || defined(__NES__)
+#if defined(__APPLE2__) || defined(__NES__) || defined(__ATARI7800__)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 #endif

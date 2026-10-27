@@ -5,7 +5,7 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are ten platforms:
+There are eleven platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
@@ -15,6 +15,7 @@ There are ten platforms:
 - the **Atari Lynx**, as a cart image, with FujiNet-Lynx on ComLynx, and the Atari's music and effects on Mikey;
 - the **NES**, as an MMC3 image the FujiNet NES cartridge boots, with the Adam's pictures and effects on its pulse channel;
 - the **Sega Master System**, as an image the FujiNet SMS cartridge runs, with the Adam's pictures in Mode 4 and its effects on the SMS's own SN76489;
+- the **Atari 7800**, as a SuperGame image the FujiNet 7800 cartridge runs, with the Atari 800's graphics (the original's) drawn by MARIA and the Atari's effects on the cartridge's POKEY;
 - the **Heathkit H89** under CP/M, with the H89-ESP32 FujiNet card, drawn on its H19 terminal in the terminal's own characters (and its one beep).
 
 The Adam, the MSX and the SMS share their graphics code (`src/tms9918`): the first two have a TMS9918A, and the SMS shows the same cells in its own mode.
@@ -34,6 +35,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/lynx/` | the Lynx implementation (cc65; its sound is the Atari's `pokey.s`) |
 | `src/nes/` | the NES implementation (cc65; the screen is the TMS9918A's, in the PPU's terms) |
 | `src/sms/` | the Sega Master System implementation (z88dk; the TMS9918A's cells as Mode 4 tiles) |
+| `src/atari7800/` | the Atari 7800 implementation (cc65, the display in 6502 assembly; the Atari's rows and sprites as MARIA's display lists, its sound the Atari's `snd.s`) |
 | `src/h89/` | the Heathkit H89 implementation (z88dk, CP/M; the H19 terminal's characters, sent by difference) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
@@ -540,6 +542,51 @@ The name is picked a letter at a time, as on the Lynx. Quitting says goodbye to 
 - **Live, in MAME:** the same device, with a fujinet-pc (`fujinet-pc-rs232`, BoIP on 127.0.0.1:9995, or `FUJINET_TCP`) and a server. Run it throttled: under `-nothrottle` the server's countdowns look frozen. To keep clear of other servers on :9902, run the server, a copy of fujinet-pc and MAME together in `unshare -rnm`, with a hosts file mapping fujinet.online to 127.0.0.1. Played that way: lobby, transport, summary, land grant, land auction, with no failed calls.
 - **The scanline interrupt's first line:** MAME's cartridge device clocks MMC3's counter from line 0. The hardware also clocks it on the pre-render line, one line earlier. `IRQ_EARLY` in `crt0.s` is 0 for MAME. On a real cartridge it may need to be 1: a one-line seam at the table switches would show it.
 
+## The Atari 7800 version
+
+An image for the Atari 7800 on the FujiNet 7800 cartridge (fujinet-firmware `pico/atari-7800`): the 7800 CONFIG pushes it into the cartridge's SRAM and starts it like any game. It draws what the Atari 800 version draws, the original's own characters, colours and sprites, at the original's 160 colour clocks, and plays the Atari's effects on the cartridge's POKEY.
+
+    make atari7800                             # r2r/atari7800/mule.a78
+    make atari7800 ENDPOINT=http://myhost:8080 # the server: its host, stream port 9902
+
+- **What it needs:** cc65 2.19, Python 3 with Pillow, the original disk (as for the Atari), and fujinet-lib-experimental's `add-atari7800` branch in `~/Workspace/fnlib-7800` (or `make FNLIB_7800=/path`; built from 1ebf9d0). `tools/atari7800/mkfnlib.sh` compiles it into `build/fnlib-a78`, without its crt0 (`src/atari7800/crt0.s` is the game's).
+- **Graphics** are the Atari's (`tools/mkgfx_atari.py`, into `gen/atari7800/`); `src/atari7800/gfx.c` turns them into MARIA's layout at start-up.
+- **The check:** `tools/atari7800/mkrom.py` runs after the link. It copies REPL into every bank, then scans every code segment in its own bank for a read-modify-write aimed at the mailbox, a store to the TIA (it would rewrite INPTCTRL, which the cartridge keeps unlocked), a `JMP ($xxFF)`, and a store into the bank window anywhere but `bank.c`. It wants the claim (kind 5) and a reset vector in the fixed bank, then writes `mule.a78`. Constants sit in segments of their own (`REPLRO`, `OVLnRO`) so only code is scanned.
+
+**The cartridge image** (`src/atari7800/mule-a78.cfg`): SuperGame with the cartridge's RAM (the claim's kind 5), 128K in eight 16K banks. The window at $8000-$BFFF takes banks 0-6; bank 7 sits at $C000.
+- **$8000-$9FFF in every bank** is REPL, the same 8K in all seven (`text.c`, `fx.c`, `map.c`, `nsnet.c`, `test.c`, `autoplay.c`, the sprites): as good as fixed.
+- **$A000-$BFFF** is the bank's own: a phase's overlay (banks 0-4), the art (5), the strings (6). `bank.c` switches with a store to $8000 and puts the phase back.
+- **$C000-$FF6F**, fixed: the rest of the program, the display, the runtime and fujinet-lib; the claim at $FF70.
+- **RAM:** the console's holds the display lists (MARIA reads lists in a 2-cycle window); the cartridge's 16K at $4000 holds four 2K character blocks, the screen, the variables and the C stack. All three are nearly full (`build/mule-a78.map`): the fixed bank has about 350 bytes free, REPL about 300, the variables about 120.
+
+**The screen** (`src/atari7800/maria.s`, `nmi.s`, `gfx.c`) is the Atari port's 24 rows of 8 lines, each a MARIA zone with a display list of its own, two slots of it (built in one, shown from the next frame, all together).
+- **Rows** keep the Atari's screen bytes (`draw.s`, `cells.s`, `mapgfx.s` are the Atari's with MARIA's character layout). A text row is 320A, the original's font a byte a character; the big text, drawing, map and town rows are 160A. The map's mode 6 characters are made 2-byte codes in three colour values (a row's four colours in two palettes); the drawing cells and the town's characters are 1-byte codes.
+- **What the original drew with players** is direct objects in the zones: the mountains, the river, the store, the time bar.
+- **Sprites** are 8-line pieces (made again only when the frame or the line within the zone changes) in direct objects, pixel value 3, in P4-P7: four sprite colours a frame.
+- **A DLI** where a zone differs from the one above sets CHARBASE, CTRL and the zone's colours (even zones use P0/P1, odd ones P2/P3, so colours are set while the zone above shows). A 320A row under a 160A one is switched two lines on, at its first line's start. The frame's DLI on the blank below keeps the clock (60 jiffies a second, NTSC or PAL), plays the sound and shows what was built. `tools/a78sim/probe` measured the protocol and its DMA limits in MAME.
+
+**The network: stream mode, never waited on.** `src/atari7800/nstrans.c` is the NES's, at the 7800 cartridge's mailbox: registers at $0D00+n, the request at $0F00, the reply in the 1K window at $0800, ACKSEQ at $0C00.
+
+**Controls** (the left joystick, the console's switches):
+
+| Control | Does |
+|---|---|
+| stick | walk; up/down in auctions; left/right in the lobby |
+| button 1 (FIRE) | the button |
+| button 2 | rub out (the name); RESET does the same, for a one-button 2600 stick |
+| PAUSE | RETURN: end your turn, finish the name |
+| SELECT | ESC: leave the table (asks first in a game); at the table list, quit |
+| PAUSE + button 2 | 0: sit this good out |
+
+The name is picked a letter at a time. Quitting says goodbye to the server and goes back to CONFIG.
+
+**Testing.**
+- **Offline, in MAME** (`tools/a78sim/a78sim.py`): `tools/a2sim`'s scenario language, with the image on the FujiNet 7800 cartridge's MAME device (`~/Workspace/mame-a7800`, grafted by fujinet-firmware's `pico/atari-7800/emu/apply.sh`); `pad` drives MAME's own stick and switches, `zones` prints each zone's DMA, `wcount` counts the main loop's passes. `A78SIM_SYSTEM=a7800p` is a PAL console, `A78WAV=out.wav` records the sound. The cartridge is pointed at a port nothing listens on.
+
+      python3 tools/a78sim/a78sim.py r2r/atari7800/mule.a78 build/mule-a78.map scenario.txt out/
+
+- **Live** (`tools/a78sim/rig.sh SCENARIO OUT [SECS]`): a server built from this repository (HTTP 8087, stream 19987), a private copy of fujinet-pc on BoIP 19988 with the appkeys seeded, and MAME in real time, the image built from a copy with that endpoint. `AUTOPLAY=1` builds the one that plays itself.
+
 ## The SMS version
 
 An image for the Sega Master System on the FujiNet SMS cartridge (fujinet-firmware `pico/sms`, the `add-sms` branch): CONFIG pushes it into the cartridge's SRAM and starts it like any game. It draws the Adam's pictures (`src/tms9918`, `gen/tms9918/gfx.c`) with the Namco font at 32 columns, and plays the Adam's effects on the SMS's own SN76489.
@@ -672,6 +719,10 @@ A terminal sends keys, not keys held, and the H19 repeats only with its REPEAT k
 - **NES: untested on hardware.** No NES cartridge has been built yet. The MMC3 interrupt's line (`IRQ_EARLY`) and the drain budgets in `crt0.s` are set for MAME.
 - **NES: colour clash** by 16 x 16 block. Two colours that need different palettes in one block share the last one drawn. On the map, a plot is 3 cells wide, so every other plot shares a block column with its neighbour.
 - **NES: big redraws without a clear** (the summary's table, a scrolling message) go through the queue at about 280 bytes a frame. A message row being scrolled can show half its old position for a frame.
+- **7800: untested on hardware.** No 7800 cartridge has been built yet, so all of it has run only in MAME, which applies MARIA's read mode and colours a line at a time: on a console the DLIs' writes may land mid-line. The display lists and the characters are in RAM that MARIA reads in 2- and 3-cycle windows.
+- **7800: switching modes.** A text row under a graphics row starts a line late if the row above it is busy (over ~200 cycles of DMA), and a text row's last line is shown in the next row's mode: the font leaves both blank but for some punctuation.
+- **7800: four sprite colours** a frame; a fifth takes the last.
+- **7800: trading** redraws about every second frame (the price lines are drawn cells).
 - **SMS: untested on hardware.** No SMS cartridge has been built yet (fujinet-hardware `SMS/FujiNet-SMS-Rev0`).
 - **SMS: `.sms` images** are taken for cartridge images only by the fujiversal-sms ESP32 firmware (the `fujiversal-sms-board` work); the `add-sms` branch takes `.ROM` and `.BIN`.
 - **TMS9918 (and the SMS, which keeps its cells): colour clash.** Text or a sprite-free drawing next to another colour can recolour a few pixels of its cell's row.
