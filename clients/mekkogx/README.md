@@ -17,7 +17,7 @@ There are twelve platforms:
 - the **Sega Master System**, as an image the FujiNet SMS cartridge runs, with the Adam's pictures in Mode 4 and its effects on the SMS's own SN76489;
 - the **Atari 7800**, as a SuperGame image the FujiNet 7800 cartridge runs, with the Atari 800's graphics (the original's) drawn by MARIA and the Atari's effects on the cartridge's POKEY;
 - the **Atari 5200**, as a Super Cart image the FujiNet 5200 cartridge runs: the Atari 800 version itself, on the same ANTIC, GTIA and POKEY;
-- the **Heathkit H89** under CP/M, with the H89-ESP32 FujiNet card, drawn on its H19 terminal in the terminal's own characters (and its one beep).
+- the **Heathkit H89** under CP/M or HDOS, with the H89-ESP32 FujiNet card, drawn on its H19 terminal in the terminal's own characters (and its one beep).
 
 The Adam, the MSX and the SMS share their graphics code (`src/tms9918`): the first two have a TMS9918A, and the SMS shows the same cells in its own mode.
 
@@ -38,7 +38,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/sms/` | the Sega Master System implementation (z88dk; the TMS9918A's cells as Mode 4 tiles) |
 | `src/atari7800/` | the Atari 7800 implementation (cc65, the display in 6502 assembly; the Atari's rows and sprites as MARIA's display lists, its sound the Atari's `snd.s`) |
 | `src/atari5200/` | the Atari 5200 implementation (cc65): `src/atari`'s screen, sprites and sound assembled for the 5200 (`src/atari/hw.inc`), and the cartridge's start, banks, transport and controller |
-| `src/h89/` | the Heathkit H89 implementation (z88dk, CP/M; the H19 terminal's characters, sent by difference) |
+| `src/h89/` | the Heathkit H89 implementation (z88dk, CP/M and HDOS, the phases as overlays; the H19 terminal's characters, sent by difference) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
 
@@ -688,16 +688,19 @@ Pause is the Z80's NMI and can't be held, so the button held when it comes says 
 
 ## The H89 version
 
-`MULE.COM` for a Heathkit H89 (or Zenith Z-89/Z-90) running Heath/Zenith CP/M 2.2.04, with the H89-ESP32 FujiNet card (fujinet-firmware's `rs232` build for the H89: an 82C55 at D0h speaking FujiBus). The screen is the H89's own H19 terminal: 80 columns, 24 lines and the 25th, its graphics characters, reverse video, no colour, one beep.
+`MULE.COM` (CP/M) or `MULE.ABS` (HDOS) for a Heathkit H89 (or Zenith Z-89/Z-90) running Heath/Zenith CP/M 2.2.04 or HDOS 2.0, with the H89-ESP32 FujiNet card (fujinet-firmware's `rs232` build for the H89: an 82C55 at D0h speaking FujiBus). The screen is the H89's own H19 terminal: 80 columns, 24 lines and the 25th, its graphics characters, reverse video, no colour, one beep.
 
-    make h89-cpm                               # r2r/h89-cpm/mule.h8d (MULE.COM on an H17 disk) and mule.com
+    make h89-cpm                               # r2r/h89-cpm/mule.h8d (MULE.COM and MULE.OVL on an H17 disk)
+    make h89-hdos                              # r2r/h89-hdos/mule.h8d (MULE.ABS on an H17 disk)
     make h89-cpm ENDPOINT=http://myhost:8080   # the server: its host, stream port 9902
 
 - **What it needs:** z88dk, as for the Adam (`tools/z80/z88dk`), and fujinet-lib with `bus/h89` in `~/Workspace/fujinet-lib` (or `make FNLIB_H89=/path`), which `tools/z80/mkfnlib.sh` builds with zsdcc into `build/fnlib-h89`.
-- **The disks** are 100K H17 images (the layout Heath's CP/M gives a hard-sectored disk):
-  - `mule-boot.h8d` (`make h89-boot`) boots: a 64K CP/M 2.2.04 system disk with `MULE.COM` on it (and PIP, STAT, SYSGEN, FORMAT and DUP; the development tools are taken off for room). Boot it from drive 1 and type `MULE`. `tools/h89/mkboot.sh` makes it from fujinet-go-h89-desktop's system disk, letting CP/M itself ERA and PIP in that project's headless H89.
-  - `mule.h8d` is a data disk with `MULE.COM` alone (`appmake +cpmdisk -f hz89`): from a CP/M already booted, `B:MULE`, or through FNDISK (fujinet-h89) `D:MULE`.
-- **Memory:** a 64K system, or the 62K one FNDISK needs (about 360 bytes to spare there). MULE.COM loads at 0100h; the screen's buffer (2,000 bytes) and the stack (384 bytes; 192 measured) go above the program's variables, over the CCP (it ends with a warm boot). The .COM is cut short at its variables (`tools/h89/trimcom.py`): 46K to load, about 20 seconds from an H17.
+- **The disks** are 100K H17 images (CP/M: the layout Heath's CP/M gives a hard-sectored disk):
+  - `mule-boot.h8d` (`make h89-boot`) boots: a 64K CP/M 2.2.04 system disk with `MULE.COM` and `MULE.OVL` on it (and PIP, STAT, SYSGEN, FORMAT and DUP; the development tools are taken off for room). Boot it from drive 1 and type `MULE`. `tools/h89/mkboot.sh` makes it from fujinet-go-h89-desktop's system disk, letting CP/M itself ERA and PIP in that project's headless H89.
+  - `h89-cpm/mule.h8d` is a data disk with `MULE.COM` and `MULE.OVL` (`appmake +cpmdisk -f hz89`): from a CP/M already booted, `B:MULE`, or through FNDISK (fujinet-h89) `D:MULE`. The two files go together, on the same drive (or one the system has logged in).
+  - `h89-hdos/mule.h8d` is a data disk with `MULE.ABS`: `MOUNT SY1:` then `RUN SY1:MULE.ABS`, or `LOAD FN:`, `MOUNT FN0:`, `RUN FN0:MULE.ABS`. One file: its overlays are on its end.
+- **Overlays:** the five phases (`bank.h`: boot, status, grant + events, auction, develop) take turns in one 6K window, as on the Apple II, Atari and SMS, so the program leaves a 62K CP/M (the one FNDISK needs; BDOS at D806H) and HDOS with `FN:` loaded (D090H; CB0DH with `LP:` too) the room it needs. `src/h89/mmap.inc` is the map; `tools/h89/ovl.py` fails the link when anything but `main.c`'s phase tables refers into an overlay (z80asm would link it without a murmur, to whatever the window holds), checks the budget and packs the overlays. `src/h89/bank.c` reads them, with a table of `MULE` and each overlay's first record and length in front: CP/M reads `MULE.OVL` with the BDOS (the default drive first, then only drives the system has logged in); HDOS reads the end of its own `MULE.ABS` on channel -1, which it leaves open (`.POSIT`, `.READ`: from SY1: or FN0: alike). A load is disk I/O, and from an FN: drive it is the card's, so the stream's call going is finished first (`nt_quiesce`). A phase change costs a second or so from an H17, nothing from FN:.
+- **Memory:** CP/M: `MULE.COM` (28K) loads at 0100h; the window is above it, the variables after that (they are not in the file), then the screen's buffer (2,000 bytes); the stack is under the BDOS. Some 12K to spare at 62K. HDOS: the stack at 2280h, the window at 2480h, the program above it and its variables after that, which HDOS never sees (it checks the image only, and `FN:` and `LP:` came down from the top of memory): `src/h89/tpa.asm` checks them against `S.SYSM - S.OMAX`, says what it found if short, and tells HDOS the real top (`.SETTOP`). About 2K to spare under D090H.
 
 **The screen** (`src/h89/h19.c`, `gfx.c`). The H19 is a serial terminal at 9600 baud: a byte a millisecond, a whole screen in two seconds. So the game draws into a buffer of cells, and only the cells that changed go out, in the fewest bytes:
 - graphics mode stays on (ESC F once): its characters 20h-5Dh are still text, upper case, so the only switch is reverse video (ESC p, ESC q);
@@ -715,7 +718,7 @@ Pause is the Z80's NMI and can't be held, so the button held when it comes says 
 | auctions | the price lines ─, the players' numbers above them, the money and goods under each; the goods' bars in block characters |
 | titles | in reverse |
 
-**The console and the clock** (`src/h89/h89io.asm`). The BIOS's console output waits a millisecond a byte, most of a frame for a few cells. Here the bytes go into a ring that empties without waiting: from the main loop whenever it waits, and from the BIOS's 2 ms clock interrupt (the jump at 0008h, which goes through ours first) two bytes at a time, so the screen keeps moving while a FujiBus call holds the CPU. The console's receive interrupt (0018h) is ours while the game runs: the keys go into a ring, and XOFF/XON from the terminal stop and start the output at once. Both vectors are put back on the way out. The clock interrupt also counts the 60 Hz frames.
+**The console and the clock** (`src/h89/h89io.asm`). The BIOS's console output waits a millisecond a byte, most of a frame for a few cells. Here the bytes go into a ring that empties without waiting: from the main loop whenever it waits, and from the BIOS's 2 ms clock interrupt (the jump at 0008h, which goes through ours first) two bytes at a time, so the screen keeps moving while a FujiBus call holds the CPU. The console's receive interrupt (0018h) is ours while the game runs: the keys go into a ring, and XOFF/XON from the terminal stop and start the output at once. Both vectors are put back on the way out. (HDOS has the monitor ROM at 0000h: its RST 1 counts the ticks at 201Bh and jumps through HDOS's table at 201Fh, RST 3's entry is 2025h; those are the two jumps taken instead, and the OS calls are `.SCOUT`, `.POSIT`, `.READ`, `.EXIT`.) The clock interrupt also counts the 60 Hz frames.
 
 **The network: stream mode, never waited on.** `src/nstrans_fb.c` drives the card's 82C55 itself (`src/h89/fbport.c`): a request goes out, and its reply is collected over the frames after. The open, the close, the appkeys and the table list are fujinet-lib's functions, but the call they all make, `fuji_bus_call`, is `fbport.c`'s own: fujinet-lib's `bus/h89` is 1.6K that repeats it, and its writes wait for ever on a card that doesn't answer (these time out). Before anything, the 82C55 is looked for (`plat_net_probe`): with no card, port D2h reads FFh.
 
@@ -740,6 +743,9 @@ A terminal sends keys, not keys held, and the H19 repeats only with its REPEAT k
 - **In fujinet-go-h89-desktop's headless H89** (`tools/h89sim/h89sim.py`), the scenario language, step by step through its runner's `--stdin`: CP/M boots from its 64K disk, `B:MULE` runs, and `snap` saves the H19's picture and its text.
 
       python3 tools/h89sim/h89sim.py r2r/h89-cpm/mule.h8d r2r/h89-cpm/mule.map scenario.txt out/
+      H89SIM_OS=hdos python3 tools/h89sim/h89sim.py r2r/h89-hdos/mule.h8d r2r/h89-hdos/mule.map scenario.txt out/    # HDOS 2.0: MOUNT SY1:, RUN SY1:MULE.ABS
+
+  A scenario that begins with `test` runs in real time: warped, the game's short load and the 45 frames of its title (where test mode is asked for) pass in less than one poll of the harness.
 
   `H89SIM_FUJINET=1` is a live game against the runner's in-process FujiNet, with the appkeys `H89SIM_NAME` and `H89SIM_TABLE` written first; with a private server, run both in `unshare -rn`.
   More commands for this target: `keyname NAME` (esc, up, f1... -- keys `type` can't send), `sleep MS` (after the game has quit and its clock stopped), and `profile N` / `pcprof N` / `stallpcs`. Build with `-DH89_PROF=1` (C and `h89io.asm`) for the last two: the clock interrupt keeps the last 256 PCs it interrupted (a fair profile, which the rig's debugger samples are not), and the worst stall's are kept too.

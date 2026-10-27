@@ -17,8 +17,16 @@ uint8_t con_flushed(void);
 void con_pump(void);
 int kbd_get(void);
 uint16_t ticks_now(void);
-void cpm_print(const char *s) __z88dk_fastcall;
-void cpm_exit(void);
+void os_print(const char *s) __z88dk_fastcall;   /* a '$'-ended string */
+void os_exit(void);
+#ifdef __HDOS__
+uint8_t hdos_read(const uint16_t *args) __z88dk_fastcall;   /* sector, buffer, bytes */
+#else
+uint8_t cpm_open(uint8_t *fcb) __z88dk_fastcall;
+void cpm_dma(void *to) __z88dk_fastcall;
+uint8_t cpm_rread(uint8_t *fcb) __z88dk_fastcall;
+uint16_t cpm_login(void);
+#endif
 
 extern uint16_t tx_count;
 extern uint8_t tx_held;

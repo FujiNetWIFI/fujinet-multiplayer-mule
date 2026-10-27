@@ -14,6 +14,7 @@
 #   make atari5200                     r2r/atari5200/mule.a52 (Atari 5200, the FujiNet 5200 cartridge)
 #   make h89-cpm                       r2r/h89-cpm/mule.h8d (Heathkit H89, CP/M: MULE.COM on an H17 disk)
 #   make h89-boot                      r2r/h89-cpm/mule-boot.h8d (the same on a bootable 64K CP/M disk)
+#   make h89-hdos                      r2r/h89-hdos/mule.h8d (Heathkit H89, HDOS 2.0: MULE.ABS on an H17 disk)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
 #                                      graphics from the original disk (never committed)
 #   make ENDPOINT=http://host:8080     server used when the lobby gave none (remembered)
@@ -23,7 +24,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms atari7800 atari5200 h89-cpm
+PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms atari7800 atari5200 h89-cpm h89-hdos
 # The PC's disk has two: MULE.EXE, and MULEJR.EXE for the PCjr (MS-DOS below)
 ifeq ($(PLATFORM),msdos)
   PRODUCTS = mule mulejr
@@ -44,7 +45,8 @@ PLATFORM_COMBOS = \
   adam_cpm+=adam \
   adam+=tms9918 \
   sms+=tms9918 \
-  h89-cpm+=h89
+  h89-cpm+=h89 \
+  h89-hdos+=h89
 
 # ---- Apple II -------------------------------------------------------------
 # HGR page 1 sits at $2000-$3FFF: the linker config keeps code and data out
@@ -272,7 +274,7 @@ pcjr-floppy: r2r/msdos/$(PRODUCT)
 # TMS9918A code is src/tms9918 (a PLATFORM_COMBOS entry). fujinet-lib is
 # fujinet-lib-experimental built with zsdcc (tools/z80/mkfnlib.sh).
 Z80_TOOLS = $(CURDIR)/tools/z80
-ifneq ($(filter adam msxrom sms h89-cpm,$(PLATFORM)),)
+ifneq ($(filter adam msxrom sms h89-cpm h89-hdos,$(PLATFORM)),)
   FUJINET_LIB := __UNDEFINED__
   CC_Z88DK = $(Z80_TOOLS)/z88dk zcc
   AS_Z88DK = $(Z80_TOOLS)/z88dk z80asm
@@ -355,47 +357,108 @@ $(SMOBJ)/gen/tms9918/gfx.o:                   CFLAGS += --constseg=ART
 sms/r2r-post::
 	python3 tools/sms/mkrom.py r2r/sms
 
-# ---- Heathkit H89: CP/M 2.2.04, the H19 terminal --------------------------
-# MULE.COM, alone on a 100K H17 disk (hz89, the format Heath's CP/M gives a
-# hard-sectored disk). The H89-ESP32 FujiNet card is an 82C55 at D0h that
-# speaks FujiBus: the stream's calls go to it unwaited (src/h89/fbport.c,
-# src/nstrans_fb.c); fujinet-lib (FNLIB_H89: the one with bus/h89) opens and
-# closes, built with zsdcc. The screen is the H19's characters, sent by
-# difference (src/h89/h19.c). No overlays: a 64K CP/M has room for it all.
+# ---- Heathkit H89: CP/M 2.2.04 or HDOS 2.0, the H19 terminal --------------
+# MULE.COM (CP/M) or MULE.ABS (HDOS), with its overlays, on a 100K H17 disk
+# (hz89, the format Heath's CP/M gives a hard-sectored disk). The H89-ESP32
+# FujiNet card is an 82C55 at D0h that speaks FujiBus: the stream's calls go
+# to it unwaited (src/h89/fbport.c, src/nstrans_fb.c); fujinet-lib (FNLIB_H89:
+# the one with bus/h89) opens and closes, built with zsdcc. The screen is the
+# H19's characters, sent by difference (src/h89/h19.c).
+#
+# The five phases are overlays (bank.h) that take turns in one window of
+# H89_OVL_SIZE, so the game fits what the OS leaves: a 62K CP/M, the one
+# FNDISK needs (BDOS at D806H), and HDOS 2.0 with FN: loaded (D090H). The map
+# is src/h89/mmap.inc; tools/h89/ovl.py checks it (nothing but main.c's phase
+# tables may refer into an overlay), checks the budget and packs the overlays:
+#
+#   CP/M  window at H89_OVL_WIN above the program (0100H-), the variables after
+#         it; the overlays in MULE.OVL beside MULE.COM (src/h89/bank.c)
+#   HDOS  stack 2280H, the window at H89_HDOS_WIN, the program above it and
+#         the variables after that (not in the file, as HDOS checks only the
+#         image: src/h89/tpa.asm checks the rest); the overlays on the end of
+#         MULE.ABS, read on the channel HDOS leaves open on it
+H89_OVL_SIZE = 0x1800
+H89_OVL_WIN  = 0x7100
+H89_HDOS_WIN = 0x2480
+H89_HDOS_ORG = $(shell printf '0x%X' $$(($(H89_HDOS_WIN) + $(H89_OVL_SIZE))))
 FNLIB_H89 ?= $(HOME)/Workspace/fujinet-lib
-CFLAGS_EXTRA_H89-CPM += -compiler=sdcc -SO3 -D__H89__ -DPLAT_NET_PROBE -DPLAT_NETSTREAM -DPLAT_FUJIBUS \
-                        -DPLAT_NS_SLOW -DFB_RBUF=128 -DFB_QBUF=64
+H89_CFLAGS = -compiler=sdcc -SO3 -D__H89__ -DPLAT_NET_PROBE -DPLAT_NETSTREAM -DPLAT_FUJIBUS \
+             -DPLAT_NS_SLOW -DFB_RBUF=128 -DFB_QBUF=64
 ifeq ($(H89_RIG_KEYS),1)
-  CFLAGS_EXTRA_H89-CPM += -DH89_RIG_KEYS
+  H89_CFLAGS += -DH89_RIG_KEYS
 endif
-EXTRA_INCLUDE_H89-CPM += src/h89 build/fnlib-h89/include
-LDFLAGS_EXTRA_H89-CPM += -compiler=sdcc -m -pragma-define:CRT_ENABLE_STDIO=0 -pragma-define:CLIB_FOPEN_MAX=0 \
-                         -pragma-define:CRT_ENABLE_COMMANDLINE=0 -pragma-define:CRT_INITIALIZE_BSS=1 \
-                         -pragma-define:noprotectmsdos=1
-ifeq ($(PLATFORM),h89-cpm)
+H89_LDFLAGS = -compiler=sdcc -m -pragma-define:CRT_ENABLE_STDIO=0 -pragma-define:CLIB_FOPEN_MAX=0 \
+              -pragma-define:CRT_ENABLE_COMMANDLINE=0 -pragma-define:MMAP=-1 -Ca-Isrc/h89 \
+              -pragma-define:H89_OVL_SIZE=$(H89_OVL_SIZE)
+CFLAGS_EXTRA_H89-CPM   += $(H89_CFLAGS) -DH89_OVL_WIN=$(H89_OVL_WIN)
+ASFLAGS_EXTRA_H89-CPM  += -DH89_OVL_WIN=$(H89_OVL_WIN)
+LDFLAGS_EXTRA_H89-CPM  += $(H89_LDFLAGS) -pragma-define:CRT_INITIALIZE_BSS=1 -pragma-define:noprotectmsdos=1 \
+                          -pragma-define:H89_OVL_WIN=$(H89_OVL_WIN)
+# (the crt's stack goes two bytes under the window: it pops a word it never
+# pushed; and the startup's BSS clear is src/h89/tpa.asm's, after it has
+# checked there is room)
+CFLAGS_EXTRA_H89-HDOS  += $(H89_CFLAGS) -DH89_OVL_WIN=$(H89_HDOS_WIN) -DH89_ORG=$(H89_HDOS_ORG)
+ASFLAGS_EXTRA_H89-HDOS += -DH89_HDOS -DH89_OVL_WIN=$(H89_HDOS_WIN) -DH89_ORG=$(H89_HDOS_ORG) \
+                          -DH89_CELLS=2000
+LDFLAGS_EXTRA_H89-HDOS += $(H89_LDFLAGS) -pragma-define:H89_OVL_WIN=$(H89_HDOS_WIN) -pragma-define:H89_HDOS=1 \
+                          -pragma-define:CRT_ORG_CODE=$(H89_HDOS_ORG) \
+                          -pragma-define:REGISTER_SP=$(shell printf '0x%X' $$(($(H89_HDOS_WIN) - 2))) \
+                          -pragma-define:CLIB_EXIT_STACK_SIZE=0 \
+                          -pragma-define:CRT_INITIALIZE_BSS=0 -pragma-define:CRT_TRIM_BSS=1
+EXTRA_INCLUDE_H89-CPM  += src/h89 build/fnlib-h89/include
+EXTRA_INCLUDE_H89-HDOS += src/h89 build/fnlib-h89/include
+ifneq ($(filter h89-cpm h89-hdos,$(PLATFORM)),)
   LIBS += -Lbuild/fnlib-h89 -lfujinet-h89
 endif
-EXECUTABLE_EXTRA_DEPS_H89-CPM += build/fnlib-h89/fujinet-h89.lib
+EXECUTABLE_EXTRA_DEPS_H89-CPM  += build/fnlib-h89/fujinet-h89.lib
+EXECUTABLE_EXTRA_DEPS_H89-HDOS += build/fnlib-h89/fujinet-h89.lib
 # What runs once in a while is made small, for the 62K CP/M FNDISK needs.
-H8OBJ = build/$(PRODUCT)/h89-cpm/src
-$(H8OBJ)/boot.o $(H8OBJ)/teststart.o $(H8OBJ)/test.o $(H8OBJ)/net.o $(H8OBJ)/status.o \
-  $(H8OBJ)/events.o $(H8OBJ)/grant.o $(H8OBJ)/strings.o: CFLAGS += --opt-code-size
+# The phases are bank.h's numbers, as the SMS's.
+define h89-objs
+H8OBJ_$1 = build/$(PRODUCT)/$1/src
+$$(H8OBJ_$1)/boot.o $$(H8OBJ_$1)/teststart.o $$(H8OBJ_$1)/test.o $$(H8OBJ_$1)/net.o \
+  $$(H8OBJ_$1)/status.o $$(H8OBJ_$1)/events.o $$(H8OBJ_$1)/grant.o $$(H8OBJ_$1)/strings.o: CFLAGS += --opt-code-size
+$$(H8OBJ_$1)/boot.o $$(H8OBJ_$1)/teststart.o: CFLAGS += --codeseg=code_ovl_1 --constseg=rodata_ovl_1
+$$(H8OBJ_$1)/status.o:                       CFLAGS += --codeseg=code_ovl_2 --constseg=rodata_ovl_2
+$$(H8OBJ_$1)/grant.o $$(H8OBJ_$1)/events.o:  CFLAGS += --codeseg=code_ovl_3 --constseg=rodata_ovl_3
+$$(H8OBJ_$1)/auction.o:                      CFLAGS += --codeseg=code_ovl_4 --constseg=rodata_ovl_4
+$$(H8OBJ_$1)/develop.o:                      CFLAGS += --codeseg=code_ovl_5 --constseg=rodata_ovl_5
+endef
+$(eval $(call h89-objs,h89-cpm))
+$(eval $(call h89-objs,h89-hdos))
 
+# 0D806H: the BDOS of a 62K CP/M, the one FNDISK needs (a 64K one has E006H)
 h89-cpm/r2r-post::
 	@mkdir -p $(CACHE_PLATFORM)/disk
-	python3 tools/h89/trimcom.py $(R2R_PD)/$(PRODUCT).map $(R2R_PD)/$(PRODUCT).com
+	python3 tools/h89/ovl.py $(R2R_PD)/$(PRODUCT) --os cpm --objs build/$(PRODUCT)/h89-cpm \
+	  --win $(H89_OVL_WIN) --size $(H89_OVL_SIZE) --top 0xD806 --allow main_c \
+	  --z88dk $(Z80_TOOLS)/z88dk
 	cp $(R2R_PD)/$(PRODUCT).com $(CACHE_PLATFORM)/disk/MULE.COM
+	cp $(R2R_PD)/$(PRODUCT).ovl $(CACHE_PLATFORM)/disk/MULE.OVL
 	cd $(CACHE_PLATFORM)/disk && rm -f disk && $(Z80_TOOLS)/z88dk z88dk-appmake +cpmdisk -f hz89 \
-	  --container raw --no-com-file -b MULE.COM -o disk
+	  --container raw --no-com-file -b MULE.COM -a MULE.OVL -o disk
 	python3 -I tools/h89/cpm-dir-fixup.py $(CACHE_PLATFORM)/disk/disk
 	mv $(CACHE_PLATFORM)/disk/disk $(R2R_PD)/$(PRODUCT).h8d
+
+# 0D090H: what HDOS 2.0 leaves with FN: loaded (S.SYSM - S.OMAX; CB0DH with LP:
+# too: src/h89/tpa.asm says so on the machine)
+h89-hdos/r2r-post::
+	@mkdir -p $(CACHE_PLATFORM)/disk
+	python3 tools/h89/ovl.py $(R2R_PD)/$(PRODUCT) --os hdos --objs build/$(PRODUCT)/h89-hdos \
+	  --win $(H89_HDOS_WIN) --size $(H89_OVL_SIZE) --top 0xD090 --allow main_c \
+	  --z88dk $(Z80_TOOLS)/z88dk
+	cp $(R2R_PD)/$(PRODUCT).abs $(CACHE_PLATFORM)/disk/disk.bin
+	cd $(CACHE_PLATFORM)/disk && rm -f disk.h8d && $(Z80_TOOLS)/z88dk z88dk-appmake +hdos --dumb \
+	  -b disk.bin -o MULE.ABS
+	python3 -I tools/h89/hdos-dir-fixup.py $(CACHE_PLATFORM)/disk/disk.h8d MULE.ABS $(CACHE_PLATFORM)/disk/disk.bin
+	mv $(CACHE_PLATFORM)/disk/disk.h8d $(R2R_PD)/$(PRODUCT).h8d
 
 # A disk that boots: fujinet-go-h89-desktop's 64K CP/M system disk with the
 # development tools taken off and MULE.COM put on, by CP/M itself in that
 # project's headless H89 (tools/h89/mkboot.sh; it needs the rig, built).
 .PHONY: h89-boot
 h89-boot: r2r/h89-cpm/$(PRODUCT)
-	tools/h89/mkboot.sh r2r/h89-cpm/$(PRODUCT).com r2r/h89-cpm/$(PRODUCT)-boot.h8d
+	tools/h89/mkboot.sh r2r/h89-cpm/$(PRODUCT).com r2r/h89-cpm/$(PRODUCT).ovl r2r/h89-cpm/$(PRODUCT)-boot.h8d
 
 # ---- Atari 400/800 (48K), XL/XE -------------------------------------------
 # cc65, no DOS: picoboot loads MULE.COM, whose first chunk (src/atari/
@@ -632,7 +695,7 @@ gen-nes: gen/config.h gen/nes/gfx.c build/fnlib-nes/fujinet-nes.lib
 gen-sms: gen/config.h gen/tms9918/gfx.c build/fnlib-sms/fujinet-sms.lib
 gen-atari7800: gen/config.h gen/atari7800/gfx.c build/fnlib-a78/fujinet-a78.lib
 gen-atari5200: gen/config.h gen/atari5200/gfx.c build/fnlib-a52/fujinet-a52.lib
-gen-h89-cpm: gen/config.h build/fnlib-h89/fujinet-h89.lib
+gen-h89-cpm gen-h89-hdos: gen/config.h build/fnlib-h89/fujinet-h89.lib
 
 gen/config.h: FORCE
 	@mkdir -p gen

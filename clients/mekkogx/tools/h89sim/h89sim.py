@@ -5,7 +5,8 @@ usage: h89sim.py DISK MAPFILE SCENARIO OUTDIR
 
 Boots Heath CP/M 2.2.04 (64K) from H17 drive 1 with DISK (r2r/h89-cpm/
 mule.h8d) in drive 2, runs B:MULE, waits for the title, then plays the
-scenario, one command a line; times are in frames of the game's clock
+scenario. H89SIM_OS=hdos: HDOS 2.0 from drive 1, DISK is r2r/h89-hdos/mule.h8d,
+MOUNT SY1: and RUN SY1:MULE.ABS. The scenario, one command a line; times are in frames of the game's clock
 (frame_count). The same scenario language as tools/msx/msxsim (and
 adamsim, a2sim, cocosim):
 
@@ -44,7 +45,17 @@ import sys
 import time
 
 RIG = os.environ.get("H89SIM_RIG", os.path.expanduser("~/Workspace/fujinet-go-h89-desktop"))
-BOOT = os.environ.get("H89SIM_BOOT", os.path.join(RIG, "tools/disks/boot/cpm-2.2.04-64k.h8d"))
+HDOS = os.environ.get("H89SIM_OS") == "hdos"
+# H89SIM_FN0=1 (HDOS): the disk in the FujiNet's first slot instead, LOAD FN:
+# and RUN FN0:MULE.ABS -- H89SIM_BOOT is then a boot disk with FN.DVD on it
+# (fujinet-h89 tests/make-hdos-boot.sh); H89SIM_LP=1 loads LP: too.
+FN0 = HDOS and os.environ.get("H89SIM_FN0") == "1"
+# H89SIM_FNDISK=1 (CP/M): the disk in the FujiNet's first slot, as drive D: by
+# FNDISK (H89SIM_BOOT: a 62K CP/M; H89SIM_B: a data disk with FNDISK.COM on it),
+# and D:MULE, so MULE.OVL is found on a drive the system has logged in.
+FNDISK = (not HDOS) and os.environ.get("H89SIM_FNDISK") == "1"
+BOOT = os.environ.get("H89SIM_BOOT", os.path.join(RIG, "tools/disks/boot/hdos-2.0.h17disk" if HDOS
+                                                  else "tools/disks/boot/cpm-2.2.04-64k.h8d"))
 LIVE = os.environ.get("H89SIM_FUJINET") == "1"
 DIRBITS = {"d": 1, "r": 2, "u": 4, "l": 8}
 
@@ -58,11 +69,33 @@ def symbols(path):
     return syms
 
 
+def fn0_steps(m, home, disk):
+    """The steps that run MULE.ABS from the FujiNet's drive FN0:, with FN: loaded."""
+    import shutil
+    import urllib.request
+    shutil.copy(disk, os.path.join(home, "data/fujinet/SD/MULE.H8D"))
+    for st in ("wait 3000", "type \\x20", "wait 500", "type \\x20", "prompt ACTION? <BOOT>",
+               "type \\r", "prompt DATE (DD-MMM-YY)?", "type 11-OCT-80\\r", "prompt >"):
+        yield st
+    urllib.request.urlopen("http://127.0.0.1:11513/mount?hostslot=0&deviceslot=0&mode=1&filename=/MULE.H8D").read()
+    yield "type LOAD FN:\\r"
+    yield "wait 3000"
+    yield "prompt >"
+    if os.environ.get("H89SIM_LP") == "1":
+        yield "type LOAD LP:\\r"
+        yield "wait 3000"
+        yield "prompt >"
+    yield "type MOUNT FN0:\\r"
+    yield "until MOUNTED ON FN0:"
+    yield "prompt >"
+    yield "type RUN FN0:MULE.ABS\\r"
+
+
 class H89:
-    def __init__(self, home, disk):
+    def __init__(self, home, disk, warp=True):
         cmd = [os.path.join(RIG, "build/core/h89_session_run"), "--roms", os.path.join(RIG, "tools/roms"),
                "--home", home, "--timeout", "120"]
-        if not LIVE and not os.environ.get("H89SIM_NOWARP"):
+        if warp and not LIVE and not os.environ.get("H89SIM_NOWARP"):
             cmd.append("--warp")         # (a machine option: before the steps)
         cmd += ["--disk", "h17:1=" + os.path.join(home, "boot.h8d"), "--disk", "h17:2=" + disk, "--stdin"]
         self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -133,7 +166,16 @@ def main():
         else:
             a = syms["_" + base] if "_" + base in syms else syms[base]
         return a + (int(off, 0) if off else 0)
-    m = H89(home, os.path.abspath(disk))
+    # (test mode is asked for in the 45 frames of the title: warped, the
+    # game's short load and those frames pass in less than one poll)
+    first = [l.split("#")[0].split() for l in open(scen)]
+    first = [l for l in first if l]
+    if FNDISK:
+        import shutil
+        os.makedirs(os.path.join(home, "data/fujinet/SD"), exist_ok=True)
+        shutil.copy(disk, os.path.join(home, "data/fujinet/SD/MULE.H8D"))
+        disk = os.environ["H89SIM_B"]
+    m = H89(home, os.path.abspath(disk), warp=not (first and first[0][0] == "test"))
 
     def frames():
         b = m.mem(sym("frame_count"), 2)
@@ -147,10 +189,29 @@ def main():
     try:
         m.step("until H:")
         m.step("type B\\r")
-        m.step("until A>")
-        m.step("wait 500")
-        m.step("prompt A>")
-        m.step("type B:MULE\\r")
+        if HDOS:
+            # (it asks the date on the disk's first boot: a fresh copy each time)
+            for st in ("wait 3000", "type \\x20", "wait 500", "type \\x20", "prompt ACTION? <BOOT>",
+                       "type \\r", "prompt DATE (DD-MMM-YY)?", "type 11-OCT-80\\r", "prompt >",
+                       "type MOUNT SY1:\\r", "wait 2000", "prompt >", "type RUN SY1:MULE.ABS\\r") \
+                    if not FN0 else fn0_steps(m, home, disk):
+                m.step(st)
+        elif FNDISK:
+            import urllib.request
+            m.step("until A>")
+            m.step("wait 1000")
+            urllib.request.urlopen("http://127.0.0.1:11513/mount?hostslot=0&deviceslot=0&mode=1&filename=/MULE.H8D").read()
+            m.step("prompt A>")
+            m.step("type B:FNDISK\\r")
+            m.step("until Installed")
+            m.step("prompt A>")
+            m.step("wait 500")
+            m.step("type D:MULE\\r")
+        else:
+            m.step("until A>")
+            m.step("wait 500")
+            m.step("prompt A>")
+            m.step("type B:MULE\\r")
         lines = [l.split("#")[0].strip() for l in open(scen)]
         lines = [l for l in lines if l]
         if lines and lines[0].split()[0] == "test":

@@ -25,19 +25,36 @@
 ; Both vectors are read when we start (the BIOS puts them there at cold
 ; boot; where it is depends on the system's size) and put back on the way
 ; out. A BIOS without JPs there isn't one we know: con_install says no.
+;
+; HDOS (H89_HDOS) has the monitor ROM at 0000h, whose RST 1 counts TICKS and
+; jumps through HDOS's table at 201Fh (a JP a vector, 3 bytes each: RST 1's
+; is 201Fh, RST 3's 2025h). Those two jumps are what we take over, as the
+; BIOS's at 0008h and 0018h. HDOS gets us out with .EXIT: only those, os_print
+; and hdos_read (the overlays, src/h89/bank.c) differ.
 
         SECTION code_user
 
         PUBLIC  _con_install, _con_remove, _con_put, _con_free, _con_pump
-        PUBLIC  _con_flushed, _kbd_get, _ticks_now, _cpm_print, _cpm_exit
+        PUBLIC  _con_flushed, _kbd_get, _ticks_now, _os_print, _os_exit
+IFDEF H89_HDOS
+        PUBLIC  _hdos_read
+ELSE
+        PUBLIC  _cpm_open, _cpm_dma, _cpm_rread, _cpm_login
+ENDIF
         PUBLIC  _frame_count, _tx_count, _tx_held
 
         defc    CON_DATA = $E8          ; RBR / THR
         defc    CON_IER  = $E9
         defc    CON_LSR  = $ED          ; bit 0 a byte in, bit 5 THR empty
+IFDEF H89_HDOS
+        defc    VEC_CLK  = $201F        ; the monitor's RST 1 counts TICKS, then jumps here
+        defc    VEC_CON  = $2025        ; its RST 3 (0018h) jumps here
+        defc    TICKS    = $201B        ; the 2 ms count
+ELSE
         defc    VEC_CLK  = $0008
         defc    VEC_CON  = $0018
         defc    TICKS    = $000B        ; the BIOS's 2 ms count
+ENDIF
         defc    TXN      = 64           ; ring sizes (powers of two)
         defc    RXN      = 32
         defc    HOLD_MAX = 125          ; ticks an XOFF holds without an XON
@@ -314,9 +331,70 @@ _ticks_now:
         ld      hl,(TICKS)
         ret
 
-; void cpm_print(const char *s) __z88dk_fastcall: a '$'-ended string,
-; through the BDOS (before the console is ours, or after)
-_cpm_print:
+; void os_print(const char *s) __z88dk_fastcall: a '$'-ended string,
+; through the OS (before the console is ours, or after)
+IFDEF H89_HDOS
+        defc    SCALL_EXIT = 0
+        defc    SCALL_SCOUT = 2
+        defc    SCALL_READ = $04
+        defc    SCALL_POSIT = $27
+        defc    SELF = $FF              ; the channel HDOS loaded the program on
+
+_os_print:
+        ld      a,(hl)
+        cp      '$'
+        ret     z
+        push    hl
+        rst     $38
+        defb    SCALL_SCOUT
+        pop     hl
+        inc     hl
+        jr      _os_print
+
+; uint8_t hdos_read(const uint16_t *args) __z88dk_fastcall: args = sector,
+; buffer, bytes. .POSIT then .READ on the program's own file (src/h89/bank.c).
+; 0: read. HDOS is 8080 code and leaves IX and IY alone.
+_hdos_read:
+        ld      c,(hl)
+        inc     hl
+        ld      b,(hl)                  ; BC = sector
+        inc     hl
+        ld      e,(hl)
+        inc     hl
+        ld      d,(hl)                  ; DE = buffer
+        inc     hl
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a                     ; HL = bytes
+        push    de
+        push    hl
+        ld      a,SELF
+        rst     $38
+        defb    SCALL_POSIT
+        pop     hl
+        pop     de
+        jr      c,hr_fail
+        ld      b,h
+        ld      c,l
+        ld      a,SELF
+        rst     $38
+        defb    SCALL_READ
+        jr      c,hr_fail
+        ld      l,0
+        ret
+hr_fail:
+        ld      l,1
+        ret
+
+; void os_exit(void): .EXIT
+_os_exit:
+        xor     a
+        rst     $38
+        defb    SCALL_EXIT
+        jr      _os_exit
+ELSE
+_os_print:
         push    ix
         push    iy
         ex      de,hl
@@ -326,9 +404,39 @@ _cpm_print:
         pop     ix
         ret
 
-; void cpm_exit(void): a warm boot (the CCP's memory is the screen's)
-_cpm_exit:
+; The BDOS calls src/h89/bank.c makes, each __z88dk_fastcall (DE or nothing),
+; the result in A (HL = BA, so the login vector too). The BDOS may keep
+; IX and IY for itself, as os_print's callers see.
+;   uint8_t cpm_open(uint8_t *fcb)    15: 0FFh, not found
+;   void cpm_dma(void *to)            26
+;   uint8_t cpm_rread(uint8_t *fcb)   33: 0, read
+;   uint16_t cpm_login(void)          24: a bit for each drive logged in
+_cpm_open:
+        ld      c,15
+        jr      cpm_de
+_cpm_dma:
+        ld      c,26
+        jr      cpm_de
+_cpm_rread:
+        ld      c,33
+        jr      cpm_de
+_cpm_login:
+        ld      c,24
+cpm_de:
+        push    ix
+        push    iy
+        ex      de,hl
+        call    5
+        pop     iy
+        pop     ix
+        ld      l,a
+        ld      h,b
+        ret
+
+; void os_exit(void): a warm boot (the CCP's memory is the screen's)
+_os_exit:
         jp      0
+ENDIF
 
         SECTION bss_user
 

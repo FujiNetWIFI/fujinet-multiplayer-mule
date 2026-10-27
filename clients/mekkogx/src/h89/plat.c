@@ -20,17 +20,21 @@ extern uint8_t _BSS_END_tail[];
 
 const char *plat_init(void)
 {
+#ifdef __HDOS__
+    /* (src/h89/tpa.asm has made sure of the room, and cleared the variables) */
+#else
     uint16_t top = *(uint16_t *)6, end = (uint16_t)_BSS_END_tail;
     if (top < end + STACK_ROOM + SCR_W * SCR_H) {
-        cpm_print("M.U.L.E. NEEDS MORE MEMORY: A 62K OR 64K CP/M\r\n$");
-        cpm_exit();
+        os_print("M.U.L.E. NEEDS MORE MEMORY: A 62K OR 64K CP/M\r\n$");
+        os_exit();
     }
+#endif
     if (!con_install()) {
-        cpm_print("M.U.L.E.: THIS BIOS IS NOT ONE IT KNOWS\r\n$");
-        cpm_exit();
+        os_print("M.U.L.E.: THIS BIOS IS NOT ONE IT KNOWS\r\n$");
+        os_exit();
     }
     h19_init(_BSS_END_tail);
-#if H89_PROF
+#if H89_PROF && !defined(__HDOS__)
     /* (a profiling build: the room under the stack marked, so the harness
      * can see how deep the stack went) */
     {
@@ -47,7 +51,7 @@ void plat_quit(void)
 {
     h19_exit();
     con_remove();
-    cpm_exit();
+    os_exit();
 }
 
 /* The card's 82C55 set up (port A mode 2, port B an input; the ESP32
