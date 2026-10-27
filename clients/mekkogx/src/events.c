@@ -12,7 +12,7 @@
 
 extern const uint8_t fx_land[];
 
-#ifdef __ATARI__
+#if defined(__ATARI__) || defined(__ATARI5200__)
 #define PIRATE_Y 64             /* hull rows 8-9 and 10-11, nose 9-10: see SHIP_Y */
 #else
 #define PIRATE_Y 66             /* the pirate's hull sits 8 lines lower in its frame */

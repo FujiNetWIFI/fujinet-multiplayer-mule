@@ -26,7 +26,7 @@
  *    trips for a status, five for a read, two for a write; here one each.
  */
 #if defined(PLAT_NETSTREAM) && !defined(__ATARI__) && !defined(__LYNX__) && !defined(__ADAM__) && !defined(__NES__) \
-    && !defined(__SMS__) && !defined(__ATARI7800__) && !defined(PLAT_FUJIBUS)
+    && !defined(__SMS__) && !defined(__ATARI7800__) && !defined(__ATARI5200__) && !defined(PLAT_FUJIBUS)
 
 #include <string.h>
 #include "mule.h"

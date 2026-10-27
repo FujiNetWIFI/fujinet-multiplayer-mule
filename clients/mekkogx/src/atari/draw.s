@@ -24,11 +24,7 @@
         .importzp c_sp
 
 ROWS    = 24
-SCREEN  = $B400
-DLIST   = $B800
-FONT    = $AC00
-MAPCH   = $AE00
-MISSILES = $BB00
+        .include "hw.inc"
 RM_TEXT = 0
 RM_BIG  = 1
 RM_DRAW = 2
@@ -70,7 +66,7 @@ pal:    .res 4
 
         .rodata
 rm_antic: .byte $C2, $C6, $C4, $C6, $C4     ; LMS + DLI + the mode
-rm_chb:   .byte $AC, $AC, $A8, $AE, $B0
+rm_chb:   .byte >FONT, >FONT, >DYNCH, >MAPCH, >TOWNCH
 nib_mask: .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F
           .byte $C0, $C3, $CC, $CF, $F0, $F3, $FC, $FF
 left_m:   .byte $FF, $3F, $0F, $03

@@ -16,7 +16,7 @@
 SLOTS   = 10
 ROWS    = 24
 MAXSEG  = 4
-PLAYERS = $BC00
+        .include "hw.inc"
 SPR_FLIPX = 1
 
         .segment "BSS2"         ; low memory (mule-atari.cfg), cleared by clrlow
@@ -54,8 +54,10 @@ hpos:        .res 1
 rowoff:      .res 4             ; p * ROWS
 
 ; Clear the low variables ($0400-$09FF: LOWBSS, BSS2 in mule-atari.cfg)
-; before main; zerobss only clears BSS.
+; before main; zerobss only clears BSS. (The 5200's crt0 clears its RAM.)
+.ifndef __ATARI5200__
         .constructor clrlow
+.endif
 
         .rodata
 p_rows: .byte 0, ROWS, ROWS*2, ROWS*3
@@ -64,6 +66,7 @@ p_rows: .byte 0, ROWS, ROWS*2, ROWS*3
 order:  .byte 0, 1, 2, 3, 4, 6, 7, 8, 9, 5
 
 
+.ifndef __ATARI5200__
         .segment "ONCE"
 clrlow: lda     #0
         tax
@@ -76,6 +79,7 @@ clrlow: lda     #0
         inx
         bne     @c
         rts
+.endif
 
         .code
 

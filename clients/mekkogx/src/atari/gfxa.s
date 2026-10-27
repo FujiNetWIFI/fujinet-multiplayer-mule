@@ -17,6 +17,11 @@
 ; immediate VBI let that land on row 1), a row at a time from the top, ahead
 ; of the beam.
 ;
+; The 5200 (src/atari5200) assembles this too: no OS there, so the RAM
+; vectors are set by hand, the VBI saves its own registers, and the crt0's
+; copy of the BIOS's VBI (the clock, the shadows, the pots) stands in for
+; the OS's stages.
+;
         .export _dsp_init, _dli_on
         .export _row_flags, _row_chb, _row_pf, _row_hp, _row_cm, _row_sz
         .export _dsp_colbk, _dsp_prior, _dsp_sizem, _dsp_hposm, _dsp_ready
@@ -24,20 +29,17 @@
 
 ROWS    = 24
 
-HPOSP0  = $D000
-HPOSM0  = $D004
-SIZEP0  = $D008
-SIZEM   = $D00C
-COLPM0  = $D012
-COLPF0  = $D016
-COLBK   = $D01A
-PRIOR   = $D01B
-GRACTL  = $D01D
-DMACTL  = $D400
-PMBASE  = $D407
-CHBASE  = $D409
-WSYNC   = $D40A
-NMIEN   = $D40E
+        .include "hw.inc"
+.ifdef __ATARI5200__
+        .import vbi_body, vbi_exit      ; crt0.s: the BIOS's VBI past its pushes; its end
+VVBLKI  = $0202
+VVBLKD  = $0204
+VDSLST  = $0206
+PCOLR0  = $08
+COLOR0  = $0C
+COLOR4  = $10
+ATRACT  = $04
+.else
 VDSLST  = $0200
 SDMCTL  = $022F
 SDLSTL  = $0230
@@ -50,6 +52,13 @@ ATRACT  = $004D
 SETVBV  = $E45C
 XITVBV  = $E462
 SYSVBV  = $E45F
+.endif
+
+.ifdef __ATARI5200__
+        .segment "ZEROPAGE"
+dli_pf2:    .res 1              ; the next row's PF2 and CHBASE (dli)
+dli_chb:    .res 1
+.endif
 
         .segment "BSS"          ; the players' rows as built
 _row_flags: .res ROWS
@@ -88,6 +97,16 @@ _dsp_init:
         sta     VDSLST
         lda     #>dli
         sta     VDSLST+1
+.ifdef __ATARI5200__
+        lda     #<vbi
+        sta     VVBLKI
+        lda     #>vbi
+        sta     VVBLKI+1
+        lda     #<vbid
+        sta     VVBLKD
+        lda     #>vbid
+        sta     VVBLKD+1
+.else
         lda     #6              ; immediate VBI
         ldy     #<vbi
         ldx     #>vbi
@@ -96,12 +115,32 @@ _dsp_init:
         ldy     #<vbid
         ldx     #>vbid
         jsr     SETVBV
+.endif
         lda     #$C0
         sta     NMIEN
         rts
 
 ; A row's DLI: PF2 (a text row's background) goes in first thing after
 ; WSYNC; the rest follows as row_flags asks.
+;
+; On the 5200 the row's PF2 and CHBASE wait in zero page (the last DLI, or
+; the VBI, put them there), so the WSYNC comes ten cycles in and CHBASE
+; goes in with PF2, in the horizontal blank. Looked up from the tables, a
+; text row's last line (ANTIC takes most of its cycles) ends before the
+; WSYNC, and CHBASE lands a line late; MAME's ANTIC takes CHBASE once a
+; row, at the display-list fetch (antic.cpp), so there the whole row came
+; out in the last row's charset.
+.ifdef __ATARI5200__
+dli:    pha
+        lda     dli_pf2
+        sta     WSYNC
+        sta     COLPF0+2
+        lda     dli_chb
+        sta     CHBASE
+        txa
+        pha
+        ldx     dli_row
+.else
 dli:    pha
         txa
         pha
@@ -109,6 +148,7 @@ dli:    pha
         lda     _row_pf+ROWS*2,x
         sta     WSYNC
         sta     COLPF0+2
+.endif
         lda     dl_flags,x
         beq     @done
         sta     dli_f
@@ -152,7 +192,14 @@ dli:    pha
         sta     SIZEP0+2
         lda     dl_sz+ROWS*3,x
         sta     SIZEP0+3
-@done:  inc     dli_row
+@done:
+.ifdef __ATARI5200__
+        lda     _row_pf+ROWS*2+1,x      ; the next row's, ready
+        sta     dli_pf2
+        lda     _row_chb+1,x
+        sta     dli_chb
+.endif
+        inc     dli_row
         pla
         tax
         pla
@@ -164,18 +211,34 @@ dli:    pha
 ; came in over an IRQ handler (the stacked P has I set): that IRQ isn't
 ; acknowledged yet, and CLI would take it again, nested, until the stack
 ; wraps. The OS decides its second stage the same way.
-vbi:    tsx                     ; the stack: Y X A P PCL PCH
+vbi:
+.ifdef __ATARI5200__
+        pha                     ; (the BIOS's NMI pushes nothing)
+        txa
+        pha
+        tya
+        pha
+.endif
+        tsx                     ; the stack: Y X A P PCL PCH
         lda     $0104,x
         and     #$04
         bne     @irq
         cli
 @irq:   lda     #1
         sta     dli_row
+.ifdef __ATARI5200__
+        lda     _row_pf+ROWS*2+1        ; row 1's, for its DLI
+        sta     dli_pf2
+        lda     _row_chb+1
+        sta     dli_chb
+.endif
         lda     #0
         sta     ATRACT
         lda     _row_chb
         sta     CHBASE
+.ifndef __ATARI5200__
         sta     CHBAS
+.endif
         ldx     #3
 @r0:
         ldy     pfrow0,x
@@ -195,7 +258,9 @@ vbi:    tsx                     ; the stack: Y X A P PCL PCH
         sta     COLOR4
         sta     COLBK
         lda     _dsp_prior
+.ifndef __ATARI5200__
         sta     GPRIOR
+.endif
         sta     PRIOR
         lda     _dsp_sizem
         sta     SIZEM
@@ -208,7 +273,11 @@ vbi:    tsx                     ; the stack: Y X A P PCL PCH
         lda     _dsp_hposm+3
         sta     HPOSM0+3
         jsr     _snd_vbi
+.ifdef __ATARI5200__
+        jmp     vbi_body
+.else
         jmp     SYSVBV
+.endif
 
 ; The deferred VBI: the players' rows, if a whole set is built.
 vbid:   lda     _dsp_ready
@@ -245,4 +314,8 @@ vbid:   lda     _dsp_ready
         bne     @cp
         lda     #0
         sta     _dsp_ready
+.ifdef __ATARI5200__
+@x:     jmp     vbi_exit
+.else
 @x:     jmp     XITVBV
+.endif

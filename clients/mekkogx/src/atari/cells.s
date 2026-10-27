@@ -13,8 +13,7 @@
         .importzp ptr1, ptr2, tmp1, tmp2
 
 ROWS    = 24
-DYNCH   = $A800
-SCREEN  = $B400
+        .include "hw.inc"
 
         .segment "PMGFREE"      ; cleared by gfx_init
 _cp_r:    .res 1

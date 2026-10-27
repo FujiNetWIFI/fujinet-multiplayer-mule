@@ -5,7 +5,7 @@ A C client for the M.U.L.E. Tournament server in this repository, built with the
 - it sends the player's moves;
 - it plays every animation itself at the original's speed.
 
-There are eleven platforms:
+There are twelve platforms:
 - the **Apple II**: a 128K enhanced //e, //c or IIgs, in HGR colour, with speaker sound;
 - the **TRS-80 Color Computer 1 or 2** with 64K, in PMODE 4 artifact colour, with 1-bit sound;
 - the **IBM PC** with 128K and CGA (4 colours, PC speaker), or the **PCjr** (16 colours, its SN76496), under MS-DOS with FUJINET.SYS;
@@ -16,6 +16,7 @@ There are eleven platforms:
 - the **NES**, as an MMC3 image the FujiNet NES cartridge boots, with the Adam's pictures and effects on its pulse channel;
 - the **Sega Master System**, as an image the FujiNet SMS cartridge runs, with the Adam's pictures in Mode 4 and its effects on the SMS's own SN76489;
 - the **Atari 7800**, as a SuperGame image the FujiNet 7800 cartridge runs, with the Atari 800's graphics (the original's) drawn by MARIA and the Atari's effects on the cartridge's POKEY;
+- the **Atari 5200**, as a Super Cart image the FujiNet 5200 cartridge runs: the Atari 800 version itself, on the same ANTIC, GTIA and POKEY;
 - the **Heathkit H89** under CP/M, with the H89-ESP32 FujiNet card, drawn on its H19 terminal in the terminal's own characters (and its one beep).
 
 The Adam, the MSX and the SMS share their graphics code (`src/tms9918`): the first two have a TMS9918A, and the SMS shows the same cells in its own mode.
@@ -36,6 +37,7 @@ The code is split so other MekkoGX targets can follow:
 | `src/nes/` | the NES implementation (cc65; the screen is the TMS9918A's, in the PPU's terms) |
 | `src/sms/` | the Sega Master System implementation (z88dk; the TMS9918A's cells as Mode 4 tiles) |
 | `src/atari7800/` | the Atari 7800 implementation (cc65, the display in 6502 assembly; the Atari's rows and sprites as MARIA's display lists, its sound the Atari's `snd.s`) |
+| `src/atari5200/` | the Atari 5200 implementation (cc65): `src/atari`'s screen, sprites and sound assembled for the 5200 (`src/atari/hw.inc`), and the cartridge's start, banks, transport and controller |
 | `src/h89/` | the Heathkit H89 implementation (z88dk, CP/M; the H19 terminal's characters, sent by difference) |
 
 A new platform is a `src/<platform>/` directory implementing those headers, plus its line in `PLATFORMS`.
@@ -587,6 +589,50 @@ The name is picked a letter at a time. Quitting says goodbye to the server and g
 
 - **Live** (`tools/a78sim/rig.sh SCENARIO OUT [SECS]`): a server built from this repository (HTTP 8087, stream 19987), a private copy of fujinet-pc on BoIP 19988 with the appkeys seeded, and MAME in real time, the image built from a copy with that endpoint. `AUTOPLAY=1` builds the one that plays itself.
 
+## The Atari 5200 version
+
+An image for the Atari 5200 on the FujiNet 5200 cartridge (fujinet-firmware `pico/atari-5200`): the 5200 CONFIG pushes it into the cartridge and the console's BIOS starts it. The 5200 has the Atari 800's ANTIC, GTIA and POKEY, so this is the Atari 800 version itself: `src/atari`'s display, sprites, map and sound, assembled for the 5200 (`src/atari5200/` holds one-line wrappers that include them). What differs is around it: 16K of RAM, no OS and no disk, a controller for a keyboard, GTIA at $C000 and POKEY at $E800.
+
+    make atari5200                             # r2r/atari5200/mule.a52
+    make atari5200 ENDPOINT=http://myhost:8080 # the server: its host, stream port 9902
+
+- **What it needs:** cc65 2.19, Python 3 with Pillow, the original disk (as for the Atari), and fujinet-lib-experimental's `add-atari5200` branch in `~/Workspace/fnlib-5200` (or `make FNLIB_5200=/path`; built from 7101377). `tools/atari5200/mkfnlib.sh` compiles it into `build/fnlib-a52`, without its crt0 (`src/atari5200/crt0.s` is the game's, from the lib's).
+- **Sharing with the Atari 800:** `src/atari/hw.inc` (and `atari.h` for C) holds the chips' addresses and the graphics memory, with an `__ATARI5200__` branch; the few things that differ (the VBI's vectors and shadows, quitting, the POKEY) are `.ifdef`s in the Atari's own files. The Atari 800 and 7800 images are byte for byte what they were before the 5200 shared them.
+- **The check:** `tools/atari5200/mkrom.py` runs after the link. It copies REPL into every bank and scans every code segment in its own bank for a store or a read-modify-write into the cart window, a read of the mailbox's hotspot pages ($B500-$B7FF) anywhere but the lib's `fn_tx`/`fn_regwr`/hand-over (and those only from a page-aligned base), a read of the bank switch ($BFC0-$BFFF) anywhere but `bank.c` and the crt0, and a `JMP ($xxFF)`. It wants the mailbox and the switch filled with $FF, nothing in the 4 bytes under $BFC0, and the claim (kind 4) and the BIOS's header in every bank, then writes `mule.a52`.
+
+**The cartridge image** (`src/atari5200/mule-a52.cfg`): a Super Cart (the claim's kind 4), 128K in four 32K banks. A bank is the whole cart window: a read of $BFD0 + 4n picks bank n, and the console starts in bank 3.
+- **REPL, $6500-$AFFF and $B800-$BFBB in every bank:** the program, the same bytes in all four (linked into bank 3, copied by `mkrom.py`), so it runs whichever bank is in: the crt0, the interrupts, the display, `main.c`, the stream and its transport, the runtime and fujinet-lib. The transport sits above the mailbox, at $B800.
+- **$4000-$64FF** is the bank's own: develop and the grant/events (bank 0), the auction and the charsets (1), the status phase and the strings (2), the boot and the sprite shapes (3). `bank.c` switches with one read and puts the phase back; `bank_get` reads the strings.
+- **RAM:** everything ANTIC reads is in the console's 16K, never in the cart: the Atari 800's layout $8000 lower (the drawing charset $2800, the font $2C00, the map characters $2E00, the town's $3000, the screen $3400, the display list and the players at $3800). The crt0 copies the charsets and the sprite shapes and tables from their banks at start-up; the variables and the C stack sit below $2800.
+- **Room:** REPL has about 300 bytes free (the AUTOPLAY build moves its edge to $6700: no offline test mode, a bigger develop), the banks' own parts 900-1400 bytes each, the RAM about 600 (`build/mule-a52.map`).
+
+**The interrupts.** The BIOS sends the NMI and the IRQ through the RAM vectors at $0200 with nothing pushed. The crt0 keeps the BIOS's zero page and VBI (the clock at $02, the colour shadows, the pots into PADDL0-7) and its keypad IRQ, which counts a held key once. `gfxa.s` puts the Atari's immediate VBI (row 0's registers, the sound) and deferred VBI (the players' rows) in front of it. Each row's DLI takes PF2 and CHBASE from zero page, readied by the DLI before it, so both go in in the horizontal blank: MAME's ANTIC takes CHBASE once a row, at the display-list fetch, and a DLI that looked them up first wrote CHBASE too late on a text row's last line.
+
+**The network: stream mode, never waited on.** `src/atari5200/nstrans.c` is the 7800's at the 5200 cartridge's mailbox, which the console reaches by reads alone: a register is a read of $B500+n then $B600+v, a request byte a read of $B700+b (the lib's `fn_regwr` and `fn_tx`); the reply is in the 1K window at $B000, ACKSEQ at $B400.
+
+**Controls** (controller 1):
+
+| Control | Does |
+|---|---|
+| stick | walk; up/down in auctions; left/right in the lobby |
+| top fire | the button |
+| lower fire | rub out (the name) |
+| START | RETURN: end your turn, finish the name |
+| `*` | ESC: leave the table (asks first in a game); at the table list, quit |
+| `0` | sit this good out |
+| `#` | sound off / on |
+
+The name is picked a letter at a time. Quitting says goodbye to the server and goes back to CONFIG.
+
+**Playing it in MAME:** `tools/a52sim/run.sh` rebuilds for the deployed server and runs MAME's 5200 (`~/Workspace/mame-a5200`, grafted by fujinet-firmware's `pico/atari-5200/emu/apply.sh`) in a window, on a fujinet-pc's BoIP (`FUJINET_TCP`, default 127.0.0.1:9995). MAME's keys: the arrows are the stick, left Ctrl and left Alt the fire buttons, 1 START, the numeric pad the keypad (+ is `*`, Enter is `#`). `run.sh IMAGE` plays another image, `SYSTEM=a5200a` the 2-port console.
+
+**Testing.**
+- **Offline, in MAME** (`tools/a52sim/a52sim.py`): `tools/a2sim`'s scenario language, with the image on the FujiNet 5200 cartridge's MAME device; `pad` drives MAME's own stick, buttons and keypad, `guard` reports any read of the hotspots or the bank switch from code that has no business there (a dummy read, a stray pointer). `A52SIM_SYSTEM=a5200a` is the 2-port console, `A52WAV=out.wav` records the sound. The cartridge is pointed at a port nothing listens on.
+
+      python3 tools/a52sim/a52sim.py r2r/atari5200/mule.a52 build/mule-a52.map scenario.txt out/
+
+- **Live** (`tools/a52sim/rig.sh SCENARIO OUT [SECS]`): a server built from this repository (HTTP 8085, stream 19985), a private copy of fujinet-pc on BoIP 19986 with the appkeys seeded, and MAME in real time (so the cartridge's transactions run off the CPU's thread, as on the cartridge), the image built from a copy with that endpoint. `AUTOPLAY=1` builds the one that plays itself.
+
 ## The SMS version
 
 An image for the Sega Master System on the FujiNet SMS cartridge (fujinet-firmware `pico/sms`, the `add-sms` branch): CONFIG pushes it into the cartridge's SRAM and starts it like any game. It draws the Adam's pictures (`src/tms9918`, `gen/tms9918/gfx.c`) with the Namco font at 32 columns, and plays the Adam's effects on the SMS's own SN76489.
@@ -723,6 +769,8 @@ A terminal sends keys, not keys held, and the H19 repeats only with its REPEAT k
 - **7800: switching modes.** A text row under a graphics row starts a line late if the row above it is busy (over ~200 cycles of DMA), and a text row's last line is shown in the next row's mode: the font leaves both blank but for some punctuation.
 - **7800: four sprite colours** a frame; a fifth takes the last.
 - **7800: trading** redraws about every second frame (the price lines are drawn cells).
+- **5200: untested on hardware.** No 5200 cartridge has been built yet, so all of it has run only in MAME. MAME does a transaction inside the CPU's read when it runs unthrottled (the harnesses' offline runs); the live rig runs in real time, as the cartridge does.
+- **5200: 16K.** RAM has about 600 bytes left and REPL about 300: new resident code needs room made (a RAM code segment, or code moved into a phase's bank).
 - **SMS: untested on hardware.** No SMS cartridge has been built yet (fujinet-hardware `SMS/FujiNet-SMS-Rev0`).
 - **SMS: `.sms` images** are taken for cartridge images only by the fujiversal-sms ESP32 firmware (the `fujiversal-sms-board` work); the `add-sms` branch takes `.ROM` and `.BIN`.
 - **TMS9918 (and the SMS, which keeps its cells): colour clash.** Text or a sprite-free drawing next to another colour can recolour a few pixels of its cell's row.

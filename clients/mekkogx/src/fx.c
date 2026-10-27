@@ -171,7 +171,7 @@ void fx_run(void)
  * The transport ship (clients/intv/events.bas), used by the summary, the
  * grant and production.
  * ------------------------------------------------------------------------- */
-#ifdef __ATARI__
+#if defined(__ATARI__) || defined(__ATARI5200__)
 /* The hull's halves on whole 8-line rows (9-10, 11-12), so they share a
  * player and the nose (rows 10-11) gets the other: only two are free on
  * the map (sprite.s), and at 74 all three wanted row 11. */

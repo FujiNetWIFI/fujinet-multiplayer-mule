@@ -14,7 +14,7 @@
  * player 2 draws the mountains (one a row) and player 3 the river and the
  * store, as in the original.
  */
-#ifdef __ATARI__
+#if defined(__ATARI__) || defined(__ATARI5200__)
 
 #include <string.h>
 #include "gfx.h"
@@ -164,10 +164,6 @@ void gfx_town(void)
 }
 
 /* ---- start-up ------------------------------------------------------------ */
-#define SDMCTL (*(volatile uint8_t *)0x022F)
-#define SDLSTL (*(volatile uint16_t *)0x0230)
-#define GRACTL (*(volatile uint8_t *)0xD01D)
-#define PMBASE (*(volatile uint8_t *)0xD407)
 
 void gfx_init(void)
 {

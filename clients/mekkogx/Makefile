@@ -11,6 +11,7 @@
 #   make nes                           r2r/nes/mule.nes (NES, the FujiNet NES cartridge: MMC3)
 #   make sms                           r2r/sms/mule.sms (Sega Master System, the FujiNet SMS cartridge)
 #   make atari7800                     r2r/atari7800/mule.a78 (Atari 7800, the FujiNet 7800 cartridge)
+#   make atari5200                     r2r/atari5200/mule.a52 (Atari 5200, the FujiNet 5200 cartridge)
 #   make h89-cpm                       r2r/h89-cpm/mule.h8d (Heathkit H89, CP/M: MULE.COM on an H17 disk)
 #   make h89-boot                      r2r/h89-cpm/mule-boot.h8d (the same on a bootable 64K CP/M disk)
 #   make ATR="path/to/M.U.L.E. (1983)(Electronic Arts)(US).atr"
@@ -22,7 +23,7 @@
 # implements in src/<platform>/. Generated files go to gen/ (gitignored).
 
 PRODUCT = mule
-PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms atari7800 h89-cpm
+PLATFORMS = apple2 coco msdos adam msxrom atari lynx nes sms atari7800 atari5200 h89-cpm
 # The PC's disk has two: MULE.EXE, and MULEJR.EXE for the PCjr (MS-DOS below)
 ifeq ($(PLATFORM),msdos)
   PRODUCTS = mule mulejr
@@ -473,13 +474,61 @@ $(A7OBJ)/src/net.o:                           CFLAGS += --code-name OVERLAY1 --r
 atari7800/executable-post::
 	python3 tools/atari7800/mkrom.py build/mule-a78.map $(EXECUTABLE) $(EXECUTABLE:.bin=.a78)
 
+# ---- Atari 5200 ----------------------------------------------------------------
+# cc65, a 128K Super Cart image for the FujiNet 5200 cartridge, which the
+# 5200 CONFIG boots: four 32K banks, each of them the whole cart window
+# (src/atari5200/mule-a52.cfg). The program is REPL, the same in every bank
+# (tools/atari5200/mkrom.py copies it); the phases and the strings take the
+# rest of a bank (src/atari5200/bank.c). The screen is the Atari 800 port's:
+# src/atari assembled for the 5200 (src/atari/hw.inc), its charsets,
+# sprites and screen in the console's 16K. fujinet-lib is
+# fujinet-lib-experimental's atari5200 target (tools/atari5200/mkfnlib.sh);
+# the stream's calls go to the cartridge's mailbox unwaited
+# (src/atari5200/nstrans.c).
+FNLIB_5200 ?= $(HOME)/Workspace/fnlib-5200
+ifeq ($(PLATFORM),atari5200)
+  FUJINET_LIB := __UNDEFINED__
+  LIBS += build/fnlib-a52/fujinet-a52.lib
+endif
+CFLAGS_EXTRA_ATARI5200 += -Os -Cl -DPLAT_NETSTREAM -DPLAT_NO_KEYBOARD \
+                          -DKEY_END_NAME='"START"' -DBUTTON_NAME='"FIRE"' -DLEAVE_KEY_NAME='"*"' \
+                          -DBACK_KEY_NAME='"LOWER FIRE"' -DQUIT_HINT='"*: QUIT"' \
+                          -DLOBBY_HINT='"<- -> SPECIES  FIRE READY  * LEAVE"'
+EXTRA_INCLUDE_ATARI5200 += build/fnlib-a52/include
+# AUTOPLAY: its turn walker makes OVERLAY5 the biggest; the offline test
+# mode's REPL half (test.c) makes the room for the larger own parts
+ifeq ($(AUTOPLAY),1)
+  CFLAGS_EXTRA_ATARI5200 += -DMULE_NOTEST
+  LDFLAGS_EXTRA_ATARI5200 += -Wl -D,__REPL__=0x6700
+endif
+LDFLAGS_EXTRA_ATARI5200 += -C src/atari5200/mule-a52.cfg -m build/mule-a52.map
+EXECUTABLE_EXTRA_DEPS_ATARI5200 += src/atari5200/mule-a52.cfg build/fnlib-a52/fujinet-a52.lib
+
+A5OBJ = build/$(PRODUCT)/atari5200
+$(A5OBJ)/src/boot.o $(A5OBJ)/src/teststart.o: CFLAGS += --code-name OVERLAY1 --rodata-name OVL1RO
+$(A5OBJ)/src/status.o:                        CFLAGS += --code-name OVERLAY2 --rodata-name OVL2RO
+$(A5OBJ)/src/grant.o $(A5OBJ)/src/events.o:   CFLAGS += --code-name OVERLAY3 --rodata-name OVL3RO
+$(A5OBJ)/src/auction.o:                       CFLAGS += --code-name OVERLAY4 --rodata-name OVL4RO
+$(A5OBJ)/src/develop.o:                       CFLAGS += --code-name OVERLAY5 --rodata-name OVL5RO
+$(A5OBJ)/src/strings.o:                       CFLAGS += --rodata-name STRS
+# REPL's other part, $B800-$BFBB: the transport
+$(A5OBJ)/src/atari5200/nstrans.o:             CFLAGS += --code-name HICODE
+# the art: copied into RAM by the crt0 (its charsets are segments of their own)
+$(A5OBJ)/gen/atari5200/gfx.o:                 CFLAGS += --rodata-name SHAPES
+# net.c is only the appkeys here (stream mode), which only boot calls
+$(A5OBJ)/src/net.o:                           CFLAGS += --code-name OVERLAY1 --rodata-name OVL1RO
+
+# REPL into every bank, the checks, the .a52 (r2r/atari5200/mule.a52)
+atari5200/executable-post::
+	python3 tools/atari5200/mkrom.py build/mule-a52.map $(EXECUTABLE) $(EXECUTABLE:.bin=.a52)
+
 # ---- generated files (top-level pass only) ---------------------------------
 ifeq ($(PLATFORM),)
 PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms gen-atari7800 gen-h89-cpm FORCE
+.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms gen-atari7800 gen-atari5200 gen-h89-cpm FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
 r2r/coco/$(PRODUCT): gen-coco
 r2r/msdos/$(PRODUCT): gen-msdos
@@ -490,6 +539,7 @@ r2r/lynx/$(PRODUCT): gen-lynx
 r2r/nes/$(PRODUCT): gen-nes
 r2r/sms/$(PRODUCT): gen-sms
 r2r/atari7800/$(PRODUCT): gen-atari7800
+r2r/atari5200/$(PRODUCT): gen-atari5200
 r2r/h89-cpm/$(PRODUCT): gen-h89-cpm
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
@@ -502,6 +552,7 @@ gen-lynx: gen/config.h gen/lynx/gfx.c build/fnlib-lynx/fujinet-lynx.lib
 gen-nes: gen/config.h gen/nes/gfx.c build/fnlib-nes/fujinet-nes.lib
 gen-sms: gen/config.h gen/tms9918/gfx.c build/fnlib-sms/fujinet-sms.lib
 gen-atari7800: gen/config.h gen/atari7800/gfx.c build/fnlib-a78/fujinet-a78.lib
+gen-atari5200: gen/config.h gen/atari5200/gfx.c build/fnlib-a52/fujinet-a52.lib
 gen-h89-cpm: gen/config.h build/fnlib-h89/fujinet-h89.lib
 
 gen/config.h: FORCE
@@ -562,6 +613,16 @@ gen/atari7800/gfx.c: tools/mkgfx_atari.py tools/mkgfx_hgr.py $(ATR)
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_atari.py $(if $(ATR),--atr "$(ATR)") $@
 
+# The 5200 shows the Atari 800's graphics as they are (src/atari/hw.inc)
+gen/atari5200/gfx.c: tools/mkgfx_atari.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/atari5200
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_atari.py $(if $(ATR),--atr "$(ATR)") $@
+
+build/fnlib-a52/fujinet-a52.lib: tools/atari5200/mkfnlib.sh $(wildcard $(FNLIB_5200)/common/*.c $(FNLIB_5200)/bus/atari5200/* $(FNLIB_5200)/include/*.h)
+	tools/atari5200/mkfnlib.sh $(FNLIB_5200) build/fnlib-a52
+
 build/fnlib-a78/fujinet-a78.lib: tools/atari7800/mkfnlib.sh $(wildcard $(FNLIB_7800)/common/*.c $(FNLIB_7800)/bus/atari7800/* $(FNLIB_7800)/include/*.h)
 	tools/atari7800/mkfnlib.sh $(FNLIB_7800) build/fnlib-a78
 
@@ -587,5 +648,5 @@ build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
 
 clean::
-	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/lynx gen/nes gen/atari7800 gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/lynx gen/nes gen/atari7800 gen/atari5200 gen/preview gen/config.h
 endif

@@ -16,8 +16,9 @@
 
 ROWS    = 24
 ROW0    = 2                     ; the map's first display row
-P2      = $BE00
-P3      = $BF00
+        .include "hw.inc"
+P2      = PLAYERS + $0200
+P3      = PLAYERS + $0300
 C_BLUE  = 2
 
         .bss

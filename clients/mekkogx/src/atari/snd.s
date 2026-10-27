@@ -6,7 +6,8 @@
 ;
 ; The Lynx assembles this too (src/lynx/snd.s): there voice 1 goes into a
 ; POKEY shadow, which mikey.s plays on Mikey. So does the 7800
-; (src/atari7800/snd.s), on its cart's POKEY, from the frame's DLI.
+; (src/atari7800/snd.s), on its cart's POKEY, from the frame's DLI, and
+; the 5200 (src/atari5200/snd.s), from the VBI as here.
 ;
         .export _snd_vbi, _snd_f, _snd_fq, _snd_c, _snd_nf, _snd_nfq
 .ifdef __LYNX__
@@ -22,6 +23,9 @@
 .ifdef __ATARI7800__
 AUDF1   = $0450                 ; the FujiNet 7800 cart's POKEY
 AUDC1   = $0451
+.elseif .defined(__ATARI5200__)
+AUDF1   = $E800                 ; the 5200's POKEY
+AUDC1   = $E801
 .else
 AUDF1   = $D200
 AUDC1   = $D201
