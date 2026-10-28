@@ -45,6 +45,12 @@
 #ifndef LOBBY_HINT
 #define LOBBY_HINT "<- -> SPECIES   SPACE READY   ESC LEAVE"
 #endif
+/* Keys that work anywhere, under the table list's hint (none: no line) */
+#if defined(COCO3)
+#define KEYS_HINT "CLEAR: RGB/CMP   SHIFT-CLEAR: SOUND"
+#elif defined(_CMOC_VERSION_)
+#define KEYS_HINT "SHIFT-CLEAR: SOUND"
+#endif
 
 extern uint8_t inp_dir;     /* level */
 extern uint8_t inp_btn;     /* level: button held */
