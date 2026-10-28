@@ -125,13 +125,87 @@ $(COOBJ)/src/text.o $(COOBJ)/src/map.o $(COOBJ)/src/fx.o $(COOBJ)/src/test.o \
 
 # The loader: HDB-DOS runs AUTOEXEC.BAS, which LOADMs the low core. BASIC
 # programs start at $2601, where MULE.BIN goes: PCLEAR1 moves this one down
-# out of the way first (to $1601, the future PMODE 4 screen).
+# out of the way first (to $1601, the future PMODE 4 screen). A CoCo 3 (its
+# IRQ vector is $FEF7) gets the CoCo 3 build, on the same disk.
 coco/disk-post::
-	printf '10 PCLEAR1:LOADM"MULE":EXEC\n' > build/autoexec.bas
+	printf '10 PCLEAR1:IF PEEK(&HFFF8)=&HFE THEN LOADM"MULEC3":EXEC\n20 LOADM"MULE":EXEC\n' > build/autoexec.bas
 	$(DECB) copy -0 -a -l -r build/autoexec.bas $(DISK),AUTOEXEC.BAS
 	$(DECB) copy -b -2 -r r2r/coco/$(PRODUCT)hi.bin $(DISK),MULEHI.BIN
 	for n in 1 2 3 4 5; do \
 	  $(DECB) copy -b -2 -r r2r/coco/$(PRODUCT)$$n.bin $(DISK),MULE$$n.BIN || exit 1; done
+	$(call coco3-files,$(DISK))
+
+# ---- CoCo 3 -----------------------------------------------------------------
+# The CoCo sources again with -DCOCO3 (gfx3.c for gfx.c, overlays in MMU
+# blocks). tools/coco/coco3.mk is platforms/coco.mk renamed, for separate
+# build/ and r2r/ directories. `make coco` also puts MULEC3*.BIN on the
+# CoCo disk; `make coco3` makes a CoCo 3-only disk; GFXTEST=1 builds the
+# graphics test (src/coco/gfxtest.c) instead of the game.
+ifeq ($(PLATFORM),coco3)
+  SRC_DIRS = src src/coco gen/coco3
+  # fujinet-lib's coco build, found the way the coco pass finds it
+  # (common.mk would look for a coco3 one)
+  FNLIB_COCO3 := $(FUJINET_LIB)
+  FUJINET_LIB := __UNDEFINED__
+  define _nl
+
+
+  endef
+  $(eval $(subst |,$(_nl),$(shell PLATFORM=coco CACHE_DIR=_cache $(CURDIR)/mekkogx/fnlib.py $(FNLIB_COCO3) | tr '\n' '|')))
+  DISK_TOOL := $(DECB)
+  DISK_EXECUTABLES =
+  DISK_EXTRA_DEPS += $(EXECUTABLE)
+  export MULE_LINK = coco3
+endif
+CFLAGS_EXTRA_COCO3 += $(CFLAGS_EXTRA_COCO) -DCOCO3 -DUSING_FUJINET_LIB=1 -DMULE_NOTEST
+ifeq ($(GFXTEST),1)
+  CFLAGS_EXTRA_COCO3 += -DMULE_GFXTEST
+endif
+ASFLAGS_EXTRA_COCO3 += $(ASFLAGS_EXTRA_COCO)
+LDFLAGS_EXTRA_COCO3 += $(LDFLAGS_EXTRA_COCO)
+EXTRA_INCLUDE_COCO3 += src/coco/include
+EXECUTABLE_EXTRA_DEPS_COCO3 += $(EXECUTABLE_EXTRA_DEPS_COCO) src/coco/mule3.link
+
+C3OBJ = build/$(PRODUCT)/coco3
+$(C3OBJ)/src/boot.o $(C3OBJ)/src/teststart.o: export MULE_SECT = ov1
+$(C3OBJ)/src/status.o:                        export MULE_SECT = ov2
+$(C3OBJ)/src/grant.o $(C3OBJ)/src/events.o:   export MULE_SECT = ov3
+$(C3OBJ)/src/auction.o:                       export MULE_SECT = ov4
+ifneq ($(GFXTEST),1)
+$(C3OBJ)/src/coco/auction3.o:                   export MULE_SECT = ov4
+endif
+$(C3OBJ)/src/develop.o:                       export MULE_SECT = ov5
+ifeq ($(GFXTEST),1)
+$(C3OBJ)/src/coco/town3.o $(C3OBJ)/src/coco/auction3.o: export MULE_SECT = gtest
+else
+$(C3OBJ)/src/coco/town3.o:                      export MULE_SECT = ov5
+endif
+$(C3OBJ)/src/fx.o $(C3OBJ)/src/autoplay.o \
+  $(C3OBJ)/src/coco/gfx3.o $(C3OBJ)/gen/coco3/gfx.o: export MULE_SECT = hi
+$(C3OBJ)/gen/coco3/town.o:                      export MULE_SECT = town
+$(C3OBJ)/gen/coco3/art3.o:                      export MULE_SECT = art3
+$(C3OBJ)/src/coco/gfxtest.o:                    export MULE_SECT = gtest
+# (Unlisted objects go in the low core. gtest loads into block 15, art3
+# into block 3 behind the screen.)
+# The modules that read GFXTEST are built again when it changes.
+GFXTEST ?= 0
+$(shell mkdir -p build; [ "$$(cat build/gfxtest.flag 2>/dev/null)" = "$(GFXTEST)" ] || echo "$(GFXTEST)" > build/gfxtest.flag)
+$(C3OBJ)/src/coco/gfxtest.o $(C3OBJ)/src/coco/plat.o $(C3OBJ)/src/coco/gfx3.o \
+  $(C3OBJ)/src/coco/town3.o $(C3OBJ)/src/coco/auction3.o $(C3OBJ)/src/coco/bank.o: build/gfxtest.flag
+
+# The CoCo 3 files, on its own disk and on the CoCo's.
+define coco3-files
+	$(DECB) copy -b -2 -r r2r/coco3/$(PRODUCT).bin $(1),MULEC3.BIN
+	$(DECB) copy -b -2 -r r2r/coco3/$(PRODUCT)hi.bin $(1),MULEC3HI.BIN
+	for n in 1 2 3 4 5; do \
+	  [ -f r2r/coco3/$(PRODUCT)$$n.bin ] || continue; \
+	  $(DECB) copy -b -2 -r r2r/coco3/$(PRODUCT)$$n.bin $(1),MULEC3$$n.BIN || exit 1; done
+	$(DECB) copy -b -2 -r r2r/coco3/$(PRODUCT)a.bin $(1),MULEC3A.BIN
+endef
+coco3/disk-post::
+	printf '10 PCLEAR1:LOADM"MULEC3":EXEC\n' > build/autoexec3.bas
+	$(DECB) copy -0 -a -l -r build/autoexec3.bas $(DISK),AUTOEXEC.BAS
+	$(call coco3-files,$(DISK))
 
 # ---- MS-DOS (CGA; PCjr 16 colours) ------------------------------------------
 # Open Watcom, medium model (far code, near data): the phases are overlays
@@ -528,9 +602,13 @@ PYTHON   ?= python3
 ENDPOINT ?= $(shell cat gen/endpoint 2>/dev/null || echo https://mule.fujinet.online)
 ATR      ?= $(wildcard mule.atr)
 
-.PHONY: gen-apple2 gen-coco gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms gen-atari7800 gen-atari5200 gen-h89-cpm FORCE
+.PHONY: gen-apple2 gen-coco gen-coco3 gen-msdos gen-adam gen-msxrom gen-atari gen-lynx gen-nes gen-sms gen-atari7800 gen-atari5200 gen-h89-cpm FORCE
 r2r/apple2/$(PRODUCT): gen-apple2
-r2r/coco/$(PRODUCT): gen-coco
+r2r/coco/$(PRODUCT): gen-coco r2r/coco3/$(PRODUCT)
+r2r/coco3/$(PRODUCT): gen-coco3 FORCE
+	$(MAKE) -f tools/coco/coco3.mk r2r
+.PHONY: coco3
+coco3: r2r/coco3/$(PRODUCT)
 r2r/msdos/$(PRODUCT): gen-msdos
 r2r/adam/$(PRODUCT): gen-adam
 r2r/msxrom/$(PRODUCT): gen-msxrom
@@ -544,6 +622,7 @@ r2r/h89-cpm/$(PRODUCT): gen-h89-cpm
 
 gen-apple2: gen/config.h gen/apple2/gfx.c
 gen-coco: gen/config.h gen/coco/gfx.c
+gen-coco3: gen/config.h gen/coco3/gfx.c
 gen-msdos: gen/config.h gen/msdos/gfx.c build/fnlib-msdos/fujinet-msdos.lib
 gen-adam: gen/config.h gen/tms9918/gfx.c build/fnlib-adam/fujinet-adam.lib
 gen-msxrom: gen/config.h gen/tms9918/gfx.c build/fnlib-msx/fujinet-msx.lib
@@ -575,6 +654,12 @@ gen/coco/gfx.c: tools/mkgfx_pmode4.py tools/mkgfx_hgr.py $(ATR)
 	@if [ -z "$(ATR)" ]; then \
 	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
 	$(PYTHON) tools/mkgfx_pmode4.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/coco $@
+
+gen/coco3/gfx.c: tools/mkgfx_coco3.py tools/tms/namco.bin tools/mkgfx_dos.py tools/mkgfx_hgr.py $(ATR)
+	@mkdir -p gen/coco3
+	@if [ -z "$(ATR)" ]; then \
+	  echo "*** WARNING: no ATR (make ATR=... or a mule.atr link): using STAND-IN art"; fi
+	$(PYTHON) tools/mkgfx_coco3.py $(if $(ATR),--atr "$(ATR)") --preview gen/preview/coco3 $@
 
 gen/msdos/gfx.c: tools/mkgfx_dos.py tools/tms/namco.bin tools/mkgfx_hgr.py $(ATR)
 	@mkdir -p gen/msdos
@@ -648,5 +733,5 @@ build/fnlib-msdos/fujinet-msdos.lib: tools/dos/mkfnlib.sh $(wildcard $(FNLIB_EXP
 	tools/dos/mkfnlib.sh $(FNLIB_EXP) build/fnlib-msdos
 
 clean::
-	rm -rf gen/apple2 gen/coco gen/msdos gen/tms9918 gen/atari gen/lynx gen/nes gen/atari7800 gen/atari5200 gen/preview gen/config.h
+	rm -rf gen/apple2 gen/coco gen/coco3 gen/msdos gen/tms9918 gen/atari gen/lynx gen/nes gen/atari7800 gen/atari5200 gen/preview gen/config.h
 endif
