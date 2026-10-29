@@ -29,6 +29,7 @@
         .export _ns_on, _ns_audf3, _ns_skctl, _ns_err, _ns_taken, _ns_fbuf
         .importzp ptr1
 
+RTCLOK  = $14           ; the OS's jiffy clock (low byte)
 VSERIN  = $020A         ; VSERIN, VSEROR, VSEROC
 VIMIRQ  = $0216
 POKMSK  = $10
@@ -56,7 +57,7 @@ _ns_fbuf: .res FMAX             ; the frame coming in, then decoded
 _ns_on:   .res 1        ; 1 while the stream is on
 _ns_audf3: .res 1       ; the baud rate (AUDF3; AUDF4 is 0)
 _ns_skctl: .res 1       ; SKCTL's clock bits
-_ns_err:  .res 1        ; sticky: $80 framing, $40 overrun, $10 ring full
+_ns_err:  .res 1        ; sticky: $80 framing, $40 overrun, $20 sending stalled, $10 ring full
 _ns_taken: .res 1       ; bytes taken from the ring, mod 256 (SC_CREDIT)
 rxhead: .res 1          ; the IRQ writes here
 rxtail: .res 1          ; ns_frame reads here
@@ -64,6 +65,7 @@ txhead: .res 1
 txtail: .res 1
 txn:    .res 1          ; bytes in the send ring
 txidle: .res 1          ; bit 7: the output is idle
+txt0:   .res 1          ; RTCLOK when ns_put found the send ring full
 flen:   .res 1          ; bytes in _ns_fbuf
 fover:  .res 1          ; the frame overflowed: skip to its 0
 vsave:  .res 6
@@ -169,11 +171,33 @@ _ns_end:
         plp
 @x:     rts
 
-; void __fastcall__ ns_put(uint8_t c): send a byte (waits while the ring is full)
+; void __fastcall__ ns_put(uint8_t c): send a byte (waits while the ring is
+; full). FujiNet clocks the bits out: should it stop (the stream gone at
+; its end), the ring never empties, so after half a second the byte, and
+; every one after it, is dropped and ns_err says so (nsnet.c drops the
+; link); with the stream off, it is dropped at once.
 _ns_put:
-@full:  ldx     txn
-        cpx     #TXSIZE
-        beq     @full           ; the IRQ empties it
+        ldx     _ns_on
+        beq     @drop
+        tax
+        lda     #$20
+        bit     _ns_err
+        bne     @drop
+        lda     RTCLOK
+        sta     txt0
+@full:  ldy     txn
+        cpy     #TXSIZE
+        bne     @room           ; the IRQ empties it
+        lda     RTCLOK
+        sec
+        sbc     txt0
+        cmp     #30
+        bcc     @full
+        lda     #$20
+        ora     _ns_err
+        sta     _ns_err
+@drop:  rts
+@room:  txa
         php
         sei
         bit     txidle

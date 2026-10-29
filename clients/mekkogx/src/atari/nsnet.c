@@ -90,10 +90,14 @@ static void resync(void)
     }
 }
 
+/* the frames going out (low memory, mule-atari.cfg: MAIN is full) */
+#pragma bss-name (push, "BSS2")
+static uint8_t raw[24], hello[18];
+#pragma bss-name (pop)
+
 /* A frame: COBS of type, payload, Fletcher-16; then 0. */
 static void send(uint8_t type, const uint8_t *p, uint8_t n)
 {
-    static uint8_t raw[24];
     uint8_t s1, s2, i, code, from;
     raw[0] = type;
     memcpy(raw + 1, p, n);
@@ -127,12 +131,11 @@ static void send_credit(void)
 
 static void hello_frame(void)
 {
-    static uint8_t h[18];
-    memset(h, 0, sizeof(h));
-    h[0] = STREAM_VERSION;
-    strncpy((char *)h + 2, sc_table, 8);
-    strncpy((char *)h + 10, sc_name, 8);
-    send(SC_HELLO, h, sizeof(h));
+    memset(hello, 0, sizeof(hello));
+    hello[0] = STREAM_VERSION;
+    strncpy((char *)hello + 2, sc_table, 8);
+    strncpy((char *)hello + 10, sc_name, 8);
+    send(SC_HELLO, hello, sizeof(hello));
 }
 
 /* (Re)join. An action the old link never answered goes again. */
@@ -150,14 +153,15 @@ static void send_hello(void)
 /* ---- the link ----------------------------------------------------------- */
 
 /* FujiNet's $70/$F0: netstream to host:port. The frame is host, 0, flags,
- * AUDF3, padded to 64. Port: DAUX1 is its high byte. */
+ * AUDF3, padded to 64. Port: DAUX1 is its high byte. Built in ns_fbuf:
+ * the stream is off (MAIN has no room for a buffer of its own). */
 static uint8_t ns_enable(const char *host)
 {
-    static uint8_t pl[64];
+    uint8_t *pl = ns_fbuf;
     uint8_t n = strlen(host);
     if (n > 60)
         n = 60;
-    memset(pl, 0, sizeof(pl));
+    memset(pl, 0, 64);
     memcpy(pl, host, n);
     pl[n + 1] = NS_FLAGS | ((PAL & 0x0E) == 0 ? 0x10 : 0);
     pl[n + 2] = NS_AUDF3;
@@ -270,6 +274,8 @@ static uint8_t take(void)
         heard = 1;
         switch (ns_fbuf[0]) {
         case CS_PATCH:
+            if (n < 3)
+                break;
             off = ns_fbuf[1] | ns_fbuf[2] << 8;
             n -= 3;
             if (off + n <= sizeof(stage))
@@ -326,6 +332,11 @@ uint8_t net_step(void)
     uint8_t r;
     if (!joined)
         return 0;
+    if (ns_err & 0x20) {        /* FujiNet stopped taking what we send */
+        drop();
+        net_have = 0;
+        return 1;
+    }
     if (resync_hold)
         --resync_hold;
     else if (resync_owed)
