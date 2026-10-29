@@ -19,6 +19,15 @@
 #define OV_AUCTION 4        /* auction.c */
 #define OV_DEVELOP 5        /* develop.c */
 
+/* The grant's: on the Atari 800 the summary's, as grant.c is linked there
+ * (the Makefile): its overlays come off the disk, and the grant follows
+ * the summary at once, its cursor on the move while a load would run. */
+#ifdef __ATARI__
+#define OV_GRANTPH OV_STATUS
+#else
+#define OV_GRANTPH OV_GRANT
+#endif
+
 /* Load what lives out of reach; returns 0 or an error message. */
 const char *bank_init(void);
 

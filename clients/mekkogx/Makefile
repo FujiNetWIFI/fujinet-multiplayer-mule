@@ -480,8 +480,8 @@ endif
 
 ATOBJ = build/$(PRODUCT)/atari/src
 $(ATOBJ)/boot.o $(ATOBJ)/teststart.o: CFLAGS += --code-name OVERLAY1 --rodata-name OVERLAY1
-$(ATOBJ)/status.o:                    CFLAGS += --code-name OVERLAY2 --rodata-name OVERLAY2
-$(ATOBJ)/grant.o $(ATOBJ)/events.o:   CFLAGS += --code-name OVERLAY3 --rodata-name OVERLAY3
+$(ATOBJ)/status.o $(ATOBJ)/grant.o:   CFLAGS += --code-name OVERLAY2 --rodata-name OVERLAY2
+$(ATOBJ)/events.o:                    CFLAGS += --code-name OVERLAY3 --rodata-name OVERLAY3
 $(ATOBJ)/auction.o:                   CFLAGS += --code-name OVERLAY4 --rodata-name OVERLAY4
 $(ATOBJ)/develop.o:                   CFLAGS += --code-name OVERLAY5 --rodata-name OVERLAY5
 # variables in low memory ($0400-$09FF, cleared by src/atari/sprite.s)

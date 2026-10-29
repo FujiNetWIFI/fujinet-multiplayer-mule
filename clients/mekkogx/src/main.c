@@ -25,7 +25,7 @@ uint8_t dbg_at;                 /* where the loop is (tools/a2sim peeks it) */
 
 /* The overlay each phase's code is in (bank.h). */
 static const uint8_t ovl_of[9] = {
-    OV_STATUS, OV_GRANT, OV_AUCTION, OV_DEVELOP, OV_GRANT,
+    OV_STATUS, OV_GRANTPH, OV_AUCTION, OV_DEVELOP, OV_GRANT,
     OV_AUCTION, OV_AUCTION, OV_STATUS, OV_STATUS,
 };
 
