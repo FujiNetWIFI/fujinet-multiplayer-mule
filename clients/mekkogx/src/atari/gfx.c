@@ -73,9 +73,16 @@ static void pmg_clear(void)
     dsp_hposm[3] = 0;
 }
 
+/* A new screen is built with the playfield off: its display list, rows
+ * and charsets are rewritten while ANTIC and the DLIs read them, and the
+ * frames between showed the last screen's charsets on the new one's rows.
+ * dsp_show turns it on with its first set of row flags (gfxa.s vbid). */
 static void screen_start(uint8_t kind, uint8_t bk, uint8_t tbg, uint8_t tfg)
 {
     uint8_t r;
+    dsp_hold = 1;
+    SDMCTL = 0;
+    DMACTL = 0;
     scr_kind = kind;
     spr_hide_all();
     spr_flush();
@@ -83,6 +90,7 @@ static void screen_start(uint8_t kind, uint8_t bk, uint8_t tbg, uint8_t tfg)
      * the town 3 colours the (missile) time bar */
     spr_players = kind == SK_MAP ? 2 : kind == SK_TOWN ? 3 : 4;
     pmg_clear();
+    spr_forget();
     dsp_colbk = bk;
     text_bg = tbg;
     text_fg = tfg;
@@ -94,9 +102,16 @@ static void screen_start(uint8_t kind, uint8_t bk, uint8_t tbg, uint8_t tfg)
     dl_build();
 }
 
+static void dsp_show(void)
+{
+    row_flags_update();
+    dsp_hold = 2;
+}
+
 void gfx_clear(void)
 {
     screen_start(SK_GEN, 0x00, 0x00, 0x0E);
+    dsp_show();
 }
 
 /* ---- the map ----------------------------------------------------------- */
@@ -138,6 +153,7 @@ void gfx_map_frame(void)
     memset(row_cm + 2 * ROWS, 0x06, ROWS);      /* the mountains are grey */
     map_river();
     dl_build();
+    dsp_show();
 }
 
 /* A picture on the map (the store's fire): map characters $37-$3E, two for
@@ -161,6 +177,7 @@ void gfx_town(void)
         pf[3 * ROWS] = c[4];
     }
     dl_build();
+    dsp_show();
 }
 
 /* ---- start-up ------------------------------------------------------------ */

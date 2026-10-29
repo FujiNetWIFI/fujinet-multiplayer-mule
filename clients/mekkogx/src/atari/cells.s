@@ -8,7 +8,7 @@
 ;
         .export _cell_put, _row_slot, _dyn_reset, _dyn_release, _row_used, _row_lo, _row_hi
         .export _cp_r, _cp_cx, _cp_line, _cp_mask, _cp_col
-        .import _row_pf, _atari_col, _pf_dirty, _row_mode
+        .import _row_pf, _atari_col, _pf_dirty, _row_mode, pf_mark
         .export _pfuse
         .importzp ptr1, ptr2, tmp1, tmp2
 
@@ -104,6 +104,10 @@ _row_slot:
         sta     _row_pf,y
         lda     #1
         sta     _pf_dirty
+        stx     tmp2            ; (the slot)
+        ldx     _cp_r
+        jsr     pf_mark
+        ldx     tmp2
 @got:   txa
         ldx     #0
         rts

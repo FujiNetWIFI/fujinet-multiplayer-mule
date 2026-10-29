@@ -6,7 +6,13 @@
 ; by row (gfxa.s). A player remembers what it drew (up to 4 pieces) so the
 ; next flush can clear just that.
 ;
-        .export _spr_flush, _row_flags_update, _spr_players
+; The flush only places the pieces: their bytes go into the players in the
+; deferred VBI that takes the rows (pmg_apply), so a piece never shows a
+; frame at the place its player had before (a figure's new frame where it
+; stood, a dash of the ship in another sprite's row).
+;
+        .export _spr_flush, _row_flags_update, _spr_players, _spr_forget
+        .export _bm_ready, pmg_apply
         .export _spr_on, _spr_shape, _spr_frame, _spr_xl, _spr_xh
         .export _spr_yl, _spr_yh, _spr_col, _spr_flags, _spr_changed, _sp_dirty, _pf_dirty
         .import _row_flags, _row_chb, _row_pf, _row_hp, _row_cm, _row_sz, _dsp_ready
@@ -39,8 +45,19 @@ seg_h:       .res 4 * MAXSEG
 old_n:       .res 4             ; the pieces shown before this flush
 old_y:       .res 4 * MAXSEG
 old_h:       .res 4 * MAXSEG
-oy:          .res 1
-oend:        .res 1
+seg_sl:      .res 4 * MAXSEG    ; a piece's bytes (lo, hi), mirrored or not
+seg_sh:      .res 4 * MAXSEG
+seg_fl:      .res 4 * MAXSEG
+_bm_ready:   .res 1             ; pieces placed, not yet drawn (pmg_apply)
+v_pl:        .res 1             ; pmg_apply's own: it interrupts anything
+v_i:         .res 1
+v_n:         .res 1
+v_h:         .res 1
+v_fl:        .res 1
+v_b:         .res 1
+v_t:         .res 1
+v_y:         .res 1
+v_e:         .res 1
 own:         .res 4 * ROWS
 slot:        .res 1
 ord:         .res 1             ; place in order
@@ -59,8 +76,16 @@ rowoff:      .res 4             ; p * ROWS
         .constructor clrlow
 .endif
 
+        .segment "ZEROPAGE"
+vsrc:   .res 2                  ; pmg_apply's
+vdst:   .res 2
+
         .rodata
 p_rows: .byte 0, ROWS, ROWS*2, ROWS*3
+rev:    .byte   $0, $8, $4, $C, $2, $A, $6, $E, $1, $9, $5, $D, $3, $B, $7, $F
+revhi:  .repeat 16, N           ; a nibble backwards, in the high one
+        .byte   ((N & 1) << 7) | ((N & 2) << 5) | ((N & 4) << 3) | ((N & 8) << 1)
+        .endrep
 ; the order slots get players in: the ship's nose (5) last, so on the map
 ; (two players) the hull's two halves get them rather than nose and top
 order:  .byte 0, 1, 2, 3, 4, 6, 7, 8, 9, 5
@@ -93,13 +118,6 @@ _spr_flush:
         sta     _dsp_ready      ; (the VBI takes none of a half-built set)
         lda     #1
         sta     _sp_dirty
-        ; the pieces shown, kept to be cleared after the new ones are drawn
-        ; (only where none lands: a piece redrawn in place never blanks)
-        ldx     #4 + 8 * MAXSEG - 1
-@keep:  lda     seg_n,x
-        sta     old_n,x
-        dex
-        bpl     @keep
         ; the players' rows afresh
         ldx     #0
 @clr:   cpx     _spr_players
@@ -130,7 +148,9 @@ _spr_flush:
         inx
         cpx     #SLOTS
         bcc     @slot
-        jmp     unclear
+        lda     #1              ; the pieces, for pmg_apply
+        sta     _bm_ready
+        jmp     smooth
 @on:    ; the shape: data, h, size
         lda     _spr_shape,x
         asl     a
@@ -259,33 +279,16 @@ _spr_flush:
         clc
         adc     #32             ; scanline -> PMG byte
         sta     seg_y,y
-        sta     ptr1
         lda     sh
         sta     seg_h,y
-        txa
-        clc
-        adc     #>PLAYERS
-        sta     ptr1+1
-        ; copy (mirrored if asked)
+        lda     ptr2            ; its bytes, mirrored if asked
+        sta     seg_sl,y
+        lda     ptr2+1
+        sta     seg_sh,y
         ldx     slot
         lda     _spr_flags,x
         and     #SPR_FLIPX
-        sta     tmp3
-        ldy     #0
-@cp:    lda     (ptr2),y
-        ldx     tmp3
-        beq     @put
-        sta     tmp4            ; mirror the byte
-        lda     #0
-        ldx     #8
-@fl:    lsr     tmp4
-        rol     a
-        dex
-        bne     @fl
-@put:   sta     (ptr1),y
-        iny
-        cpy     sh
-        bcc     @cp
+        sta     seg_fl,y
         ; its rows: position, colour, size
         ldx     pl
         lda     p_rows,x
@@ -311,63 +314,6 @@ _spr_flush:
         inc     tmp1
         bcc     @sr
         jmp     @next
-
-; The bytes of the pieces shown before that no new piece of the same player
-; covers, cleared.
-unclear:
-        ldx     #0
-@pl:    cpx     _spr_players
-        bcs     smooth
-        stx     pl
-        txa
-        clc
-        adc     #>PLAYERS
-        sta     ptr1+1
-        lda     #0
-        sta     ptr1
-        txa
-        asl     a
-        asl     a
-        sta     tmp2            ; p * MAXSEG
-        lda     old_n,x
-        sta     tmp1
-@os:    lda     tmp1
-        beq     @np
-        dec     tmp1
-        ldx     tmp2
-        inc     tmp2
-        lda     old_y,x
-        sta     oy
-        clc
-        adc     old_h,x
-        sta     oend
-@by:    ldx     pl              ; is oy in a new piece of this player?
-        ldy     seg_n,x
-        txa
-        asl     a
-        asl     a
-        tax
-@ck:    dey
-        bmi     @zero
-        lda     oy
-        cmp     seg_y,x
-        bcc     @cn
-        sbc     seg_y,x
-        cmp     seg_h,x
-        bcc     @in
-@cn:    inx
-        bne     @ck
-@zero:  ldy     oy
-        lda     #0
-        sta     (ptr1),y
-@in:    inc     oy
-        lda     oy
-        cmp     oend
-        bcc     @by
-        bcs     @os
-@np:    ldx     pl
-        inx
-        bne     @pl
 
 ; A player's rows without a piece take the next piece's position, size and
 ; colour (its bytes there are 0: nothing shows). The DLI's writes land a
@@ -407,6 +353,131 @@ flags:  lda     _sp_dirty
         sta     _pf_dirty
         jmp     _row_flags_update
 @out:   rts
+
+; void spr_forget(void): the players are blank (a new screen): nothing drawn
+; to clear, nothing placed to draw
+_spr_forget:
+        lda     #0
+        sta     _dsp_ready
+        sta     _bm_ready
+        ldx     #3
+@f:     sta     seg_n,x
+        sta     old_n,x
+        dex
+        bpl     @f
+        rts
+
+; pmg_apply (gfxa.s vbid, before the rows it goes with): each player's new
+; pieces drawn, then the bytes of the pieces it showed before that none of
+; them covers cleared (a piece drawn again in place never blanks). What it
+; showed is then what was placed.
+pmg_apply:
+        lda     #0
+        sta     _bm_ready
+        tax
+@pl:    cpx     _spr_players
+        bcc     @do
+        jmp     @kept
+@do:    stx     v_pl
+        txa
+        clc
+        adc     #>PLAYERS
+        sta     vdst+1
+        txa
+        asl     a
+        asl     a
+        sta     v_i             ; p * MAXSEG
+        lda     seg_n,x
+        sta     v_n
+@seg:   lda     v_n
+        beq     @old
+        dec     v_n
+        ldx     v_i
+        inc     v_i
+        lda     seg_y,x
+        sta     vdst
+        lda     seg_h,x
+        sta     v_h
+        lda     seg_sl,x
+        sta     vsrc
+        lda     seg_sh,x
+        sta     vsrc+1
+        lda     seg_fl,x
+        sta     v_fl
+        ldy     #0
+@cp:    lda     (vsrc),y
+        ldx     v_fl
+        beq     @put
+        sta     v_b             ; mirrored: each nibble backwards, swapped
+        and     #$0F
+        tax
+        lda     revhi,x
+        sta     v_t
+        lda     v_b
+        lsr     a
+        lsr     a
+        lsr     a
+        lsr     a
+        tax
+        lda     rev,x
+        ora     v_t
+@put:   sta     (vdst),y
+        iny
+        cpy     v_h
+        bcc     @cp
+        bcs     @seg
+@old:   lda     #0
+        sta     vdst
+        ldx     v_pl
+        txa
+        asl     a
+        asl     a
+        sta     v_i
+        lda     old_n,x
+        sta     v_n
+@os:    lda     v_n
+        beq     @np
+        dec     v_n
+        ldx     v_i
+        inc     v_i
+        lda     old_y,x
+        sta     v_y
+        clc
+        adc     old_h,x
+        sta     v_e
+@by:    ldx     v_pl            ; is v_y in a new piece of this player?
+        ldy     seg_n,x
+        txa
+        asl     a
+        asl     a
+        tax
+@ck:    dey
+        bmi     @zero
+        lda     v_y
+        cmp     seg_y,x
+        bcc     @cn
+        sbc     seg_y,x
+        cmp     seg_h,x
+        bcc     @in
+@cn:    inx
+        bne     @ck
+@zero:  ldy     v_y
+        lda     #0
+        sta     (vdst),y
+@in:    inc     v_y
+        lda     v_y
+        cmp     v_e
+        bcc     @by
+        bcs     @os
+@np:    ldx     v_pl
+        inx
+        jmp     @pl
+@kept:  ldx     #4 + 8 * MAXSEG - 1
+@k:     lda     seg_n,x
+        sta     old_n,x
+        dex
+        bpl     @k
+        rts
 
 ; void row_flags_update(void): what each row's DLI loads (what differs from
 ; the row above; row 0 everything). First the colour registers a row doesn't

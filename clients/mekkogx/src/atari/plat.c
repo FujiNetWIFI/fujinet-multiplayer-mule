@@ -66,9 +66,17 @@ void frame_wait(void)
     spr_flush();                        /* the row tables too, for loops that don't */
 }
 
+/* In a long drawing loop: once a frame, the row tables and sprites as
+ * they are now (a new screen's plots' colours, the store), else they wait
+ * for the loop's end. */
 void frame_tick(void)
 {
+    static uint16_t flushed;
     catch_up();
+    if (frame_count != flushed) {
+        flushed = frame_count;
+        spr_flush();
+    }
 }
 
 void frame_lost(uint8_t jiffies)

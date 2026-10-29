@@ -17,7 +17,7 @@
         .import _cell_put, _row_slot, _dyn_release
         .import _atari_col, _pf_dirty, _sp_dirty, _text_bg, _text_fg, _scr_kind
         .import _pics, _mbar, _mbar_col, _map_bar, _map_slot, _map_pr, _mp_uses
-        .import _dsp_hposm, _dsp_sizem
+        .import _dsp_hposm, _dsp_sizem, pf_mark
         .import _spr_on, _spr_shape, _spr_frame, _spr_xl, _spr_xh, _spr_yl, _spr_yh
         .import _spr_col, _spr_flags, _spr_changed
         .import incsp1, incsp2, incsp3, incsp4, incsp5, incsp8
@@ -106,7 +106,7 @@ setmode:
         sta     _row_pf+ROWS*2,x
 @d:     lda     #1
         sta     _pf_dirty
-        rts
+        jmp     pf_mark
 
 ; void __fastcall__ row_switch(uint8_t r, uint8_t m)
 _row_switch:

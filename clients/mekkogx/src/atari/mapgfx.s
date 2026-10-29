@@ -11,7 +11,7 @@
         .export _mp_uses, _mbar, _mbar_col, _map_pr
         .import _row_pf, _row_hp, _row_cm, _row_sz, _row_lo, _row_hi
         .import _atari_col, _pf_dirty, _sp_dirty, _mtn_shape, _mtn_h, _store_p3
-        .import incsp1
+        .import incsp1, pf_mark, pm_rows
         .importzp c_sp, ptr1, ptr2, tmp1, tmp2, tmp3, tmp4
 
 ROWS    = 24
@@ -110,7 +110,14 @@ _map_row_pf:
         bpl     @slot
         lda     #1
         sta     _pf_dirty
-        rts
+        ldx     tmp3            ; (gfxa.s)
+        jsr     pf_mark
+        inx
+        jsr     pf_mark
+        inx
+        jsr     pf_mark
+        inx
+        jmp     pf_mark
 
 ; uint8_t __fastcall__ map_slot(uint8_t col): a colour slot in plot row pr
 ; (held: _mp_uses counts it)
@@ -418,7 +425,13 @@ store:  lda     pr
         bne     @r
         lda     #1
         sta     _sp_dirty
-        rts
+        lda     pr              ; its rows shown with its bytes
+        asl     a
+        asl     a
+        clc
+        adc     #ROW0
+        ldy     #3
+        jmp     pm_rows
 
 ; A = hpos of plot (pr, pc)'s left edge: 48 + 8 + 16 * column
 plotx:  lda     pc
@@ -550,4 +563,8 @@ mountains:
         jmp     @plot
 @end:   lda     #1
         sta     _sp_dirty
-        rts
+        lda     tmp3            ; its rows shown with its bytes
+        sec
+        sbc     #ROWS*2
+        ldy     #2
+        jmp     pm_rows

@@ -54,6 +54,7 @@
 #define CONSOL  (*(volatile uint8_t *)(GTIA_BASE + 0x1F))
 #define GRACTL  (*(volatile uint8_t *)(GTIA_BASE + 0x1D))
 #define PMBASE  (*(volatile uint8_t *)0xD407)
+#define DMACTL  (*(volatile uint8_t *)0xD400)
 #define RANDOM  (*(volatile uint8_t *)(POKEY_BASE + 0x0A))
 
 /* The display (gfxa.s): 24 rows of 8 scanlines. Each row's DLI (the
@@ -71,7 +72,10 @@ extern uint8_t row_cm[4 * ROWS];
 extern uint8_t row_sz[4 * ROWS];
 extern uint8_t dsp_colbk, dsp_prior, dsp_sizem, dsp_hposm[4];
 extern volatile uint8_t dsp_ready;      /* 0 while the tables are rewritten */
+extern volatile uint8_t dsp_hold;       /* the playfield off for a new screen (gfx.c) */
 void dsp_init(void);                    /* gfxa.s: DLI + immediate VBI */
+void row_flags_update(void);            /* sprite.s */
+void spr_forget(void);
 
 /* sound.c: run by the VBI */
 void snd_vbi(void);

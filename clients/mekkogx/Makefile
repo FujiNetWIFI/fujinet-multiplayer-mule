@@ -470,7 +470,7 @@ LDFLAGS_EXTRA_ATARI += -C src/atari/mule-atari.cfg -m build/mule-atari.map
 # test mode's resident half (test.c) makes the room for the larger window
 ifeq ($(AUTOPLAY),1)
   CFLAGS_EXTRA_ATARI += -DMULE_NOTEST
-  LDFLAGS_EXTRA_ATARI += -Wl -D,__OVLSIZE__=0x1BC0
+  LDFLAGS_EXTRA_ATARI += -Wl -D,__OVLSIZE__=0x1B90
 endif
 EXECUTABLE_EXTRA_DEPS_ATARI += src/atari/mule-atari.cfg
 ifeq ($(PLATFORM),atari)
@@ -636,7 +636,7 @@ EXTRA_INCLUDE_ATARI5200 += build/fnlib-a52/include
 # mode's REPL half (test.c) makes the room for the larger own parts
 ifeq ($(AUTOPLAY),1)
   CFLAGS_EXTRA_ATARI5200 += -DMULE_NOTEST
-  LDFLAGS_EXTRA_ATARI5200 += -Wl -D,__REPL__=0x6700
+  LDFLAGS_EXTRA_ATARI5200 += -Wl -D,__REPL__=0x6600
 endif
 LDFLAGS_EXTRA_ATARI5200 += -C src/atari5200/mule-a52.cfg -m build/mule-a52.map
 EXECUTABLE_EXTRA_DEPS_ATARI5200 += src/atari5200/mule-a52.cfg build/fnlib-a52/fujinet-a52.lib
