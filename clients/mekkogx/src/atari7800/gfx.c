@@ -81,72 +81,109 @@ static uint8_t pal_tv(uint8_t c)
 static const uint8_t mode_cb[5] = { CB_TXT, CB_BIG, CB_DYN, CB_MT, CB_MT };
 static const uint8_t mode_ct[5] = { CT_320, CT_160 | CT_CW2, CT_160, CT_160 | CT_CW2, CT_160 };
 
+static uint8_t cur[2][6], pal[6];     /* each pair's colours by then; a zone's */
+static uint8_t wz, wm;                  /* the zone and its mode */
+
+/* pal: the colours zone wz (mode wm) wants in pair p as it is; non-zero
+ * if that is not what p has. wmap: where each of a mode's six colours
+ * comes from (row_pf + n), or KEEP. A text zone shows colour 2 of palette
+ * A only (of two planes), so the rest is left as it is. */
+#define KEEP 0xFF
+static const uint8_t wmap[5][6] = {
+    { KEEP, KEEP, KEEP, KEEP, KEEP, KEEP },                     /* text */
+    { 0, ROWS, KEEP, 2 * ROWS, 3 * ROWS, KEEP },                /* big */
+    { 0, ROWS, 2 * ROWS, 0, ROWS, 3 * ROWS },                   /* draw */
+    { 0, ROWS, 2 * ROWS, 3 * ROWS, 0, ROWS },                   /* map */
+    { 0, ROWS, 3 * ROWS, KEEP, KEEP, KEEP },                    /* town */
+};
+
+static uint8_t __fastcall__ want(uint8_t p)
+{
+    static uint8_t i, n;
+    memcpy(pal, cur[p], 6);
+    for (i = 0; i < 6; ++i)
+        if ((n = wmap[wm][i]) != KEEP)
+            pal[i] = row_pf[n + wz];
+    if (wm == RM_TEXT)
+        pal[1] = (row_pf[2 * ROWS + wz] & 0xF0) | (row_pf[ROWS + wz] & 0x0F);
+    return memcmp(pal, cur[p], 6);
+}
+
+/* Zone z's pair and whether a DLI right below it must land on time (wm),
+ * for maria.s; a change makes the zone again. */
+static void __fastcall__ zone_info(uint8_t z)
+{
+    if (zinfo[z] != wm) {
+        zinfo[z] = wm;
+        zdirty[z] = 1;
+    }
+}
+
 /* Each zone's CHARBASE, CTRL and colours, and a DLI where they differ from
- * what MARIA has by then (nmi.s); the frame's DLI last. A text zone shows
- * colour 2 of palette A only, so the rest is left as it is. */
+ * what MARIA has by then (nmi.s); the frame's DLI last.
+ *
+ * A zone's colours are in one of two pairs of palettes, P0/P1 or P2/P3:
+ * the zone above's while they are there, else the other, which is free
+ * while the zone above shows. A DLI that changes CHARBASE or CTRL comes at
+ * its zone (they must be in by its first line), and the zone above must
+ * leave it time (ZI_TIGHT). One that brings colours alone comes as early
+ * as its pair's last zone is gone (two zones on, after the DLI before it):
+ * a whole zone ahead, so the zones above it may be as heavy as a line
+ * holds (the map's bands, and the ship flying over them). */
 static void mt_tables(void)
 {
-    static uint8_t cur[2][6], pal[6];
-    uint8_t z, k = 0, m, p, i, cb, ct, pcb = 0xFF, pct, late, need, tc;
-    const uint8_t *pf;
+    static uint8_t last[2];                     /* each pair's last zone */
+    uint8_t z, k = 0, p = 1, i, cb, ct, pcb = 0xFF, pct, late, on, e, d = 0, zi = 0;
 
     memset(cur, 0xFF, sizeof(cur));
+    memset(nx_dli, 0, ROWS);
+    last[0] = last[1] = 0;
     pct = mode_ct[row_mode[ROWS - 1]];          /* the bottom's, from the last frame */
     for (z = 0; z < ROWS; ++z) {
-        m = row_mode[z];
-        cb = mode_cb[m];
-        ct = mode_ct[m];
-        p = z & 1;
-        pf = row_pf + z;
-        memcpy(pal, cur[p], 6);
-        switch (m) {
-        case RM_TEXT:
-            tc = (pf[2 * ROWS] & 0xF0) | (pf[ROWS] & 0x0F);
-            pal[1] = tc;
-            break;
-        case RM_BIG:
-            pal[0] = pf[0];
-            pal[1] = pf[ROWS];
-            pal[3] = pf[2 * ROWS];
-            pal[4] = pf[3 * ROWS];
-            break;
-        case RM_DRAW:
-            pal[0] = pal[3] = pf[0];
-            pal[1] = pal[4] = pf[ROWS];
-            pal[2] = pf[2 * ROWS];
-            pal[5] = pf[3 * ROWS];
-            break;
-        case RM_MAP:
-            pal[0] = pal[4] = pf[0];
-            pal[1] = pal[5] = pf[ROWS];
-            pal[2] = pf[2 * ROWS];
-            pal[3] = pf[3 * ROWS];
-            break;
-        default:                                /* town */
-            pal[0] = pf[0];
-            pal[1] = pf[ROWS];
-            pal[2] = pf[3 * ROWS];
-            break;
+        wz = z;
+        wm = row_mode[z];
+        cb = mode_cb[wm];
+        ct = mode_ct[wm];
+        on = z < 2 || cb != pcb || ct != pct;   /* a DLI at the zone */
+        if (want(p) || on) {
+            p ^= 1;
+            if (want(p) || on) {
+                e = z;
+                if (!on) {
+                    e = last[p] + 2;
+                    if (e <= d)
+                        e = d + 1;
+                    if (e > z)
+                        e = z;
+                }
+                d = e;
+                nx_dli[e] = 1;
+                if (e == z)
+                    zi |= ZI_TIGHT;
+                late = (ct & 3) == 3 && (pct & 3) == 0;
+                nx_cb[k] = cb;
+                nx_ca[k] = late ? (uint8_t)((ct & ~3) | (pct & 3)) : ct;
+                nx_cb2[k] = ct;
+                nx_f[k] = (late ? 0x80 : 0) | (p ? 0x40 : 0);
+                for (i = 0; i < 6; ++i)
+                    nx_p[i * NDLI + k] = pal_tv(pal[i]);
+                if (late)
+                    cur[p][1] = pal[1];         /* (only that one is written) */
+                else
+                    memcpy(cur[p], pal, 6);
+                ++k;
+            }
         }
-        need = z < 2 || cb != pcb || ct != pct || memcmp(pal, cur[p], 6);
-        nx_dli[z] = need;
-        if (need) {
-            late = (ct & 3) == 3 && (pct & 3) == 0;
-            nx_cb[k] = cb;
-            nx_ca[k] = late ? (uint8_t)((ct & ~3) | (pct & 3)) : ct;
-            nx_cb2[k] = ct;
-            nx_f[k] = (late ? 0x80 : 0) | (p ? 0x40 : 0);
-            for (i = 0; i < 6; ++i)
-                nx_p[i * NDLI + k] = pal_tv(pal[i]);
-            if (late)
-                cur[p][1] = pal[1];             /* (only that one is written) */
-            else
-                memcpy(cur[p], pal, 6);
-            ++k;
-        }
+        wm = zi;
+        if (z)
+            zone_info(z - 1);
+        zi = p ? ZI_P23 : 0;
+        last[p] = z;
         pcb = cb;
         pct = ct;
     }
+    wm = zi;
+    zone_info(ROWS - 1);
     nx_cb[k] = pcb;                             /* the frame's */
     nx_ca[k] = pct;
     nx_cb2[k] = pct;

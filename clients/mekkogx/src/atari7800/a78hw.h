@@ -59,6 +59,9 @@ void mt_init(void);
 void mt_compose(void);
 void mt_blank(void);
 extern uint8_t zdirty[ROWS], zflip[ROWS];
+extern uint8_t zinfo[ROWS];             /* each zone's (gfx.c mt_tables): */
+#define ZI_TIGHT 0x01                   /* a DLI below it must land on time */
+#define ZI_P23   0x40                   /* its colours in P2/P3, else P0/P1 */
 extern volatile uint8_t dsp_ready;
 extern uint8_t tr_lo[ROWS * 4], tr_pw[ROWS * 4], tr_x[ROWS * 4];
 extern uint8_t mt_dma[ROWS], mt_shed, mt_ntsc, mapidx[64];

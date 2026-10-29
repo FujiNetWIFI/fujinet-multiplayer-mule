@@ -12,11 +12,14 @@
 ;             320A under a 160A zone: a 320A -> 160A switch lands a line
 ;             early, on a text row's last line, which the font leaves blank
 ;             but for some punctuation
-;   then      Z's colours into its pair: P0/P1 for an even zone, P2/P3 for
-;             an odd one, whose zone (Z-2) is long gone
+;   then      Z's colours into its pair (P0/P1 or P2/P3: gfx.c mt_tables),
+;             which the zone above doesn't show
 ;   160A -> 320A: the text's colour, WSYNC, WSYNC (raster C's start), the
 ;             read mode. A line late if the zone above was heavy (over ~200
 ;             cycles of DMA), on the text's first line: blank too
+; A DLI with colours alone may come a zone or two before its zone, as soon
+; as its pair has left the screen: then CHARBASE and CTRL are the zone's
+; own again, and the colours have a zone's time to land (mt_tables).
 ; MARIA's own WSYNC ($24); nothing here touches the TIA.
 ;
 ; A PAL console's hues sit one higher than an NTSC one's: the zones'
@@ -39,7 +42,7 @@ NDLI    = 26            ; 24 zones, the frame's, and one to spare
         .segment "ZEROPAGE"
 dcb:    .res 1          ; the next DLI's CHARBASE, CTRL, flags
 dca:    .res 1
-df:     .res 1          ; 7 late (160A -> 320A), 6 odd zone, 5 the frame, 4 no colours
+df:     .res 1          ; 7 late (160A -> 320A), 6 P2/P3, 5 the frame, 4 no colours
 dord:   .res 1          ; and its place in the tables
 
         .segment "CONSBSS"      ; (console RAM: read in the DLI)

@@ -171,10 +171,11 @@ void fx_run(void)
  * The transport ship (clients/intv/events.bas), used by the summary, the
  * grant and production.
  * ------------------------------------------------------------------------- */
-#if defined(__ATARI__) || defined(__ATARI5200__)
+#if defined(__ATARI__) || defined(__ATARI5200__) || defined(__ATARI7800__)
 /* The hull's halves on whole 8-line rows (9-10, 11-12), so they share a
  * player and the nose (rows 10-11) gets the other: only two are free on
- * the map (sprite.s), and at 74 all three wanted row 11. */
+ * the map (sprite.s), and at 74 all three wanted row 11. On the 7800,
+ * whole zones: two pieces a half, not three (atari7800/sprite.s). */
 #define SHIP_Y   72
 #else
 #define SHIP_Y   74             /* hull top (Atari line 103) */

@@ -22,12 +22,13 @@
 ;         2 A3, 3 B1 (B = slot 3, 0, 1), one palette for a whole run; code
 ;         0 is blank (mapidx starts at 1)
 ;   town  160A, 1-byte codes = the town's characters (MTB), palette A
-; An even zone's A and B are P0 and P1, an odd one's P2 and P3 (nmi.s);
-; P4-P7 are the sprites' (colours 2 = 3) and the terrain's (colour 1).
+;   A zone's A and B are P0 and P1 or P2 and P3, as gfx.c's mt_tables
+; chose (zinfo, and nmi.s's DLIs load them); P4-P7 are the sprites'
+; (colours 2 = 3) and the terrain's (colour 1).
 ;
         .include "a78.inc"
         .export _mt_init, _mt_compose, _mt_blank, _mt_dll, _mt_top, _mt_ntsc
-        .export _zdirty, _zfront, _zflip, _dsp_ready
+        .export _zdirty, _zfront, _zflip, _zinfo, _dsp_ready
         .export _tr_lo, _tr_pw, _tr_x, _sp_n, _sp_lo, _sp_pw, _sp_x
         .export _mt_dma, _mt_shed, _mapidx, slot_lo, slot_hi
         .import _row_mode, _dsp_colbk, palfix
@@ -38,6 +39,8 @@ TR_MAX   = 4            ; terrain objects a zone
 SP_MAX   = 6            ; sprite pieces a zone
 DMA_MAX  = 291          ; a zone's objects' DMA (MARIA cycles): with the
                         ; line's own 39 the DLI below lands in time (M0)
+DMA_FREE = 400          ; ... where none must (zinfo): MARIA stops a line
+                        ; at 426, and the CPU waits out the rest of it
 DMA_BASE = 16 + 6 + 17
 
         .segment "DLSLOTS"      ; $1800: zones 0-15, two slots each
@@ -60,6 +63,7 @@ zbglen:  .res ROWS * 2          ; ... ends here
 zbgdma:  .res ROWS * 2          ; ... and costs this (DMA / 2)
 _zfront: .res ROWS              ; the slot shown
 _zflip:  .res ROWS              ; built: show the other from the next frame
+_zinfo:  .res ROWS              ; its pair, a DLI on time below it (a78hw.h ZI_*)
 _dsp_ready: .res 1              ; a set is built (nmi.s takes it)
 _mt_top: .res 1                 ; DLL entries above the zones
 _mt_ntsc: .res 1                ; 1 NTSC, 0 PAL
@@ -79,6 +83,7 @@ bs:      .res 1                 ; the back slot
 pa:      .res 1                 ; the zone's palette A << 5
 pb:      .res 1                 ; and B
 dma:     .res 2
+lim:     .res 2                 ; the zone's DMA_MAX or DMA_FREE
 rstart:  .res 1
 rlen:    .res 1
 rpal:    .res 1
@@ -310,11 +315,9 @@ build:  ldx     zn
         sta     op
         lda     slot_hi,y
         sta     op+1
-        txa                     ; even zones P0/P1, odd P2/P3
-        and     #1
-        beq     @p
-        lda     #$40
-@p:     sta     pa
+        lda     _zinfo,x        ; P0/P1 or P2/P3
+        and     #$40
+        sta     pa
         ora     #$20
         sta     pb
         ldy     bs
@@ -346,6 +349,15 @@ build:  ldx     zn
         sta     dma
         rol     dma+1
 @spr:   ldx     zn
+        lda     _zinfo,x        ; its sprites while the DMA allows
+        lsr     a
+        lda     #<DMA_FREE
+        ldy     #>DMA_FREE
+        bcc     @lim
+        lda     #<DMA_MAX
+        ldy     #>DMA_MAX
+@lim:   sta     lim
+        sty     lim+1
         lda     _sp_n,x
         beq     @end
         sta     cnt
@@ -362,14 +374,14 @@ build:  ldx     zn
         sta     tmp1
         lda     dma+1
         adc     #0
-        cmp     #>DMA_MAX       ; past DMA_MAX: shed it
-        bcc     @fits
-        bne     @shed
-        lda     tmp1
-        cmp     #<DMA_MAX + 1
-        bcs     @shed
-        lda     #>DMA_MAX
-@fits:  sta     dma+1
+        sta     tmp2
+        lda     lim             ; past lim: shed it
+        cmp     tmp1
+        lda     lim+1
+        sbc     tmp2
+        bcc     @shed
+        lda     tmp2
+        sta     dma+1
         lda     tmp1
         sta     dma
         ldy     wi
