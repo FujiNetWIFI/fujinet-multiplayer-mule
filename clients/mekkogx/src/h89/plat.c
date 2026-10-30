@@ -55,8 +55,8 @@ void plat_quit(void)
 }
 
 /* The card's 82C55 set up (port A mode 2, port B an input; the ESP32
- * doesn't see the mode word, its EN isn't wired), then the direction bit
- * (PC0) must follow a bit set/reset, or there is no 82C55 (an empty port
+ * doesn't see the mode word, its EN isn't wired), then PC0, wired to
+ * nothing, must follow a bit set/reset, or there is no 82C55 (an empty port
  * reads FFh, and every wait for a byte would see one at once). ESC on the
  * "no FujiNet" screen goes back to CP/M. */
 uint8_t plat_net_probe(void)
@@ -69,7 +69,7 @@ uint8_t plat_net_probe(void)
     z80_outp(PPI_CTRL, 0xC2);
     z80_outp(PPI_CTRL, 0x01);       /* PC0 set */
     ok = z80_inp(PPI_C) & 0x01;
-    z80_outp(PPI_CTRL, 0x00);       /* PC0 reset (ESP32 to H89) */
+    z80_outp(PPI_CTRL, 0x00);       /* PC0 reset */
     return ok && !(z80_inp(PPI_C) & 0x01);
 }
 

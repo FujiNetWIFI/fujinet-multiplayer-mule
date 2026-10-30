@@ -4,13 +4,10 @@
  *
  *   PC7  /OBF  high: the byte we wrote has been taken (or none waits)
  *   PC5  IBF   high: a byte from the ESP32 waits in port A
- *   PC1  /OE   the 74LVC245 between port A and the ESP32 (low: on)
- *   PC0  DIR   the 245's direction: 1 toward the ESP32, 0 toward us
  *
- * A request is written with the 245 turned toward the ESP32, then turned
- * back (fb_sent) so the reply can come in; fujinet-lib keeps the direction
- * it last set (ESP32 to H89) in a variable, which this leaves true. The
- * ESP32 hands over a reply byte at a time and waits up to a second for
+ * Port A runs straight to the ESP32, which drives it through /ACK, so
+ * nothing here sets a direction; fb_sent waits for a request's last byte
+ * to be taken. The ESP32 hands over a reply byte at a time and waits up to a second for
  * each to be taken, so a reply can be read over several frames.
  *
  * A write waits for the byte before it to be taken, a little: if the card
@@ -37,7 +34,7 @@ __sfr __at 0xD3 PPI_CR;
 #define IBF      0x20
 #define TAKE_WAIT 30            /* ticks (60 ms) for a byte to be taken */
 
-static uint8_t to_esp, stuck;
+static uint8_t sending, stuck;
 
 static void taken(void)
 {
@@ -54,11 +51,9 @@ static void taken(void)
 
 void fb_putc(uint8_t c)
 {
-    if (!to_esp) {
-        to_esp = 1;
+    if (!sending) {
+        sending = 1;
         stuck = 0;
-        PPI_CR = 0x02;          /* PC1 reset: the 245 on */
-        PPI_CR = 0x01;          /* PC0 set: toward the ESP32 */
     }
     taken();
     PPI_PA = c;
@@ -67,8 +62,7 @@ void fb_putc(uint8_t c)
 void fb_sent(void)
 {
     taken();
-    PPI_CR = 0x00;              /* PC0 reset: toward us, for the reply */
-    to_esp = 0;
+    sending = 0;
 }
 
 uint8_t fb_ready(void)
@@ -99,8 +93,6 @@ static void card_init(void)
 {
     PPI_CR = 0xC2;              /* port A mode 2, port B an input */
     (void)PPI_PA;
-    PPI_CR = 0x02;              /* the 245 on */
-    PPI_CR = 0x00;              /* toward us */
 }
 
 static uint16_t fold(uint16_t chk, const uint8_t *p, uint16_t n)
