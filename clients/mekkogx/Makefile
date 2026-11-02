@@ -487,6 +487,8 @@ $(ATOBJ)/develop.o:                   CFLAGS += --code-name OVERLAY5 --rodata-na
 # variables in low memory ($0400-$09FF, cleared by src/atari/sprite.s)
 $(ATOBJ)/text.o $(ATOBJ)/strings.o:   CFLAGS += --bss-name LOWBSS
 $(ATOBJ)/atari/gfx.o $(ATOBJ)/atari/bank.o: CFLAGS += --bss-name BSS2
+# (the overlays' variables there too: MAIN's room for the display's code)
+$(ATOBJ)/grant.o $(ATOBJ)/events.o $(ATOBJ)/autoplay.o: CFLAGS += --bss-name BSS2
 
 # The overlays go on the disk beside the program as PHASE.1 .. PHASE.5
 # (after MULE.COM: picoboot runs the first file): rebuild it with them.

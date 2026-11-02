@@ -38,6 +38,7 @@
         .import _snd_vbi, _bm_ready, pmg_apply
 
 ROWS    = 24
+HOLD_MAX = 4              ; frames before the immediate VBI turns a held playfield on
 
         .include "hw.inc"
 .ifdef __ATARI5200__
@@ -90,7 +91,7 @@ _dsp_prior: .res 1
 _dsp_sizem: .res 1
 _dsp_hposm: .res 4
 _dsp_ready: .res 1
-_dsp_hold:  .res 1              ; 1: the playfield is off for a new screen; 2: on at the next copy
+_dsp_hold:  .res 1              ; 1: the playfield is off for a new screen; 2..: on at the next copy (counting frames)
 _dli_on:    .res 1
 dli_row:    .res 1
 dli_f:      .res 1
@@ -342,12 +343,39 @@ vbi:
         sta     HPOSM0+2
         lda     _dsp_hposm+3
         sta     HPOSM0+3
+        ; The deferred VBI may be put off for long (SIO busy, or the stream's
+        ; IRQs: the VBI keeps coming over one): a screen must not stay dark
+        ; for it. dsp_hold 2 counts up a frame at a time, and at HOLD_MAX
+        ; the playfield comes on here, every row loading its charset and
+        ; colours (the copy follows when it can).
+        lda     _dsp_hold
+        cmp     #2
+        bcc     @nohold
+        adc     #0              ; (carry set)
+        sta     _dsp_hold
+        cmp     #2 + HOLD_MAX
+        bcc     @nohold
+        ldx     #ROWS - 1
+        lda     #1              ; RF_PF
+@fl:    sta     dl_flags,x
+        dex
+        bpl     @fl
+        jsr     pf_on
+@nohold:
         jsr     _snd_vbi
 .ifdef __ATARI5200__
         jmp     vbi_body
 .else
         jmp     SYSVBV
 .endif
+
+; the playfield on (the screen was held off): gfx.c gfx_init's DMA
+pf_on:  lda     #$3E
+        sta     SDMCTL
+        sta     DMACTL
+        lda     #0
+        sta     _dsp_hold
+        rts
 
 ; The deferred VBI: the sprites' bitmaps and the players' rows, if a whole
 ; set is built; the playfield back on for a new screen. Row 0's players
@@ -356,7 +384,11 @@ vbi:
 vbid:   lda     _dsp_ready
         bne     @go
         jmp     @x
-@go:    ldx     #3
+@go:    lda     #0
+        sta     _dsp_ready      ; taken: a VBI that comes in while this runs (it
+                                ; can take more than a frame) finds none, and
+                                ; doesn't run the copy over this one's ZP and rows
+        ldx     #3
 @r0:    ldy     pfrow0,x
         lda     _row_hp,y
         sta     HPOSP0,x
@@ -400,16 +432,10 @@ vbid:   lda     _dsp_ready
         inx
         cpx     #ROWS
         bne     @cp
-        lda     #0
-        sta     _dsp_ready
         lda     _dsp_hold
         cmp     #2
-        bne     @x
-        lda     #$3E            ; gfx.c gfx_init's
-        sta     SDMCTL
-        sta     DMACTL
-        lda     #0
-        sta     _dsp_hold
+        bcc     @x
+        jsr     pf_on
 .ifdef __ATARI5200__
 @x:     jmp     vbi_exit
 .else
