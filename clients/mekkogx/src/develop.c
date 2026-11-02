@@ -61,6 +61,12 @@ static uint16_t dv_left, dv_el; /* turn time left / elapsed at the last poll */
 static uint8_t dv_wp;           /* wampus showing (255 none) */
 static uint8_t wp_x, wp_y;
 static uint8_t dv_bwait;        /* in a doorway waiting for the server */
+#ifdef MULE_AUTOPLAY                    /* (it holds its direction from the start) */
+#define W_REL(v)
+#else
+static uint8_t w_rel;           /* out of a building: no step till the stick is let go */
+#define W_REL(v) (w_rel = (v))
+#endif
 static uint16_t dv_bt0;
 static uint8_t dv_ai, dv_ait, dv_aip;   /* a computer's plot marks */
 
@@ -229,6 +235,13 @@ void walk_isr(void)
     int8_t ix = 0, iy = 0;
     if (w_hold)
         return;
+#ifndef MULE_AUTOPLAY
+    if (w_rel) {
+        if (inp_dir)
+            return;
+        w_rel = 0;
+    }
+#endif
     if (w_cnt) {
         --w_cnt;
         return;
@@ -347,6 +360,7 @@ static void dv_start_walk(void)
     dv_office = 0;
     dv_evshown = 0;
     dv_bwait = 0;
+    W_REL(0);
     w_sp = PL(my_seat).species & 7;
     w_col = PLCOL(my_seat);
     bar_col = w_col;
@@ -381,6 +395,7 @@ static void back_to_street(void)
     dv_bwait = 0;
     if (dv_state == DV_WALK) {
         w_y = TOWN_Y_TOP + 2;
+        W_REL(1);               /* a stick still held would walk us back in */
         snd_play(SND_SELECT);
         dv_resume();
     }
