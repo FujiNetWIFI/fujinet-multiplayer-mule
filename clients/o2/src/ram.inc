@@ -51,11 +51,10 @@ SCTABL  equ 029h                ; 9: the table's id
 JOY     equ 032h                ; the stick now: J_* bits
 JOYP    equ 033h                ; last frame's
 JOYEV   equ 034h                ; pressed since last frame
-REP     equ 035h                ; auto-repeat countdown
 ; the boot's
 AKLEN   equ 036h
-PICK    equ 037h                ; the name picker's letter
-NAMEN   equ 038h                ; its length
+KLAST   equ 037h                ; BIOS readkey's memory (its r7), name entry
+NAMEN   equ 038h                ; the name's length so far
 SEL     equ 039h                ; a list's selection
 NTBL    equ 03Ah                ; tables listed
 ; the lobby's (p3.inc), over the boot's

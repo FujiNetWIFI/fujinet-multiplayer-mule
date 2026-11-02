@@ -87,6 +87,7 @@ poke_n:
     djnz r6,poke_n
     ret
 
+TXT_NB  equ 6                   ; its bands: T0-T5 (p0.inc txt_sync waits for the last)
 scr_text_t:
     db 000h                     ; black background
     db 256-1                    ; the first band: line 1

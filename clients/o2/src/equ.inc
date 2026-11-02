@@ -156,3 +156,8 @@ J_DOWN  equ 02h
 J_LEFT  equ 04h
 J_RIGHT equ 08h
 J_FIRE  equ 10h
+
+; ---- the keyboard (p0.inc key_poll): BIOS readkey codes, row x 8 + column ----
+K_CLR   equ 2Eh                 ; CLEAR
+K_ENT   equ 2Fh                 ; ENTER
+K_NONE  equ 0FFh                ; no new key

@@ -383,7 +383,7 @@ bt_cart:
     mov r0,#SCNAME
     movx a,@r0
     jnz bt_named
-    call pick_name
+    call name_entry
     call ak_write_name
 bt_named:
     clr a                       ; no room appkey read yet: the build's
@@ -492,9 +492,8 @@ s_load:   db "  LOADING...",0
 s_notbl:  db "NO TABLES FIRE",0
 s_join:   db "  JOINING...",0
 s_yname:  db "  YOUR NAME?",0
-s_pk1:    db "STICK: A LETTER",0
-s_pk2:    db "FIRE TAKES IT",0
-s_pk3:    db "TAKE . TO END",0
+s_nk1:    db "ENTER TAKES IT",0
+s_nk2:    db "CLEAR RUBS OUT",0
 
 ; ===========================================================================
     org 0D00h
@@ -528,98 +527,94 @@ lbn_x:
 ; ===========================================================================
     org 0E00h
 
-; pick_name: the stick's letter picker into SCNAME (mekkogx boot.c, no
-; keyboard): up and down turn the letter, the button takes it, left rubs
-; out; taking '.' ends. Clobbers A, r0-r7.
-pick_name:
+; TXT_END: where the interrupts' band pointer (register bank 1's r5, iRAM
+; $1D) rests once the text screen's last band has run, until the vblank
+; starts the list again.
+TXT_END equ (BANDS&0FFh)+TXT_NB*3
+
+; txt_sync: until the frame's last text band has run -- the stretch with no
+; band due before the vblank (T5's writer ends ~line 207, the vblank is at
+; ~242), where the keyboard scan belongs. Clobbers A, r0.
+txt_sync:
+    mov r0,#1Dh
+tsy_a:
+    mov a,@r0
+    xrl a,#TXT_END
+    jz tsy_a                    ; already in the stretch: wait for the next
+tsy_b:
+    mov a,@r0
+    xrl a,#TXT_END
+    jnz tsy_b
+    ret
+
+; key_poll: A = a key pressed since the last call (0-47), K_NONE if none. The
+; keyboard scanner shares P2 with the program address, so only the BIOS's own
+; code can read it (readkey: A = a new key, $C0 + key while it is held, $FF
+; none). It keeps the last key in register bank 0's r7 -- ours -- so KLAST
+; carries it, and it returns in bank 1. It holds the vblank off for up to
+; ~400 cycles while it debounces and a band interrupt would run cart code
+; (P2 = A8-A11) through the scan: call it right after txt_sync.
+; Clobbers A, r0-r7.
+key_poll:
+    mov r0,#KLAST
+    movx a,@r0
+    mov r7,a
+    FCALL readkey
+    sel rb0
+    mov r6,a
+    mov a,r7
+    mov r0,#KLAST
+    movx @r0,a
+    mov a,r6
+    jb7 kp_none
+    jb6 kp_none
+    ret
+kp_none:
+    mov a,#K_NONE
+    ret
+
+; name_entry: SCNAME from the keyboard (mekkogx boot.c): letters and digits,
+; at most 8 (a name goes into a URL unescaped, as ak_name has it); CLEAR rubs
+; out, ENTER takes it once there is one. Clobbers A, r0-r7.
+name_entry:
     call scr_clear
     mov r4,#0
     mov a,#s_yname&0FFh
     call say
-    mov r4,#3
-    mov a,#s_pk1&0FFh
-    call say
     mov r4,#4
-    mov a,#s_pk2&0FFh
+    mov a,#s_nk1&0FFh
     call say
     mov r4,#5
-    mov a,#s_pk3&0FFh
+    mov a,#s_nk2&0FFh
     call say
     clr a
     mov r0,#SCNAME
     movx @r0,a
     mov r0,#NAMEN
     movx @r0,a
-    mov r0,#PICK
+    mov a,#K_NONE
+    mov r0,#KLAST
     movx @r0,a
-    mov r0,#REP
-    movx @r0,a
-pn_l:
-    call frame_wait
-    call joy_poll
-    mov r0,#JOYEV
-    movx a,@r0
-    jb4 pn_fire
-    jb2 pn_rub
-    mov r0,#REP                 ; the stick held: turn the letter
-    movx a,@r0
-    jz pn_turn
-    dec a
-    movx @r0,a
-    jmp pn_draw
-pn_turn:
-    mov r0,#JOY
-    movx a,@r0
-    jb0 pn_up
-    jb1 pn_down
-    jmp pn_draw
-pn_up:
-    mov r0,#PICK
-    movx a,@r0
-    jnz pn_u1
-    mov a,#PICKN
-pn_u1:
-    dec a
-    movx @r0,a
-    jmp pn_rep
-pn_down:
-    mov r0,#PICK
-    movx a,@r0
-    inc a
-    xrl a,#PICKN
-    jz pn_d1
-    xrl a,#PICKN
-pn_d1:
-    movx @r0,a
-pn_rep:
-    mov r0,#REP
-    mov a,#8
-    movx @r0,a
-    jmp pn_draw
-pn_rub:
-    mov r0,#NAMEN
-    movx a,@r0
-    jz pn_draw
-    dec a
-    movx @r0,a
-    add a,#SCNAME
-    mov r0,a
-    clr a
-    movx @r0,a
-    jmp pn_draw
-pn_fire:
-    mov r0,#PICK
-    movx a,@r0
-    add a,#pickset&0FFh
+ne_l:
+    call txt_sync
+    call key_poll
+    mov r5,a
+    xrl a,#K_NONE
+    jz ne_draw
+    mov a,r5
+    xrl a,#K_ENT
+    jz ne_end
+    xrl a,#K_ENT!K_CLR
+    jz ne_rub
+    mov a,r5                    ; a character key: its letter or digit
+    add a,#keychar&0FFh
     movp a,@a
-    xrl a,#'.'
-    jz pn_end
-    xrl a,#'.'
-    mov r6,a
+    jz ne_draw
+    mov r5,a
     mov r0,#NAMEN
     movx a,@r0
     xrl a,#8
-    jz pn_draw                  ; full
+    jz ne_draw                  ; full
     xrl a,#8
     mov r1,a
     inc a
@@ -627,43 +622,51 @@ pn_fire:
     mov a,r1
     add a,#SCNAME
     mov r0,a
-    mov a,r6
+    mov a,r5
     movx @r0,a
     inc r0
     clr a
     movx @r0,a
-    jmp pn_draw
-pn_end:
+    jmp ne_draw
+ne_rub:
     mov r0,#NAMEN
     movx a,@r0
-    jz pn_draw
+    jz ne_draw
+    dec a
+    movx @r0,a
+    add a,#SCNAME
+    mov r0,a
+    clr a
+    movx @r0,a
+    jmp ne_draw
+ne_end:
+    mov r0,#NAMEN
+    movx a,@r0
+    jz ne_draw
     ret
-pn_draw:
-    call lb_name                ; the name, then the letter blinking after it
-    mov r0,#NAMEN
+ne_draw:
+    call lb_name                ; the name, then a block blinking after it
+    mov r0,#NAMEN               ; (the font has no '_'; none once it is full)
     movx a,@r0
+    xrl a,#8
+    jz ne_put
+    xrl a,#8
     add a,#LINEBUF+4
     mov r1,a
     mov r0,#FRAMES
     mov a,@r0
     anl a,#16
-    jnz pn_letter
-    mov a,#'_'
-    jmp pn_blink
-pn_letter:
-    mov r0,#PICK
-    movx a,@r0
-    add a,#pickset&0FFh
-    movp a,@a
-pn_blink:
-    movx @r1,a                  ; LINEBUF+4+n
+    jz ne_put
+    mov a,#08h                  ; charmap: the font's block
+    movx @r1,a
+ne_put:
     mov r4,#2
     call say_line
-    jmp pn_l
+    jmp ne_l
 
-pickset:
-    db "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789."
-PICKN   equ $-pickset
-
+; keychar: a key's letter or digit (readkey codes 0-45; 0: not one of them).
+; Codes 44 and 45 are the Y and N keys; 46 and 47 are CLEAR and ENTER.
+keychar:
+    db "0123456789",0,0,0,0,"LP",0,"WERTUIOQSDFGHJKAZXCVBM",0,0,0,0,0,"YN"
 
     PAGE_TAIL

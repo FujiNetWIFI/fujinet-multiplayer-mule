@@ -11,8 +11,13 @@ steps, one per line (# comments):
     hold KEYS N         hold the stick (up down left right fire, joined by +)
                         for N frames, then let go for 4
     press KEYS          hold 4 frames, release 4
+    type TEXT           type TEXT on the keyboard (0-9 A-Z ? . - * / = +; _ is
+                        SPACE), each key held 4 frames, then 4 up
+    key NAME [N]        one key, held N frames (4): a character above, or
+                        SPACE YES NO CLR ENT
     snap NAME           a screenshot, OUTDIR/NAME.png
     burst NAME N        a screenshot every frame for N frames, NAME_000 ...
+    burstkey NAME N KEY the same, with KEY held down throughout
     watch XRAM N [LEN]  for N frames, print external RAM XRAM (LEN bytes)
                         each time it changes: WATCH frame value ...
     auto N [XRAM V]     play for N frames, to game over or until external RAM
@@ -43,6 +48,14 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAME = os.path.expanduser(os.environ.get("MAME", "~/Workspace/mame"))
 KEYS = {"up": 0x01, "right": 0x02, "down": 0x04, "left": 0x08, "fire": 0x10}
+# the keyboard: code = row x 8 + column (MAME's KEY.row bit column)
+KBD = "0123456789\0\0_?LP+WERTUIOQSDFGHJKAZXCVBM.-*/=YN"
+KBD_NAMED = {"SPACE": 12, "YES": 44, "NO": 45, "CLR": 46, "ENT": 47}
+
+
+def keystep(code, n=4):
+    return '{"key",%d,%d,%d}' % (code >> 3, 1 << (code & 7), n)
+
 
 LUA = r"""
 local steps = { %(steps)s }
@@ -58,6 +71,14 @@ local joy = manager.machine.ioport.ports[":JOY.0"]
 local fields = {}
 for name, f in pairs(joy.fields) do fields[#fields + 1] = f end
 local names = {}
+local keyport = {}
+for k = 0, 5 do keyport[k] = manager.machine.ioport.ports[":KEY." .. k] end
+local keyheld = nil
+local function setkey(port, mask, v)
+  for _, f in pairs(keyport[port].fields) do
+    if f.mask == mask then f:set_value(v) end
+  end
+end
 local function setjoy(mask)
   for _, f in ipairs(fields) do
     local bit = f.mask
@@ -175,7 +196,10 @@ local function step()
   if frames > %(maxframes)d then print("O2SIM: out of frames"); manager.machine:exit(); return end
   if holdleft > 0 then
     holdleft = holdleft - 1
-    if holdleft == 0 then setjoy(0); waitleft = 4 end
+    if holdleft == 0 then
+      setjoy(0); waitleft = 4
+      if keyheld then setkey(keyheld[1], keyheld[2], 0); keyheld = nil end
+    end
     return
   end
   if waitleft > 0 then waitleft = waitleft - 1; return end
@@ -191,6 +215,7 @@ local function step()
     manager.machine.video:snapshot()
     names[#names + 1] = string.format("%%s_%%03d", burstname, burstk)
     burstk = burstk + 1; burstleft = burstleft - 1
+    if burstleft == 0 and keyheld then setkey(keyheld[1], keyheld[2], 0); keyheld = nil end
     return
   end
   if untiladdr then
@@ -206,10 +231,15 @@ local function step()
     local s = steps[i]; i = i + 1
     if s[1] == "wait" then waitleft = s[2]; return
     elseif s[1] == "hold" then setjoy(s[2]); holdleft = s[3]; return
+    elseif s[1] == "key" then
+      keyheld = {s[2], s[3]}; setkey(s[2], s[3], 1); holdleft = s[4]; return
     elseif s[1] == "snap" then
       manager.machine.video:snapshot(); names[#names + 1] = s[2]; waitleft = 1; return
     elseif s[1] == "until" then untiladdr = s[2]; untilval = s[3]; untilleft = s[4]; return
     elseif s[1] == "burst" then burstname = s[2]; burstk = 0; burstleft = s[3]; return
+    elseif s[1] == "burstkey" then
+      keyheld = {s[4], s[5]}; setkey(s[4], s[5], 1)
+      burstname = s[2]; burstk = 0; burstleft = s[3]; return
     elseif s[1] == "auto" then autoleft = s[2]; autoaddr = s[3]; autoval = s[4]; return
     elseif s[1] == "watch" then watchaddr = s[2]; watchleft = s[3]; watchlen = s[4]; watchlast = ""; return
     elseif s[1] == "pc" then
@@ -242,11 +272,22 @@ def parse(path):
                 mask |= KEYS[k]
             n = int(w[2]) if w[0] == "hold" else 4
             steps.append('{"hold",%d,%d}' % (mask, n))
+        elif w[0] == "type":
+            for ch in w[1]:
+                steps.append(keystep(KBD.index(ch.upper())))
+        elif w[0] == "key":
+            n = w[1].upper()
+            steps.append(keystep(KBD_NAMED[n] if n in KBD_NAMED else KBD.index(n),
+                                 int(w[2]) if len(w) > 2 else 4))
         elif w[0] == "snap":
             steps.append('{"snap","%s"}' % w[1])
         elif w[0] in ("xram", "iram", "cart"):
             n = int(w[2], 0) if len(w) > 2 else 1
             steps.append('{"%s",%d,%d}' % (w[0], int(w[1], 16), n))
+        elif w[0] == "burstkey":     # burstkey NAME N KEY: shots while KEY is held
+            n = w[3].upper()
+            code = KBD_NAMED[n] if n in KBD_NAMED else KBD.index(n)
+            steps.append('{"burstkey","%s",%d,%d,%d}' % (w[1], int(w[2]), code >> 3, 1 << (code & 7)))
         elif w[0] == "burst":
             steps.append('{"burst","%s",%d}' % (w[1], int(w[2])))
         elif w[0] == "auto":
@@ -285,7 +326,11 @@ def main(scen, out, image=None):
            "-snapshot_directory", snapdir,
            "-cfg_directory", os.path.join(out, "cfg"),
            "-nvram_directory", os.path.join(out, "nvram"),
-           "-autoboot_script", luafile, "-skip_gameinfo"]
+           "-autoboot_script", luafile, "-skip_gameinfo",
+           # the host's own keyboard and joysticks out: a gamepad on this
+           # machine read as the stick held LEFT, mid-scenario
+           "-keyboardprovider", "none", "-joystickprovider", "none",
+           "-mouseprovider", "none", "-lightgunprovider", "none"]
     if os.environ.get("O2SIM_WAV"):
         cmd += ["-wavwrite", os.path.abspath(os.environ["O2SIM_WAV"])]
     if not live:

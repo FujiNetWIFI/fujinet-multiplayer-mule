@@ -1,11 +1,30 @@
-# offline: no appkey, so the name picker; pick "BC" and end with '.'
-wait 90
-snap picker
-hold down 10        # B
-press fire
-hold down 10        # C
-press fire
+# offline: no appkey, so the name entry from the keyboard.
+# ENTER with no name stays; '?' is no letter or digit; CLEAR rubs out; at most
+# 8 characters; ENTER takes it.
+wait 300
+snap entry
+key ENT             # nothing typed yet: stays on the screen
 wait 10
+snap empty_ent
+type B?C            # '?' is ignored: BC
+wait 10
+snap typed
+xram 20 9           # SCNAME: BC
+key CLR             # B
+wait 10
+type D1234567X      # BD123456: the 8th is the last, 7 and X are ignored
+wait 10
+snap full
+xram 20 9           # SCNAME: BD123456
+burstkey held 24 Q  # a letter held down (the name is full): no flicker
+wait 10
+key CLR
+type YN             # the Y and N keys are letters too: BD12345 then Y
+wait 10
+snap yn
+xram 20 9           # SCNAME: BD12345Y
+key ENT
+wait 20
 snap picked
-xram 20 9           # SCNAME
+xram 20 9
 iram 20 29

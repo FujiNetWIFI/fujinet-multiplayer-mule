@@ -19,7 +19,7 @@ carries the MAME device (`pico/o2/emu`, grafted into `~/Workspace/mame` by
 
 | Page | Holds |
 |---|---|
-| 0 | boot: cart check, name (appkey or picker), table list, join |
+| 0 | boot: cart check, name (appkey or keyboard), table list, join |
 | 1 | the network: one request at a time through the mailbox |
 | 2 | the main loop: a frame, the network, the phase's page |
 | 2 | the main loop: a frame, the network, the phase's page; the sounds and the time bar |
@@ -115,11 +115,12 @@ minutes). `test/scen/soak1.scen` plays such a game through.
 
 It needs `~/Workspace/mame` with the cart grafted in (`apply-mame.sh`) and a
 fujinet-pc BoIP listener on `FUJINET_TCP` (default 127.0.0.1:9995). In MAME
-the arrow keys are the left joystick and Left Ctrl its button.
+the arrow keys are the left joystick and Left Ctrl its button; Backspace is CLEAR
+and Enter is ENTER.
 
 | Screen | Stick | Button |
 |---|---|---|
-| your name (no lobby appkey) | up, down: the letter; left: rub out | take the letter; `.` ends |
+| your name (no lobby appkey) | | type it on the keyboard: letters and digits, 8 at most; CLEAR rubs out, ENTER takes it |
 | table list | up, down: choose | join |
 | lobby | left, right: your species | ready, or not |
 | status summary | left, right: the column (total, money, land, goods) | seen: go on |
