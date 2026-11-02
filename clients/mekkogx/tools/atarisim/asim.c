@@ -24,6 +24,7 @@
  *   cpu                    print the 6502's registers (and the stack)
  *   brkcont 1|0            carry on at a BRK (else libatari800 stops there)
  *   coldstart              power off and on (boot again: FujiNet is there now)
+ *   warmstart              System Reset
  *   savestate NAME / loadstate NAME
  *
  * A JAM or a display list error prints CRASH (code, frame, PC).
@@ -271,6 +272,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "untilfile %s: %ld frames (frame %d)\n", a1, n, libatari800_get_frame_number());
 		}
 		else if (!strcmp(cmd, "coldstart")) Atari800_Coldstart();
+		else if (!strcmp(cmd, "warmstart")) Atari800_Warmstart();
 		else if (!strcmp(cmd, "brkcont")) libatari800_continue_emulation_on_brk(v);
 		else if (!strcmp(cmd, "cpu")) {
 			printf("frame %d PC %04x A %02x X %02x Y %02x S %02x P %02x stack:", libatari800_get_frame_number(),
