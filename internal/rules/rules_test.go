@@ -455,3 +455,16 @@ func TestStallStopsTrading(t *testing.T) {
 		t.Fatalf("no units bought after the stall: %d", g.Players[0].Goods[Food])
 	}
 }
+
+func TestWampusCatchAllowsNetworkLatency(t *testing.T) {
+	tr := &Turn{Wampus: []WampusSpot{{Plot: 3, From: 100, To: 128}}}
+	if tr.WampusVisible(110, WampusGrace) == nil {
+		t.Fatal("not catchable while shown")
+	}
+	if tr.WampusVisible(128+WampusGrace-1, WampusGrace) == nil {
+		t.Fatal("a catch pressed while shown, arriving within the latency allowance, was refused")
+	}
+	if tr.WampusVisible(128+WampusGrace, WampusGrace) != nil {
+		t.Fatal("catch accepted long after the wampus hid")
+	}
+}

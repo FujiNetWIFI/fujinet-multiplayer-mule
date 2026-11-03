@@ -202,7 +202,7 @@ typedef struct { /* 58 bytes */
 typedef struct { /* 6 bytes */
   uint8_t plot;
   uint8_t mount; /* mountain index on plot */
-  uint16_t from; /* turn BTU */
+  uint16_t from; /* turn jiffies */
   uint16_t to;
 } MuleWampus;
 

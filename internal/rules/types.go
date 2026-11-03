@@ -154,7 +154,7 @@ type TradeRec struct {
 type WampusSpot struct {
 	Plot  int
 	Mount int // which mountain on the plot
-	From  int // turn-relative BTU
+	From  int // turn-relative jiffies
 	To    int
 }
 

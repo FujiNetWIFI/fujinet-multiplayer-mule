@@ -164,7 +164,7 @@ const (
 
 	LobbyCountdown    = 31 * JiffiesPerSecond
 	LobbyReady        = 6 * JiffiesPerSecond
-	WampusGrace       = 2 * BTU
+	WampusGrace       = GrantLatency // [IMPL] network allowance: a catch may arrive this long after the wampus hid (was 8 jiffies, too tight for a cartridge mailbox)
 	LandStep          = 4  // $ per land auction step [RE]
 	LandStepsBelow    = 7  // buyers wait 7 steps below the start price [measured y151 vs y137]
 	LandStepsAbove    = 35 // highest bid: start + 35 steps [measured y67]

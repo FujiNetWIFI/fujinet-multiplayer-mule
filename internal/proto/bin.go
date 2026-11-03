@@ -106,7 +106,7 @@ type BinAuction struct {
 type BinWampus struct {
 	Plot  uint8  `c:""`
 	Mount uint8  `c:"mountain index on plot"`
-	From  uint16 `c:"turn BTU"`
+	From  uint16 `c:"turn jiffies"`
 	To    uint16 `c:""`
 }
 
@@ -246,11 +246,16 @@ func ToBin(v *View) *BinState {
 		bt.Seat, bt.Carrying, bt.Event = int8(t.Seat), int8(t.Carrying), uint8(t.Event)
 		bt.Flags = b2u(t.Started, TFStarted) | b2u(t.Ended, TFEnded) | b2u(t.HasMule, TFHasMule) | b2u(t.Caught, TFCaught)
 		bt.Length, bt.Elapsed, bt.Left, bt.EndIn, bt.PTU = u16(t.Length), u16(t.Elapsed), u16(t.Left), u16(t.EndIn), u8(t.PTU)
-		for i, w := range t.Wampus {
-			if i >= MaxWampus {
+		// The next MaxWampus appearances still to come: a long turn has
+		// more than fit, and the early ones are over by the time later ones show.
+		for _, w := range t.Wampus {
+			if bt.NWampus >= MaxWampus {
 				break
 			}
-			bt.Wampus[i] = BinWampus{u8(w.Plot), u8(w.Mount), u16(w.From), u16(w.To)}
+			if w.To+rules.WampusGrace <= t.Elapsed {
+				continue
+			}
+			bt.Wampus[bt.NWampus] = BinWampus{u8(w.Plot), u8(w.Mount), u16(w.From), u16(w.To)}
 			bt.NWampus++
 		}
 	}

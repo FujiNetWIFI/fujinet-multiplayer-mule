@@ -423,6 +423,7 @@ func (g *Game) finishLandAuction() {
 	a := g.Auction
 	a.Done = true
 	a.Stage, a.StageLeft = StageDone, AuctionEndDisplay
+	g.freezeLines()
 	if a.Winner < 0 && a.Seller < 0 {
 		best := g.bestLine(RoleBuyer, true)
 		if best >= 0 && a.Lines[best].Pos >= a.Start {
@@ -866,10 +867,20 @@ func (g *Game) Declare(seat, role int) error {
 	return nil
 }
 
+// freezeLines stops every line where it is: clients walk lines toward
+// their target, so a target left behind keeps them moving on the end screen.
+func (g *Game) freezeLines() {
+	for s := range g.Auction.Lines {
+		l := &g.Auction.Lines[s]
+		l.Target, l.Push = l.Pos, 0
+	}
+}
+
 func (g *Game) finishGoodsAuction() {
 	a := g.Auction
 	a.Done = true
 	a.Stage, a.StageLeft = StageDone, AuctionEndDisplay
+	g.freezeLines()
 	gd := a.Good
 	if a.Traded > 0 {
 		g.Store.Price[gd] = clamp(a.TradeSum/a.Traded, StoreMinPrice[gd], StoreMaxPrice)
