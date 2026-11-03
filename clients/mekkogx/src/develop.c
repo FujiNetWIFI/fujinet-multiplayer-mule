@@ -61,14 +61,11 @@ static uint16_t dv_left, dv_el; /* turn time left / elapsed at the last poll */
 static uint8_t dv_wp;           /* wampus showing (255 none) */
 static uint8_t wp_x, wp_y;
 static uint8_t dv_bwait;        /* in a doorway waiting for the server */
-#ifdef MULE_AUTOPLAY                    /* (it holds its direction from the start) */
-#define W_REL(v)
-#else
-static uint8_t w_rel;           /* out of a building: no step till the stick is let go */
-#define W_REL(v) (w_rel = (v))
-#endif
-static uint16_t dv_bt0;
+static uint8_t dv_show;         /* an outfitter has our M.U.L.E. (dv_outfit_show) */
+static uint16_t dv_bt0;         /* when we reached the door */
 static uint8_t dv_ai, dv_ait, dv_aip;   /* a computer's plot marks */
+static uint8_t dv_asq[8];       /* plots the computer assayed this turn */
+static uint8_t dv_asn, dv_asi, dv_ast;  /* how many, the next to show, when */
 
 /* walking */
 static uint8_t w_x, w_y, w_town, w_hold, w_event, w_bldg;
@@ -146,6 +143,19 @@ static void walk_town(int8_t ix, int8_t iy)
 {
     uint8_t i;
     w_cnt = 5;
+    /* In a doorway, as on the Atari after a building, we only walk back out
+     * to the street: on into it does nothing (a held stick can't walk us in
+     * again), and from an outfitter it is 8 steps to the street. */
+    if (w_y < TOWN_Y_TOP) {
+        if (iy > 0)
+            w_y += 2;
+        return;
+    }
+    if (w_y > TOWN_Y_BOT) {
+        if (iy < 0)
+            w_y -= 2;
+        return;
+    }
     /* along the street: 4 a step; out of either end: back to the map */
     if (ix < 0) {
         if (w_x <= TOWN_X_LEFT) {
@@ -235,13 +245,6 @@ void walk_isr(void)
     int8_t ix = 0, iy = 0;
     if (w_hold)
         return;
-#ifndef MULE_AUTOPLAY
-    if (w_rel) {
-        if (inp_dir)
-            return;
-        w_rel = 0;
-    }
-#endif
     if (w_cnt) {
         --w_cnt;
         return;
@@ -360,7 +363,7 @@ static void dv_start_walk(void)
     dv_office = 0;
     dv_evshown = 0;
     dv_bwait = 0;
-    W_REL(0);
+    dv_show = 0;
     w_sp = PL(my_seat).species & 7;
     w_col = PLCOL(my_seat);
     bar_col = w_col;
@@ -388,16 +391,34 @@ static void dv_stop_walk(void)
 }
 
 /* ---------------------------------------------------------------------------
- * Buildings. The action goes to the server; its answer puts us back out.
+ * Buildings. The action goes to the server; its answer lets us go. We stay
+ * in the doorway and walk out (walk_town).
  * ------------------------------------------------------------------------- */
-static void back_to_street(void)
+static void leave_building(void)
 {
     dv_bwait = 0;
+    dv_show = 0;
     if (dv_state == DV_WALK) {
-        w_y = TOWN_Y_TOP + 2;
-        W_REL(1);               /* a stick still held would walk us back in */
         snd_play(SND_SELECT);
         dv_resume();
+    }
+}
+
+/* At an outfitter, as on the Atari 800 (measured): we stand in the door
+ * while the M.U.L.E. goes into the shop (here it vanishes at 120 frames),
+ * is fitted out and comes back out (195). The stick is dead for the 270
+ * frames from reaching the door. */
+static void dv_outfit_show(void)
+{
+    uint16_t t = frame_count - dv_bt0;
+    if (t >= 270) {
+        if (!dv_bwait)
+            leave_building();
+    } else if (t >= 120) {
+        if (t < 195)
+            spr_hide(SLOT_MULE);
+        else
+            walk_draw();
     }
 }
 
@@ -428,9 +449,10 @@ static void dv_building(void)
         act_send(a, arg);
         dv_bwait = 1;
         dv_bt0 = frame_count;
+        dv_show = a == ACT_OUTFIT;
         return;
     }
-    back_to_street();
+    leave_building();
 }
 
 static void dv_building_result(void)
@@ -548,11 +570,8 @@ static void dv_wampus(void)
     /* on the plot's mountains */
     wp_x = (mp % 9) * 16 + 16 + 1 + c * 2;
     wp_y = (mp / 9) * 16 + 16 + 1 + c * 2;
-    /* it flashes: 8 frames on, 8 off */
-    if (frame_count & 8)
-        spr_set(SLOT_WAMPUS, SH_WAMPUS, 0, SX(wp_x), SY(wp_y), C_WHITE, 0);
-    else
-        spr_hide(SLOT_WAMPUS);
+    /* shown steadily while it is out, as on the Atari (measured) */
+    spr_set(SLOT_WAMPUS, SH_WAMPUS, 0, SX(wp_x), SY(wp_y), C_WHITE, 0);
 }
 
 /* The player event: shown at the start of the turn, as on the Atari. */
@@ -619,16 +638,34 @@ static void dv_event_msg(void)
  * M.U.L.E. (or one of its plots) with the M.U.L.E. behind, which stays
  * there, then walks back into the store and waits. (dv_ai_walk)
  * ------------------------------------------------------------------------- */
-static uint8_t ai_script[2][40];
+/* The scripts, with the species, colour and the moves' steps and directions
+ * filled in: from the store (MOB x 83, y 52), the figure out (FX_SIG 3
+ * outlines the plot), 90 frames there, back facing home, a long wait in the
+ * store; its M.U.L.E. 24 frames behind, to the plot. */
+#define AI_POS FX_POS, XB(SX(83)), XB(SY(52))
+static const uint8_t ai_fig[] = {
+    FX_LOOK, FK_SINGLE, 0, SH_FIGURE, 0, 1, 0, 0, AI_POS,
+    FX_FLAGS, 0, FX_MOVE, 0, 0, 6, 0, FX_MOVE, 0, 0, 6, 0,
+    FX_SIG, 3, FX_WAIT, 90, FX_SIG, 4,
+    FX_MOVE, 0, 0, 6, 0, FX_FLAGS, 0, FX_MOVE, 0, 0, 6, 0,
+    FX_WAIT, 255, FX_LOOP, 200, 2
+};
+static const uint8_t ai_mul[] = {
+    FX_LOOK, FK_SINGLE, 1, SH_MULE, 2, 1, C_WHITE, 0, AI_POS,
+    FX_WAIT, 24, FX_FLAGS, 0, FX_MOVE, 0, 0, 6, 0, FX_MOVE, 0, 0, 6, 0,
+    FX_WAIT, 20, FX_HIDE, FX_END
+};
+static uint8_t ai_script[sizeof ai_fig + sizeof ai_mul];
+#define AF ai_script
+#define AM (ai_script + sizeof ai_fig)
 
-static uint8_t *ai_move(uint8_t *s, int8_t dx, int8_t dy, uint8_t n)
+/* plot mp outlined in white (map_draw_plot(mp) puts it back) */
+static void dv_outline(uint8_t mp)
 {
-    *s++ = FX_MOVE;
-    *s++ = (uint8_t)dx;
-    *s++ = (uint8_t)dy;
-    *s++ = 6;
-    *s++ = n;
-    return s;
+    map_blink = mp;
+    map_blink_on = 1;
+    map_draw_plot(mp);
+    map_blink = NOBODY;
 }
 
 static void dv_ai_land(uint8_t on)
@@ -639,25 +676,22 @@ static void dv_ai_land(uint8_t on)
     uint8_t mp;
     for (mp = 0; mp < NUM_PLOTS; ++mp)
         if (OWNER(mp) == dv_seat) {
-            if (on) {
-                map_blink = mp;
-                map_blink_on = 1;
-            }
-            map_draw_plot(mp);
-            map_blink = NOBODY;
+            if (on)
+                dv_outline(mp);
+            else
+                map_draw_plot(mp);
         }
 #endif
 }
 
 static void dv_ai_walk(void)
 {
-    uint8_t j = 255, n = 0, mp, x, y, a, hc, hi, sp, col;
-    uint8_t *s;
-    Actor *f;
+    uint8_t j = 255, n = 0, mp, x, y, hc, hi, dx, dy, fl;
     const uint8_t c = 83;           /* in the store (MOB x 83, y 52) */
 
     fx_stop_all();
-    for (mp = 0; mp < NUM_PLOTS; ++mp)
+    dv_asn = dv_asi = 0;
+    for (mp = 0; mp < NUM_PLOTS; ++mp) {
         if (OWNER(mp) == dv_seat && mp != STORE_PLOT) {
             if (j == 255)
                 j = mp;
@@ -666,12 +700,15 @@ static void dv_ai_walk(void)
                 n = 1;
             }
         }
+        /* the plots it assayed, shown one by one (dv_ai_marks) */
+        if (st.map.crystite[mp] >= 0 && prev.map.crystite[mp] < 0 && dv_asn < sizeof dv_asq)
+            dv_asq[dv_asn++] = mp;
+    }
+    dv_ast = (uint8_t)frame_count;
     if (j > 44)
         j = 13;                     /* no land: out and back */
     x = (j % 9) * 16 + 16 + 4;
     y = (j / 9) * 16 + 16 + 6;
-    sp = PL(dv_seat).species & 7;
-    col = PLCOL(dv_seat);
     if (dv_ai == 2)                 /* the last one's land */
 #ifdef GFX_LAND_HILITE
         gfx_land_hilite(NOBODY);
@@ -680,68 +717,37 @@ static void dv_ai_walk(void)
 #endif
     dv_aip = j;
     dv_ai = 1;
-    hc = x >= c ? (x - c) / 2 : (c - x) / 2;
-    hi = y >= 52 ? y - 52 : 52 - y;
-    for (a = 0; a < 2; ++a) {
-        if (a == 1 && !n)
-            break;
-        f = &fx[a];
-        f->kind = FK_SINGLE;
-        f->slot = a;                /* 0 the figure, 1 its M.U.L.E. */
-        f->shape = a ? SH_MULE : SH_FIGURE;
-        f->fbase = a ? 0 : sp * 10;
-        f->frame = a ? 2 : 0;
-        f->d2 = 1;
-        f->col = a ? C_WHITE : col;
-        f->flags = 0;
-        f->x = SX(c);
-        f->y = SY(52);
-        s = ai_script[a];
-        if (a) {
-            *s++ = FX_WAIT;
-            *s++ = 24;
-        }
-        /* across 2 every 6 frames, then down/up 1 (2 lines) every 6 */
-        *s++ = FX_FLAGS;
-        *s++ = x >= c ? 0 : SPR_FLIPX;
-        s = ai_move(s, x >= c ? 2 : -2, 0, hc + 1);
-        s = ai_move(s, 0, y >= 52 ? 2 : -2, hi + 1);
-        if (a) {
-            /* the M.U.L.E. is installed: it goes no further */
-            *s++ = FX_WAIT;
-            *s++ = 20;
-            *s++ = FX_HIDE;
-            *s++ = FX_END;
-        } else {
-            /* 90 frames on the plot (outlined in white: FX_SIG 3 / 4), then
-             * the same way back, facing home, and a long wait in the store */
-            *s++ = FX_SIG;
-            *s++ = 3;
-            *s++ = FX_WAIT;
-            *s++ = 90;
-            *s++ = FX_SIG;
-            *s++ = 4;
-            s = ai_move(s, 0, y >= 52 ? -2 : 2, hi + 1);
-            *s++ = FX_FLAGS;
-            *s++ = x >= c ? SPR_FLIPX : 0;
-            s = ai_move(s, x >= c ? -2 : 2, 0, hc + 1);
-            *s++ = FX_WAIT;
-            *s++ = 255;
-            *s++ = FX_LOOP;
-            *s++ = 200;
-            *s++ = 2;
-        }
-        f->st = 0;
-        fx_start(a, ai_script[a]);
-        f->hidden = 0;
-        spr_set(a, f->shape, f->fbase + f->frame, f->x, f->y, f->col, 0);
-    }
+    /* across 2 every 6 frames, then down/up 1 (2 lines) every 6 */
+    hc = (x >= c ? x - c : c - x) / 2 + 1;
+    hi = (y >= 52 ? y - 52 : 52 - y) + 1;
+    dx = x >= c ? 2 : 254;          /* -2 */
+    dy = y >= 52 ? 2 : 254;
+    fl = x >= c ? 0 : SPR_FLIPX;
+    memcpy(AF, ai_fig, sizeof ai_fig);
+    memcpy(AM, ai_mul, sizeof ai_mul);
+    AF[4] = (PL(dv_seat).species & 7) * 10;
+    AF[6] = PLCOL(dv_seat);
+    AF[12] = AM[14] = fl;
+    AF[35] = fl ^ SPR_FLIPX;
+    AF[14] = AM[16] = dx;
+    AF[37] = -dx;
+    AF[20] = AM[22] = dy;
+    AF[31] = -dy;
+    AF[17] = AF[40] = AM[19] = hc;
+    AF[22] = AF[33] = AM[24] = hi;
+    fx_start(0, AF);
+    if (n)
+        fx_start(1, AM);
 }
 
 /* Per frame in a computer's turn: its land outlined in white for 40 frames
- * as the turn starts, and the plot it works while it is there. */
+ * as the turn starts, and the plot it works while it is there. Then each
+ * plot it assayed, outlined, with what it found, as on the Atari ("HIGH
+ * CRYSTITE FOUND IN PLOT."): 120 frames each, the first after 120 (the
+ * server's turn display allows for them). */
 static void dv_ai_marks(void)
 {
+    uint8_t mp;
     if (dv_ai == 1) {
         dv_ai_land(1);
         dv_ai = 2;
@@ -753,14 +759,25 @@ static void dv_ai_marks(void)
         }
     }
     if (fx_flag == 3 || fx_flag == 4) {
-        if (fx_flag == 3) {
-            map_blink = dv_aip;
-            map_blink_on = 1;
+        if (dv_aip < NUM_PLOTS) {
+            if (fx_flag == 3)
+                dv_outline(dv_aip);
+            else
+                map_draw_plot(dv_aip);
         }
-        if (dv_aip < NUM_PLOTS)
-            map_draw_plot(dv_aip);
-        map_blink = NOBODY;
         fx_flag = 0;
+    }
+    if (dv_asi <= dv_asn && (uint8_t)((uint8_t)frame_count - dv_ast) >= 120) {
+        dv_ast = (uint8_t)frame_count;
+        if (dv_asi)
+            map_draw_plot(dv_asq[dv_asi - 1]);
+        if (dv_asi < dv_asn) {
+            mp = dv_asq[dv_asi];
+            dv_outline(mp);
+            msg_col = C_WHITE;
+            msg_show(M_ASSAY + (st.map.crystite[mp] & 7), 0, 0);
+        }
+        ++dv_asi;
     }
 }
 
@@ -796,8 +813,10 @@ void develop_state(void)
         if (dv_bwait && act_sent >= ACT_BUYMULE && act_sent <= ACT_PUB &&
             act_sent != ACT_INSTALL && act_sent != ACT_SELL && act_sent != ACT_UNSELL &&
             act_sent != ACT_WAMPUS) {
+            dv_bwait = 0;
             dv_building_result();
-            back_to_street();
+            if (!dv_show || st.h.err)
+                leave_building();   /* else when the M.U.L.E. is back out */
         }
         if (scr_now == SCR_MAP) {
             map_update();
@@ -899,11 +918,15 @@ void develop_tick(void)
     /* our own turn */
     dv_bar();
     dv_event_msg();
+    if (dv_show)
+        dv_outfit_show();
     if (dv_bwait) {
         if ((uint16_t)(frame_count - dv_bt0) > 600)
-            back_to_street();       /* no answer: give up waiting */
+            leave_building();       /* no answer: give up waiting */
         return;
     }
+    if (dv_show)
+        return;
     if (w_event) {
         switch (w_event) {
         case WE_TOWN_LEFT:
@@ -965,9 +988,12 @@ void develop_tick(void)
 #define AP_OFF    10            /* not our turn */
 static uint8_t ap_st = AP_OFF, ap_good, ap_in, ap_tx, ap_ty, ap_side;
 
-/* along the street to door x, then in (up: an outfitter, down: the rest) */
+/* out of a doorway, along the street to door x, then in (up: an
+ * outfitter, down: the rest) */
 static uint8_t ap_door(uint8_t x, uint8_t in)
 {
+    if (w_y < TOWN_Y_TOP) return DIR_DOWN;
+    if (w_y > TOWN_Y_BOT) return DIR_UP;
     if (w_x < x) return DIR_RIGHT;
     if (w_x > x) return DIR_LEFT;
     return in;
@@ -1056,7 +1082,7 @@ void ap_develop(void)
     case AP_OUT:
         if (!w_town)
             ap_st = AP_PLOT;
-        d = ap_side;
+        d = ap_door(w_x, ap_side);
         break;
     case AP_PLOT:
         if (!w_mule)

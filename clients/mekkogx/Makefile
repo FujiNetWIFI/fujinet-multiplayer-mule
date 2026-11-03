@@ -470,7 +470,7 @@ LDFLAGS_EXTRA_ATARI += -C src/atari/mule-atari.cfg -m build/mule-atari.map
 # test mode's resident half (test.c) makes the room for the larger window
 ifeq ($(AUTOPLAY),1)
   CFLAGS_EXTRA_ATARI += -DMULE_NOTEST
-  LDFLAGS_EXTRA_ATARI += -Wl -D,__OVLSIZE__=0x1B90
+  LDFLAGS_EXTRA_ATARI += -Wl -D,__OVLSIZE__=0x1A80
 endif
 EXECUTABLE_EXTRA_DEPS_ATARI += src/atari/mule-atari.cfg
 ifeq ($(PLATFORM),atari)
