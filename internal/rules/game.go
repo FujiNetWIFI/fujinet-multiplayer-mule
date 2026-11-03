@@ -661,13 +661,20 @@ func (g *Game) Install(seat, plot int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !t.HasMule {
-		return false, ErrNoMule
-	}
 	if plot < 0 || plot >= NumPlots {
 		return false, ErrPlot
 	}
 	pl := &g.Map[plot]
+	if !t.HasMule {
+		// Empty-handed on your own plot with a M.U.L.E.: lead it away (to
+		// outfit it again in town, or to return it).
+		if pl.Owner != seat || pl.Mule == NoGood {
+			return false, ErrNoMule
+		}
+		t.HasMule, t.Carrying = true, pl.Mule
+		pl.Mule = NoGood
+		return false, nil
+	}
 	if pl.Owner != seat || t.Carrying == NoGood {
 		t.HasMule = false
 		t.Log = append(t.Log, "your M.U.L.E. ran away.")

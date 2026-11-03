@@ -468,3 +468,27 @@ func TestWampusCatchAllowsNetworkLatency(t *testing.T) {
 		t.Fatal("catch accepted long after the wampus hid")
 	}
 }
+
+func TestInstallPicksUpInstalledMule(t *testing.T) {
+	g := humanGame(7, 0)
+	pl := -1
+	for i := range g.Map {
+		if g.Map[i].CanInstall(Food) {
+			pl = i
+			break
+		}
+	}
+	runTo(t, g, 200000, func() bool { return g.Phase == PhaseDevelop && g.Turn != nil && g.Turn.Started && g.Turn.Seat == 0 })
+	g.Map[pl].Owner, g.Map[pl].Mule = 0, Energy
+	g.Turn.HasMule = false
+	if _, err := g.Install(0, pl); err != nil {
+		t.Fatal(err)
+	}
+	if !g.Turn.HasMule || g.Turn.Carrying != Energy || g.Map[pl].Mule != NoGood {
+		t.Fatalf("pickup: has=%v carrying=%v plot mule=%v", g.Turn.HasMule, g.Turn.Carrying, g.Map[pl].Mule)
+	}
+	g.Turn.HasMule = false
+	if _, err := g.Install(0, pl); err != ErrNoMule {
+		t.Fatalf("empty plot: %v", err)
+	}
+}

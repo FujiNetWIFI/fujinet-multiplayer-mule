@@ -7,8 +7,43 @@ import (
 	"fujinet-multiplayer-mule/internal/rules"
 )
 
-// Brain is the default computer player.
+// Brain is the default computer player. One Brain serves every computer seat;
+// the seats differ by temperament, so they no longer trade in lockstep.
 type Brain struct{}
+
+// temper is how a computer seat trades. [IMPL]
+type temper struct {
+	reserve  int // extra units of food and energy kept beyond next round's need
+	pride    int // % of a good's starting price the store must pay before it sells surplus
+	patience int // sixths of the auction it holds out near the store's price before dumping
+	markup   int // price steps above the store's price it asks while holding out
+}
+
+var tempers = [rules.NumSeats]temper{
+	{reserve: 0, pride: 100, patience: 1, markup: 0}, // eager: sells at once
+	{reserve: 1, pride: 125, patience: 2, markup: 2}, // careful: keeps a spare, waits for a price
+	{reserve: 2, pride: 90, patience: 3, markup: 1},  // cautious: big reserve, still sells
+	{reserve: 1, pride: 115, patience: 4, markup: 3}, // proud: holds out longest
+}
+
+func temperOf(seat int) temper { return tempers[seat%rules.NumSeats] }
+
+// worthSelling reports whether seat sells surplus gd at the store's price now:
+// when the price is at least what its temper wants, or when money is short.
+func worthSelling(g *rules.Game, seat int, gd rules.Good) bool {
+	if g.Players[seat].Money < 150 {
+		return true
+	}
+	return g.Store.Price[gd]*100 >= rules.StoreInitPrice[gd]*temperOf(seat).pride
+}
+
+// keep is how much of gd seat holds back from the auction.
+func keep(g *rules.Game, seat int, gd rules.Good) int {
+	if gd == rules.Food || gd == rules.Energy {
+		return g.Critical(seat, gd) + 1 + temperOf(seat).reserve
+	}
+	return 0
+}
 
 // New returns a Brain.
 func New() *Brain { return &Brain{} }
@@ -205,16 +240,16 @@ func (b *Brain) Declare(g *rules.Game, seat int, gd rules.Good) int {
 	have := g.Players[seat].Goods[gd]
 	switch gd {
 	case rules.Food, rules.Energy:
-		crit := g.Critical(seat, gd) + 1
-		if have > crit {
+		crit := keep(g, seat, gd)
+		if have > crit && worthSelling(g, seat, gd) {
 			return rules.RoleSeller
 		}
-		if have < crit {
+		if have < g.Critical(seat, gd)+1 {
 			return rules.RoleBuyer
 		}
 		return rules.RoleNone
 	}
-	if have > 0 {
+	if have > 0 && worthSelling(g, seat, gd) {
 		return rules.RoleSeller
 	}
 	return rules.RoleNone
@@ -233,9 +268,10 @@ func (b *Brain) AuctionTick(g *rules.Game, seat int) {
 	if a.Good == rules.Food || a.Good == rules.Energy {
 		crit = g.Critical(seat, a.Good) + 1
 	}
+	tm := temperOf(seat)
 	switch l.Role {
 	case rules.RoleSeller:
-		l.Floor = crit
+		l.Floor = keep(g, seat, a.Good)
 		best := a.StoreBuy
 		for s := range a.Lines {
 			o := &a.Lines[s]
@@ -244,8 +280,8 @@ func (b *Brain) AuctionTick(g *rules.Game, seat int) {
 			}
 		}
 		// Hold out near the store's price for a while before dumping.
-		if a.Ticks > rules.TradeTicks*2/3 {
-			best = max(best, a.StoreSell-rules.PriceStep[a.Good])
+		if a.Ticks > rules.TradeTicks*(6-tm.patience)/6 {
+			best = max(best, a.StoreSell-(1+tm.markup)*rules.PriceStep[a.Good])
 		}
 		l.Target = best
 	case rules.RoleBuyer:

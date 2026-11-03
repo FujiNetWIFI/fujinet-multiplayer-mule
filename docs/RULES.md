@@ -84,6 +84,7 @@ The phase ends when every seat has claimed a plot or the sweep finishes. If two 
 - A M.U.L.E. can only be installed on your own plot. Installing it anywhere else loses it.
 - Smithore and Crystite can't be installed on the river.
 - Installing on a plot that already has a M.U.L.E. swaps them, and you then lead the old one.
+- Pressing install on your own plot that has a M.U.L.E., with no M.U.L.E. in hand, picks it up: you lead it away, outfitted as it was, and can outfit it again in town.
 - **Returning a M.U.L.E.** to the corral refunds its price. The outfit cost isn't refunded.
 - If your turn ends while you're still leading a M.U.L.E., it runs away.
 
@@ -196,9 +197,10 @@ The land grant, development, assay and deduction logic follows the RE page.
 
 The RE page marks land bidding, declaring and trading as TODO, so these are
 designed here:
-- **Land bidding:** bid up to min(money−300, 300 + 4·rating + 10·rounds left). A computer only outbids the current leader, after a random pause.
-- **Declaring:** declare Seller above critical level + 1, and Buyer below it. Smithore and Crystite are always sold.
+- **Land bidding:** bid up to min(money−300, 300 + 4·rating + 10·rounds left). A computer only outbids the current leader, (there is no random pause yet).
+- **Temperaments:** each computer seat trades differently (internal/ai `tempers`): a spare reserve of food and energy (0-2 units), a pride (the store must pay 90-125% of a good's starting price before it sells surplus; below that it holds, unless it has under 150 money), a patience (how long it holds out) and a markup.
+- **Declaring:** declare Seller above critical level + 1 + its reserve, and Buyer below critical level + 1. Smithore and Crystite are sold only when the price suits its pride.
 - **Trading:**
-  - A seller holds near the store's selling price for the first third of the auction. Then it meets the best buyer, or sells to the store.
+  - A seller holds near the store's selling price (plus its markup) for 1-4 sixths of the auction, by temperament. Then it meets the best buyer, or sells to the store.
   - A buyer moves towards the cheapest seller, or the store's selling price, until its need is met.
 - **Smithore:** a computer rates Smithore higher while the corral has fewer than 6 M.U.L.E.s.

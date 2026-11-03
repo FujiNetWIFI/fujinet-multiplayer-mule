@@ -485,8 +485,8 @@ static void dv_map_result(void)
     act_sent = 0;
 }
 
-/* The button on the map: catch the wampus, install the M.U.L.E. we lead,
- * list land after the land office, or take an assay sample. */
+/* The button on the map: catch the wampus, install the M.U.L.E. we lead (or
+ * pick up the one on our plot), list land after the land office, or take an assay sample. */
 static void dv_button(void)
 {
     uint8_t mp = 255, x, y;
@@ -507,6 +507,12 @@ static void dv_button(void)
     if (mp >= NUM_PLOTS)
         return;
     if (w_mule) {
+        act_send(ACT_INSTALL, mp);
+        snd_play(SND_SELECT);
+        return;
+    }
+    if (!dv_office && OWNER(mp) == my_seat && MULEOF(mp) < 4) {
+        /* empty-handed on our own M.U.L.E.: lead it away */
         act_send(ACT_INSTALL, mp);
         snd_play(SND_SELECT);
         return;

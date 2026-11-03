@@ -68,7 +68,7 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
 | `/turn/begin` | develop | Starts your turn. As in the original, the turn waits until you press. |
 | `/turn/buymule` | develop | Buys a M.U.L.E. from the corral. |
 | `/turn/outfit/:good` | develop | Outfits your M.U.L.E. with `food`, `energy`, `smithore` or `crystite` (or `f`/`e`/`s`/`c`, or 0–3). |
-| `/turn/install/:plot` | develop | Installs your M.U.L.E. `res=1` means it ran away because the plot isn't yours. Installing on a plot that already has a M.U.L.E. swaps them. |
+| `/turn/install/:plot` | develop | Installs your M.U.L.E. `res=1` means it ran away because the plot isn't yours. Installing on a plot that already has a M.U.L.E. swaps them. With no M.U.L.E. in hand, installing on your own plot that has one picks it up. |
 | `/turn/return` | develop | Returns your M.U.L.E. to the corral for a refund of the M.U.L.E. price. |
 | `/turn/assay/:plot` | develop | `res` is the plot's crystite level, 0–4. |
 | `/turn/sell/:plot`, `/turn/unsell/:plot` | develop | Lists or unlists one of your plots for the next land auction. |

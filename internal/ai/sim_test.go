@@ -112,3 +112,27 @@ func TestDeterministic(t *testing.T) {
 		t.Fatalf("clock differs")
 	}
 }
+
+// The computers must not trade alike: over a game their declarations differ,
+// and a seller never sells below its reserve.
+func TestComputersDiffer(t *testing.T) {
+	g := rules.NewGame(11, allAI(), New())
+	sold := map[[rules.NumSeats]int]bool{}
+	for step := 0; g.Phase != rules.PhaseGameOver && step < 2_000_000; step++ {
+		g.Advance(g.T + 1)
+		if g.Phase == rules.PhaseTrading && g.Auction.Stage == rules.StageActive {
+			var roles [rules.NumSeats]int
+			for s := range roles {
+				roles[s] = g.Auction.Lines[s].Role
+				l := g.Auction.Lines[s]
+				if l.Role == rules.RoleSeller && g.Players[s].Goods[g.Auction.Good] < l.Floor {
+					t.Fatalf("seat %d sold below its reserve", s)
+				}
+			}
+			sold[roles] = true
+		}
+	}
+	if len(sold) < 3 {
+		t.Fatalf("computers trade alike: only %d distinct role patterns", len(sold))
+	}
+}
