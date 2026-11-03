@@ -492,3 +492,27 @@ func TestInstallPicksUpInstalledMule(t *testing.T) {
 		t.Fatalf("empty plot: %v", err)
 	}
 }
+
+// Everyone sees an assay, as on the original's one screen; the computers
+// note it in what they know.
+func TestAssayIsShared(t *testing.T) {
+	g := humanGame(7, 0)
+	runTo(t, g, 200000, func() bool { return g.Phase == PhaseDevelop && g.Turn != nil && g.Turn.Started && g.Turn.Seat == 0 })
+	pl := 0
+	g.Map[pl].Crystite = 3
+	v, err := g.Assay(0, pl)
+	if err != nil || v != 3 {
+		t.Fatalf("assay: %d %v", v, err)
+	}
+	if !g.Map[pl].Assayed || g.Players[0].Known[pl] != 3 {
+		t.Fatalf("assayed=%v known=%d", g.Map[pl].Assayed, g.Players[0].Known[pl])
+	}
+	for s := 1; s < NumSeats; s++ {
+		if g.Players[s].AI && g.Players[s].Known[pl] != 3 {
+			t.Fatalf("computer %d doesn't know the assay", s)
+		}
+	}
+	if g.Turn.Assays != 0 {
+		t.Fatalf("a human's assay counted for the computer display: %d", g.Turn.Assays)
+	}
+}

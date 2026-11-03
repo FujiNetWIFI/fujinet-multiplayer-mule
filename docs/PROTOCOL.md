@@ -114,8 +114,9 @@ The `poll` field suggests a poll interval in ms: 100 during real-time phases and
 
 ### Map field notes
 
-`cr` is crystite: the values you have assayed, or -1 if you haven't. At game
-over it shows the whole map.
+`cr` is crystite: the values anyone has assayed (everyone sees an assay, as
+on the original's one screen), or -1 if nobody has. At game over it shows the
+whole map.
 
 ## Binary state
 

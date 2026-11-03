@@ -54,7 +54,7 @@ type BinMap struct {
 	Terrain  [45]uint8 `c:"bits 0-1 TERRAIN_*, bits 2-3 mountains"`
 	Owner    [45]int8  `c:"seat, -1 = none"`
 	Mule     [45]int8  `c:"GOOD_*, -1 = none"`
-	Crystite [45]int8  `c:"assay result known to you, -1 = unknown"`
+	Crystite [45]int8  `c:"assay result (anyone's: all see it), -1 = not assayed"`
 	Prod     [45]uint8 `c:"bits 0-3 production, bit 6 for sale, bit 7 lost"`
 }
 

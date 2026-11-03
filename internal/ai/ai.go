@@ -153,74 +153,120 @@ func (b *Brain) GrantChoice(g *rules.Game, seat, from int) int {
 	return best
 }
 
-// DevTurn performs a computer development turn. [RE: Computers turn AI]
+// DevTurn performs a computer development turn: development, then assay,
+// then the pub. [RE: Computers turn AI]
 func (b *Brain) DevTurn(g *rules.Game, seat int) {
 	t := g.Turn
 	p := g.Players[seat]
 	ptu := rules.PTUOf(p.Species)
-	budget := t.Length / ptu
-	used := 0
+	left := t.Length / ptu
 
-	// Assay (Tournament).
+	// Phase 1: development. Each pass takes the plot whose best use beats
+	// its current use by the most (at least 3): an empty plot gets a new
+	// M.U.L.E., a working one is outfitted again. Each plot once a turn.
+	var done [rules.NumPlots]bool
+	for left >= 35 {
+		plot, good, gain := -1, rules.NoGood, 2
+		for i := rules.NumPlots - 1; i >= 0; i-- {
+			pl := &g.Map[i]
+			if pl.Owner != seat || done[i] {
+				continue
+			}
+			cost := rules.OutfitCost[0]
+			cur := 0
+			if pl.Mule == rules.NoGood {
+				if g.Store.Mules == 0 || p.Money < g.Store.MulePrice {
+					continue
+				}
+				cost = g.Store.MulePrice
+			} else {
+				// [IMPL] Our ratings follow prices, so a computer that
+				// re-outfitted on any gain of 3 would swing its whole
+				// fleet with the market: it needs half again, and keeps
+				// its last food and energy M.U.L.E.s.
+				if (pl.Mule == rules.Food || pl.Mule == rules.Energy) && countMules(g, seat, pl.Mule) == 1 {
+					continue
+				}
+				cur = goodRating(g, seat, pl.Mule) * capacity(g, seat, i, pl.Mule)
+				cost = 0
+			}
+			gd, v := bestUse(g, seat, i)
+			if gd == rules.NoGood || gd == pl.Mule || v-cur <= gain || 2*v < 3*cur {
+				continue
+			}
+			if p.Money < cost+rules.OutfitCost[gd] {
+				continue
+			}
+			plot, good, gain = i, gd, v-cur
+		}
+		if plot < 0 {
+			break
+		}
+		if !develop(g, seat, plot, good) {
+			break
+		}
+		done[plot] = true
+		left -= 25 + 2*rules.StoreDistance[plot]
+	}
+
+	// Phase 2: assay (Tournament), own plots then free ones, each one not
+	// yet known with a chance of 1 in 8, while 22 PTU are left. Not when
+	// it already has more than two High plots.
 	high := 0
 	for i := range p.Known {
 		if p.Known[i] >= 3 && g.Map[i].Owner == seat {
 			high++
 		}
 	}
-	if high <= 2 {
-		for i := range g.Map {
+	for stage := 0; stage < 2 && high <= 2; stage++ {
+		for i := rules.NumPlots - 1; i >= 0; i-- {
 			pl := &g.Map[i]
-			if pl.Terrain == rules.River || pl.Terrain == rules.Town || p.Known[i] >= 0 {
+			if pl.Terrain == rules.River || pl.Terrain == rules.Town {
 				continue
 			}
-			if pl.Owner != seat && (pl.Owner >= 0 || g.Rng().IntN(8) != 0) {
+			if (stage == 0 && pl.Owner != seat) || (stage == 1 && pl.Owner >= 0) {
 				continue
 			}
-			cost := 10 + 2*rules.StoreDistance[i]
-			if budget-used-cost < 22 {
+			if left < 22 {
 				break
 			}
-			if _, err := g.Assay(seat, i); err == nil {
-				used += cost
-				deduce(p, i, int(p.Known[i]))
-			}
-		}
-	}
-
-	// Install M.U.L.E.s on the best empty plots.
-	for budget-used >= 35 {
-		plot, good, gain := -1, rules.NoGood, 2
-		for i := range g.Map {
-			if g.Map[i].Owner != seat || g.Map[i].Mule != rules.NoGood {
+			if p.Known[i] >= 0 || g.Rng().IntN(8) != 0 {
 				continue
 			}
-			gd, v := bestUse(g, seat, i)
-			if gd != rules.NoGood && v > gain {
-				plot, good, gain = i, gd, v
+			if _, err := g.Assay(seat, i); err == nil {
+				deduce(p, i, int(p.Known[i]))
+				left -= 10 + 2*rules.StoreDistance[i]
 			}
 		}
-		if plot < 0 {
-			break
-		}
-		if p.Money < g.Store.MulePrice+rules.OutfitCost[good] || g.Store.Mules == 0 {
-			break
-		}
-		if g.BuyMule(seat) != nil || g.Outfit(seat, good) != nil {
-			break
-		}
-		if _, err := g.Install(seat, plot); err != nil {
-			g.ReturnMule(seat)
-			break
-		}
-		used += 25 + 2*rules.StoreDistance[plot]
 	}
 
-	// Spend the rest at the pub.
-	t.Deadline = t.Begin + (budget-used)*ptu
-	if budget-used >= 3 {
+	// Phase 3: the rest at the pub, or out of time.
+	left = max(left, 0)
+	t.Deadline = t.Begin + left*ptu
+	if left >= 3 {
 		g.Pub(seat)
 	}
+}
+
+// develop puts a M.U.L.E. outfitted for good on plot: a new one from the
+// corral, or the one already there outfitted again.
+func develop(g *rules.Game, seat, plot int, good rules.Good) bool {
+	if g.Map[plot].Mule == rules.NoGood {
+		if g.BuyMule(seat) != nil {
+			return false
+		}
+	} else if _, err := g.Install(seat, plot); err != nil { // lead it away
+		return false
+	}
+	if g.Outfit(seat, good) != nil {
+		g.ReturnMule(seat)
+		return false
+	}
+	if _, err := g.Install(seat, plot); err != nil {
+		g.ReturnMule(seat)
+		return false
+	}
+	return true
 }
 
 // deduce infers neighbouring crystite from the diamond pattern.

@@ -88,7 +88,7 @@ The phase ends when every seat has claimed a plot or the sweep finishes. If two 
 - **Returning a M.U.L.E.** to the corral refunds its price. The outfit cost isn't refunded.
 - If your turn ends while you're still leading a M.U.L.E., it runs away.
 
-**Assay** reports the plot's crystite level, 0–3. A plot hit by a meteorite reports 4.
+**Assay** reports the plot's crystite level, 0–3. A plot hit by a meteorite reports 4. Everyone sees the result, as on the original's one screen, and the computers note it. [RE: Computers known Crystite AI]
 
 **Pub:** you're paid a round bonus plus rand[0, 2·PTU left), capped at $250, and your turn ends.
 
@@ -194,6 +194,14 @@ The chance of each event is its uses left divided by the total uses left for all
 
 ## Computer players [RE: Computers AI; IMPL]
 The land grant, development, assay and deduction logic follows the RE page.
+
+**Development turn**, in the RE's order:
+1. **Development**, while 35 PTU are left: the plot whose best use beats its current use by at least 3 gets a new M.U.L.E. (empty plot) or is outfitted again. Each costs 25 + 2·distance PTU; each plot once a turn.
+   - **[IMPL]** Our ratings follow store prices, so re-outfitting on any gain of 3 swung every computer's fleet with the market (all-computer games starved). A working M.U.L.E. is outfitted again only when the new use rates at least half again as high, and a computer keeps its last Food and Energy M.U.L.E.s.
+2. **Assay** (Tournament), while 22 PTU are left, unless it already owns more than two High plots: its own plots, then free plots, each one it doesn't know with a chance of 1 in 8, at 10 + 2·distance PTU each.
+3. **Pub** with the time left, if at least 3 PTU.
+
+**[IMPL]** The server plays a computer's turn at once; its turn display lasts the usual 200 (277 at the pub) jiffies plus 120 for every plot it assayed, so clients can show each result, as the original does.
 
 The RE page marks land bidding, declaring and trading as TODO, so these are
 designed here:

@@ -150,7 +150,7 @@ typedef struct { /* 225 bytes */
   uint8_t terrain[45]; /* bits 0-1 TERRAIN_*, bits 2-3 mountains */
   int8_t owner[45]; /* seat, -1 = none */
   int8_t mule[45]; /* GOOD_*, -1 = none */
-  int8_t crystite[45]; /* assay result known to you, -1 = unknown */
+  int8_t crystite[45]; /* assay result (anyone's: all see it), -1 = not assayed */
   uint8_t prod[45]; /* bits 0-3 production, bit 6 for sale, bit 7 lost */
 } MuleMap;
 

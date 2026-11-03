@@ -233,16 +233,14 @@ func BuildView(tb *Table, me int) *View {
 	}
 	m := &MapV{}
 	reveal := g.Phase == rules.PhaseGameOver
-	for i, pl := range g.Map {
+	for _, pl := range g.Map {
 		m.Terrain = append(m.Terrain, int(pl.Terrain))
 		m.Mountains = append(m.Mountains, pl.Mountains)
 		m.Owner = append(m.Owner, pl.Owner)
 		m.Mule = append(m.Mule, int(pl.Mule))
 		cr := -1
-		if reveal {
+		if reveal || pl.Assayed {
 			cr = pl.Crystite
-		} else if me >= 0 {
-			cr = int(g.Players[me].Known[i])
 		}
 		m.Crystite = append(m.Crystite, cr)
 		m.Prod = append(m.Prod, pl.Prod)

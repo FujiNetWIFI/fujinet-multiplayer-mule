@@ -24,6 +24,7 @@ type Plot struct {
 	Prod      int  // units produced last production
 	Lost      bool // produced nothing last round (energy/event)
 	ForSale   bool // listed by owner at the land office
+	Assayed   bool // someone has assayed it: everyone sees the result, as on the original's one screen
 }
 
 // Player is one seat.
@@ -38,7 +39,7 @@ type Player struct {
 	Goods     [NumGoods]int
 	Score     int
 	Rank      int            // 1..4
-	Known     [NumPlots]int8 // assay results, -1 = unknown
+	Known     [NumPlots]int8 // crystite this seat knows (a computer's includes deductions), -1 = unknown
 	LastProd  [NumGoods]int
 	LastSpoil [NumGoods]int
 	Declared  bool
@@ -176,6 +177,7 @@ type Turn struct {
 	EventText string
 	Log       []string
 	Pub       bool
+	Assays    int // plots a computer assayed this turn (its turn display shows each)
 }
 
 // Game is the complete state of one M.U.L.E. game.

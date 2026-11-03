@@ -136,3 +136,28 @@ func TestComputersDiffer(t *testing.T) {
 		t.Fatalf("computers trade alike: only %d distinct role patterns", len(sold))
 	}
 }
+
+// Issue #3: computers develop before they assay, so in round 1 every
+// computer puts a M.U.L.E. on its land (the store has M.U.L.E.s then).
+func TestComputersDevelopFirstRound(t *testing.T) {
+	for seed := uint64(1); seed <= 30; seed++ {
+		g := rules.NewGame(seed, allAI(), New())
+		for step := 0; g.Round == 1 && g.Phase != rules.PhaseProduction && step < 2_000_000; step++ {
+			g.Advance(g.T + 1)
+		}
+		for seat := range g.Players {
+			own, mules := 0, 0
+			for _, pl := range g.Map {
+				if pl.Owner == seat && pl.Terrain != rules.Town {
+					own++
+					if pl.Mule != rules.NoGood {
+						mules++
+					}
+				}
+			}
+			if own > 0 && mules == 0 {
+				t.Fatalf("seed %d: seat %d owns %d plots and installed nothing ($%d)", seed, seat, own, g.Players[seat].Money)
+			}
+		}
+	}
+}

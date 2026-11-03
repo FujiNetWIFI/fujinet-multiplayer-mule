@@ -160,16 +160,17 @@ const (
 	TurnWaitWampusCap = 255 * BTU // Ta cap for the wampus delay [RE]
 	TurnOverDisplay   = 200       // "time has run out" [measured]
 	PubDisplay        = 277       // "won $X gambling" [measured 156+121]
+	AIAssayShow       = 120       // [IMPL] a computer's turn display shows each plot it assayed this long
 	ProductionDisplay = 1421      // production/colony event on the map [measured]
 
 	LobbyCountdown    = 31 * JiffiesPerSecond
 	LobbyReady        = 6 * JiffiesPerSecond
 	WampusGrace       = GrantLatency // [IMPL] network allowance: a catch may arrive this long after the wampus hid (was 8 jiffies, too tight for a cartridge mailbox)
-	LandStep          = 4  // $ per land auction step [RE]
-	LandStepsBelow    = 7  // buyers wait 7 steps below the start price [measured y151 vs y137]
-	LandStepsAbove    = 35 // highest bid: start + 35 steps [measured y67]
-	GoodsStepsBelow   = 10 // buyers start 10 steps below the store buy line [measured y157 vs y137]
-	GoodsStepsAbove   = 1  // sellers start 1 step above the store sell line [measured y65 vs y67]
+	LandStep          = 4            // $ per land auction step [RE]
+	LandStepsBelow    = 7            // buyers wait 7 steps below the start price [measured y151 vs y137]
+	LandStepsAbove    = 35           // highest bid: start + 35 steps [measured y67]
+	GoodsStepsBelow   = 10           // buyers start 10 steps below the store buy line [measured y157 vs y137]
+	GoodsStepsAbove   = 1            // sellers start 1 step above the store sell line [measured y65 vs y67]
 	LandStartFirst    = 160
 	LandStartDrop     = 60
 	LandStartMin      = 60

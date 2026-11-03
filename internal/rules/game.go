@@ -482,6 +482,7 @@ func (g *Game) startTurn() {
 		if t.Pub {
 			pause = PubDisplay
 		}
+		pause += t.Assays * AIAssayShow
 		t.Ended = true
 		t.EndAt = t.Begin + pause
 	}
@@ -717,7 +718,17 @@ func (g *Game) Assay(seat, plot int) (int, error) {
 		return 0, ErrPlot
 	}
 	v := g.Map[plot].Crystite
-	g.Players[seat].Known[plot] = int8(v)
+	g.Map[plot].Assayed = true
+	// Everyone saw it: the computers note the plot (only their own assays
+	// add deductions). [RE: Computers known Crystite AI]
+	for s, p := range g.Players {
+		if s == seat || p.AI {
+			p.Known[plot] = int8(v)
+		}
+	}
+	if g.Players[seat].AI {
+		g.Turn.Assays++
+	}
 	return v, nil
 }
 
