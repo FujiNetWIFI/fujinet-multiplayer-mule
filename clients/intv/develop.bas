@@ -38,7 +38,7 @@ develop_state: PROCEDURE
     dv_mine = 0
     IF dv_seat = my_seat THEN dv_mine = 1
 
-    IF dv_mine AND (dv_flags AND TF_STARTED) AND (dv_flags AND TF_ENDED) = 0 THEN
+    IF dv_mine AND (dv_flags AND 3) = TF_STARTED THEN
         IF dv_state <> DV_WALK THEN GOSUB dv_start_walk
         ' The server's view of what we lead wins over ours.
         IF dv_flags AND TF_HASMULE THEN w_mule = 1 ELSE w_mule = 0
@@ -71,6 +71,7 @@ develop_state: PROCEDURE
             k = 2
         END IF
         IF dv_seat <> dv_msg_seat OR k <> dv_msg_kind THEN
+            IF dv_seat <> dv_msg_seat THEN dv_evshown = 0
             dv_msg_seat = dv_seat : dv_msg_kind = k
             msg_row = ROW_MSG : #msg_col = C_BLACK
             IF k = 1 THEN
@@ -111,7 +112,7 @@ develop_state: PROCEDURE
     ' Time bar for whoever is playing, in their colour.
     bar_col = 19 : bar_rows = 10
     IF dv_seat < 4 THEN bar_colr = pl_mobcol(pl8(dv_seat, S_PLAYER_COLOR) AND 3)
-    IF (dv_flags AND TF_STARTED) AND (dv_flags AND TF_ENDED) = 0 THEN
+    IF (dv_flags AND 3) = TF_STARTED THEN
         bar_px = #dv_left / dv_ptu / 2
     ELSE
         bar_px = 0
@@ -130,8 +131,12 @@ develop_tick: PROCEDURE
     END IF
     IF dv_state <> DV_WALK THEN
         IF dv_state = DV_WAIT THEN GOSUB dv_ai_marks
+        ' Another seat's event, once its turn has started.
+        IF dv_mine = 0 THEN
+            IF dv_seat < 4 THEN IF dv_flags AND TF_STARTED THEN GOSUB dv_event_msg
+        END IF
         ' Watching: run the bar down between polls.
-        IF (dv_flags AND TF_STARTED) AND (dv_flags AND TF_ENDED) = 0 THEN
+        IF (dv_flags AND 3) = TF_STARTED THEN
             #w = FRAME - #rx_jiffy
             IF #w < #dv_left THEN bar_px = (#dv_left - #w) / dv_ptu / 2 ELSE bar_px = 0
             GOSUB bar_draw
@@ -165,11 +170,11 @@ dv_event_msg: PROCEDURE
     IF j >= 100 THEN
         n = 0
         FOR mp = 0 TO 44
-            IF st8(ST_MAP_OWNER + mp) = my_seat THEN
+            IF st8(ST_MAP_OWNER + mp) = dv_seat THEN
                 mg = st8(ST_MAP_MULE + mp)
-                IF j = 100 AND mg = GOOD_FOOD THEN n = n + 1
-                IF j = 101 AND (mg = GOOD_SMITHORE OR mg = GOOD_CRYSTITE) THEN n = n + 1
-                IF j = 102 AND mg = GOOD_ENERGY THEN n = n + 1
+                IF j = 100 THEN IF mg = GOOD_FOOD THEN n = n + 1
+                IF j = 101 THEN IF mg = GOOD_SMITHORE OR mg = GOOD_CRYSTITE THEN n = n + 1
+                IF j = 102 THEN IF mg = GOOD_ENERGY THEN n = n + 1
             END IF
         NEXT mp
         IF j = 102 THEN #val = #val * n ELSE #val2 = #val * 2 * n : #val = #val * 2
@@ -177,23 +182,34 @@ dv_event_msg: PROCEDURE
     ELSE
         #val = #val * j
     END IF
+    ' Our event: "*** " + text; another seat's: "<NAME>: " + text. Scrolling.
+    n = 4
+    IF dv_mine THEN
+        POKE TXT, 42 : POKE TXT + 1, 42 : POKE TXT + 2, 42 : POKE TXT + 3, 32
+    ELSE
+        #t_src = STATE + ST_PLAYERS + dv_seat * SZ_PLAYER
+        n = 0
+        WHILE n < 8
+            c = PEEK(#t_src + n) AND 255
+            IF c = 0 THEN EXIT WHILE
+            IF c >= 97 THEN c = c - 32
+            POKE TXT + n, c : n = n + 1
+        WEND
+        POKE TXT + n, 58 : POKE TXT + n + 1, 32 : n = n + 2
+    END IF
     #lit_addr = VARPTR t_pevents(0) : lit_n = k - 1 : GOSUB lit_nth
-    #t_src = #lit_addr : GOSUB text_expand
-    ' "*** " + text, scrolling
-    FOR j = t_len TO 1 STEP -1
-        POKE TXT + j + 3, PEEK(TXT + j - 1)
-    NEXT j
-    POKE TXT, 42 : POKE TXT + 1, 42 : POKE TXT + 2, 42 : POKE TXT + 3, 32
-    t_len = t_len + 4
+    #t_src = #lit_addr : #te_buf = TXT + n : GOSUB text_expand_to
+    t_len = t_len + n
     IF w_town THEN msg_row = 200 ELSE msg_row = ROW_MSG
     #msg_col = C_RED
+    IF dv_mine = 0 THEN #msg_col = pl_txtcol(pl8(dv_seat, S_PLAYER_COLOR) AND 3)
     GOSUB msg_start
 END
 
 ' ---------------------------------------------------------------------------
 dv_start_walk: PROCEDURE
     dv_state = DV_WALK
-    dv_sample = 255 : dv_office = 0 : dv_evshown = 0
+    dv_sample = 255 : dv_office = 0 : dv_evshown = 0 : dv_msg_seat = 255
     w_sp = pl8(my_seat, S_PLAYER_SPECIES) AND 7
     w_col = pl_mobcol(pl8(my_seat, S_PLAYER_COLOR) AND 3)
     bar_colr = w_col
@@ -447,18 +463,34 @@ END
 dv_button: PROCEDURE
     ' The plot under the middle of the small figure (w_x + 4, w_y + 2).
     mp = 255
-    IF w_x >= 12 AND w_y >= 14 THEN
-        x = (w_x - 12) / 16 : y = (w_y + 2 - 16) / 16
-        IF x < 9 AND y < 5 THEN mp = y * 9 + x
+    IF w_x >= 12 THEN
+        IF w_y >= 14 THEN
+            x = (w_x - 12) / 16 : y = (w_y + 2 - 16) / 16
+            IF x < 9 THEN IF y < 5 THEN mp = y * 9 + x
+        END IF
     END IF
     IF dv_wp < 12 THEN
         ' Within 8 pixels of a showing wampus catches it.
-        IF w_x + 8 >= wp_x AND w_x <= wp_x + 8 AND w_y + 4 >= wp_y AND w_y <= wp_y + 8 THEN
-            IF w_mule = 0 THEN act = ACT_WAMPUS : poll_wait = 0 : RETURN
+        IF w_mule = 0 THEN
+            IF w_x + 8 >= wp_x THEN
+                IF w_x <= wp_x + 8 THEN
+                    IF w_y + 4 >= wp_y THEN
+                        IF w_y <= wp_y + 8 THEN act = ACT_WAMPUS : poll_wait = 0 : RETURN
+                    END IF
+                END IF
+            END IF
         END IF
     END IF
     IF mp >= 45 THEN RETURN
-    IF w_mule THEN
+    ' Leading a M.U.L.E., or empty-handed on our own plot that holds one
+    ' (the server picks it up): the same install request.
+    k = w_mule
+    IF dv_office = 0 THEN
+        IF st8(ST_MAP_OWNER + mp) = my_seat THEN
+            IF st8(ST_MAP_MULE + mp) < 4 THEN k = 1
+        END IF
+    END IF
+    IF k THEN
         act = ACT_INSTALL : #act_arg = mp : poll_wait = 0
         GOSUB snd_select
         RETURN

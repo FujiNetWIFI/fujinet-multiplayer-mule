@@ -193,7 +193,7 @@ dn4:    FJMP    dv_others
 
 ; dv_others: someone's turn: said once a turn, and once more when it ends;
 ; a computer's plays out until the next seat's.
-        RFIT    212
+        RFIT    229
 dv_others:
         GETV    DV_SEAT                 ; someone's turn: once a turn, once
         SMI     4                       ; more when it ends; a computer's
@@ -222,7 +222,11 @@ dn6:    GETV    DV_MSEAT
         STR     R2
         GLO     RC
         XOR
-        BZ      dn9
+        BNZ     dn7
+        GLO     RC                      ; the same turn: a human's event comes
+        BNZ     dn9                     ; once he starts
+        FCALL   dv_eventmsg
+        BR      dn9
 dn7:    GETV    DV_SEAT
         PUTV    DV_MSEAT
         GLO     RC
@@ -233,6 +237,8 @@ dn7:    GETV    DV_SEAT
         BZ      dn_over
         SETV    DVSTATE, DV_WAIT        ; a player's turn
         FCALL   dv_sayturn
+        SETV    DV_EVSH, 0              ; its event, after its name (scrolls)
+        FCALL   dv_eventmsg
 dn9:    FJMP    dv_barnow
 dn_ai:  SETV    DVSTATE, DV_WAIT        ; a computer's
         LDI     M_COMPUTER

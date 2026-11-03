@@ -64,8 +64,9 @@ ot_k:
     mov r6,a
     mov r0,#DV_MSG
     movx a,@r0
+    anl a,#0EFh                 ; bit 4: another's event said
     xrl a,r6
-    jz ot_x
+    jz ot_same
     mov a,r6
     movx @r0,a
     mov a,r7
@@ -79,6 +80,10 @@ ot_k:
     SAY M_START, L_MAP+1, 2, C_WHITE
 ot_x:
     ret
+ot_same:
+    mov a,r7                    ; still the same turn: its event may come
+    jnz ot_x
+    jmp ot_ev
 ot_cpu:
     SAY M_CPU, L_MAP+1, 2, C_WHITE
     ret
@@ -111,7 +116,7 @@ ot_blank:
     SAY S_NONE, L_MAP+1, 2, C_WHITE
     ret
 ot_nm:
-    jmp ot_name
+    jmp ot_name                 ; ends in ot_ev
 ; ===========================================================================
     org 900h
     include "disp.inc"
@@ -519,6 +524,23 @@ on_c:
     mov r4,#188
     call tx_build
     SAY S_NONE, L_MAP+2, 1, C_WHITE
+; ot_ev: another seat's turn event (the first state that has one), on the
+; second message line, with its amount for that seat's M.U.L.E.s; the turn
+; name is on the line above. DV_MSG bit 4 says it was shown. Clobbers all.
+ot_ev:
+    mov r0,#DV_MSG
+    movx a,@r0
+    jb4 oe_x
+    STB ST_TURN+TU_EVENT
+    jz oe_x
+    mov r7,a
+    mov r0,#DV_MSG
+    movx a,@r0
+    orl a,#10h
+    movx @r0,a
+    mov a,r7
+    jmp de_ok
+oe_x:
     ret
 s_turn: db "TURN:"
 dvcol:
@@ -602,6 +624,8 @@ dd_l:
 dd_x:
     ret
 
+    org 0E00h                   ; (its table must sit on its MOVP's page)
+
 ; dv_event: once a turn of ours (DV_MSG 0FEh after), its player event
 ; (turn.event 1-22) on the town's top line, held a few states, with its
 ; amount (mekkogx dv_event_msg): 25 (round / 4 + 1) times the event's
@@ -616,6 +640,7 @@ dv_event:
     movx @r0,a
     STB ST_TURN+TU_EVENT
     jz de_x
+de_ok:
     mov r7,a                    ; k
     add a,#256-23
     jc de_x
@@ -654,6 +679,12 @@ de_say:
     add a,#E_1-1
     mov r5,a
     mov r6,#L_MAP|(1<<4)
+    mov r0,#DV_MSG              ; another's event: the second message line
+    movx a,@r0
+    xrl a,#0FEh
+    jz de_own
+    mov r6,#(L_MAP+2)|(1<<4)
+de_own:
     mov r7,#C_WHITE
     mov r1,#IR_HOLD
     mov @r1,#6
@@ -675,7 +706,7 @@ de_p:
     mov r3,a
     call st_byte
     mov r6,a
-    mov r0,#MYSEAT
+    mov r0,#DV_SEAT             ; the seat whose turn it is
     movx a,@r0
     xrl a,r6
     jnz de_n
@@ -712,7 +743,9 @@ de_n:
     inc r5
     mov a,r5
     xrl a,#NUM_PLOTS
-    jnz de_p
+    jz de_pe
+    jmp de_p
+de_pe:
     mov a,r1                    ; unit * n, twice that but for energy
     mov r5,a
     mov r0,#WX_F
@@ -724,6 +757,7 @@ de_n:
     mov r5,a
 de_go:
     jmp de_mul
+
 pev_x:                          ; factors: 0 none; 80h-82h per M.U.L.E.
     db 0, 0, 2, 4, 80h, 4, 8, 2, 3, 6, 4, 2, 0, 0, 3, 81h, 82h, 6, 4, 4, 4, 0
 

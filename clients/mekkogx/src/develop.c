@@ -556,6 +556,16 @@ static void dv_wampus(void)
 }
 
 /* The player event: shown at the start of the turn, as on the Atari. */
+/* txt = the name of the seat whose turn it is; its length */
+static uint8_t say_name(void)
+{
+    uint8_t n;
+    const char *nm = PL(dv_seat).name;
+    for (n = 0; n < 8 && nm[n]; ++n)
+        txt[n] = nm[n];
+    return n;
+}
+
 static void dv_event_msg(void)
 {
     uint8_t k, j, n = 0, mp, mg;
@@ -571,7 +581,7 @@ static void dv_event_msg(void)
     j = pevent_x[k - 1];
     if (j >= 100) {
         for (mp = 0; mp < NUM_PLOTS; ++mp)
-            if (OWNER(mp) == my_seat) {
+            if (OWNER(mp) == dv_seat) {
                 mg = MULEOF(mp);
                 if (j == 100 && mg == GOOD_FOOD) ++n;
                 if (j == 101 && (mg == GOOD_SMITHORE || mg == GOOD_CRYSTITE)) ++n;
@@ -588,9 +598,18 @@ static void dv_event_msg(void)
     } else {
         v *= j;
     }
-    strcpy(txt, "*** ");
+    n = 0;
+    if (dv_mine) {
+        strcpy(txt, "*** ");
+        n = 4;
+    } else {
+        /* another seat's turn: its name, then what happened to it */
+        n = say_name();
+        txt[n++] = ':';
+        txt[n++] = ' ';
+    }
     msg_col = C_WHITE;
-    msg_start(4 + text_expand(txt + 4, str_pevent(k - 1), v, v2));
+    msg_start(n + text_expand(txt + n, str_pevent(k - 1), v, v2));
 }
 
 /* ---------------------------------------------------------------------------
@@ -750,10 +769,7 @@ static void dv_ai_marks(void)
  * ------------------------------------------------------------------------- */
 static void say_turn(void)
 {
-    uint8_t k, n = 0;
-    const char *nm = PL(dv_seat).name;
-    for (k = 0; k < 8 && nm[k]; ++k)
-        txt[n++] = nm[k];
+    uint8_t n = say_name();
     strcpy(txt + n, str_msg(M_TURN));
     msg_start(n + 7);
 }
@@ -812,6 +828,8 @@ void develop_state(void)
         else if (dv_flags & TF_ENDED)
             k = 2;
         if (dv_seat != dv_msg_seat || k != dv_msg_kind) {
+            if (dv_seat != dv_msg_seat)
+                dv_evshown = 0;
             dv_msg_seat = dv_seat;
             dv_msg_kind = k;
             msg_col = C_WHITE;
@@ -833,6 +851,9 @@ void develop_state(void)
             }
         }
     }
+    /* someone else's turn event, shown once */
+    if (!dv_mine && dv_seat < 4 && (dv_flags & TF_STARTED))
+        dv_event_msg();
     /* the time bar for whoever is playing, in their colour */
     if (dv_seat < 4)
         bar_col = PLCOL(dv_seat);

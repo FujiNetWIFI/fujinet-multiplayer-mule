@@ -330,8 +330,9 @@ dmr8:   SETV    ACTSENT, 0
         FRET
 
 ; dv_button: 5 on the map: catch the wampus, install the M.U.L.E. we lead,
-; list land after the land office, or take a sample (mekkogx dv_button).
-        RFIT    159
+; list land after the land office, pick up our plot's M.U.L.E., or take a
+; sample (mekkogx dv_button).
+        RFIT    175
 dv_button:
         FCALL   w_plot
         GETV    DV_WP                   ; near a showing wampus, no M.U.L.E.
@@ -392,10 +393,39 @@ bn3a:   PLO     RC
         FCALL   act_send
         SETV    DV_OFFC, 0
 bn9:    FRET
-bn4:    GETV    DV_K                    ; a sample
+bn4:    FCALL   dv_pickup               ; empty-handed on our plot with one: take it
+        BZ      bn4a
+        LDI     ACT_INST                ; (the install request, R9 = the plot)
+        FCALL   act_send
+        LDI     SND_SELECT
+        FJMP    snd_play
+bn4a:   GETV    DV_K                    ; a sample
         PUTV    DV_SAMP
         LDI     SND_SAMPLE
         FJMP    snd_play
+
+; dv_pickup: D nonzero when the plot under us (DV_K) is ours and holds a
+; M.U.L.E. (R9 = the plot, as for the install).
+        RFIT    40
+dv_pickup:
+        GETV    DV_K
+        PLO     R9
+        LDI     0
+        PHI     R9
+        GLO     R9
+        FCALL   mp_owner
+        STR     R2
+        GETV    MYSEAT
+        XOR
+        BNZ     dpk0
+        GLO     R9
+        FCALL   mp_mule
+        SMI     4
+        BDF     dpk0
+        LDI     1
+        FRET
+dpk0:   LDI     0
+        FRET
 
 ; dv_wampus: when and where it shows: turn.wampus, by turn jiffies; it
 ; flashes 8 frames on, 8 off (mekkogx dv_wampus).
@@ -539,13 +569,13 @@ dwp9:   PARS
 dv_eventmsg:
         GETV    DV_EVSH
         BNZ     dem9
-        SETV    DV_EVSH, 1
         SLD     TN_EVENT
         BZ      dem9
         SMI     23
         BNF     dem0
 dem9:   FRET
-dem0:
+dem0:   SETV    DV_EVSH, 1              ; (only once there is an event: a
+                                        ; human's comes when he starts)
         GETV    RND                     ; v = 25 * (round / 4 + 1)
         SHR
         SHR
@@ -638,10 +668,21 @@ dem7:   GLO     R9
         PUTV    V1H
         FJMP    dv_evmsg2
 
-        RFIT    46
+        RFIT    76
 dv_evmsg2:
-        LDR     R8, TXT                 ; "*** " then the event
-        LDI     '*'
+        LDR     R8, TXT
+        GETV    DV_MINE
+        BNZ     dem8
+        GETV    TXTLEN                  ; another's: "<NAME>'S TURN " (TXT
+        ADI     LO(TXT)                 ; still holds it), then the event
+        PLO     R8
+        LDI     ' '
+        STR     R8
+        GETV    TXTLEN
+        ADI     1
+        PUTV    TXTLEN
+        BR      dem8a
+dem8:   LDI     '*'                     ; "*** " then the event
         STR     R8
         INC     R8
         STR     R8
@@ -651,7 +692,7 @@ dv_evmsg2:
         LDI     ' '
         STR     R8
         SETV    TXTLEN, 4
-        SLD     TN_EVENT
+dem8a:  SLD     TN_EVENT
         ADI     E_1-1
         FCALL   str_cat
         FJMP    msg_start
@@ -668,7 +709,7 @@ dv_evcount:
 dec1:   GLO     RC
         FCALL   mp_owner
         STR     R2
-        GETV    MYSEAT
+        GETV    DV_SEAT                 ; the turn's seat
         XOR
         BNZ     dec3
         GLO     RC

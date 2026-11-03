@@ -24,7 +24,7 @@ su_rank: PROCEDURE
     n = 0
     FOR k = 1 TO 4
         FOR i = 0 TO 3
-            IF pl8(i, S_PLAYER_RANK) = k AND n < 4 THEN su_order(n) = i : n = n + 1
+            IF pl8(i, S_PLAYER_RANK) = k THEN IF n < 4 THEN su_order(n) = i : n = n + 1
         NEXT i
     NEXT k
     ' Anyone without a rank goes last.
@@ -33,7 +33,7 @@ su_rank: PROCEDURE
         FOR j = 0 TO n - 1
             IF n > 0 THEN IF su_order(j) = i THEN k = 1
         NEXT j
-        IF k = 0 AND n < 4 THEN su_order(n) = i : n = n + 1
+        IF k = 0 THEN IF n < 4 THEN su_order(n) = i : n = n + 1
     NEXT i
 END
 
@@ -76,7 +76,7 @@ su_begin: PROCEDURE
         g_slot = G_SU_CLIMB + su_i * 8 : g_n = 8 : #g_src = VARPTR gfx_species((j * 11 + 8) * 16) : GOSUB gram_load
     NEXT su_i
     ' If we arrive late, skip straight to the table.
-    IF pe_now > 400 AND round > 0 THEN GOSUB su_table : RETURN
+    IF pe_now > 400 THEN IF round > 0 THEN GOSUB su_table : RETURN
     FOR su_i = 0 TO 3
         k = su_order(su_i)
         c = pl_mobcol(pl8(k, S_PLAYER_COLOR) AND 3)
@@ -107,7 +107,7 @@ su_walk_scripts:
 
 summary_state: PROCEDURE
     IF su_land THEN RETURN
-    IF su_drawn = 0 AND FRAME - #ph_t0 >= 410 THEN GOSUB su_table
+    IF su_drawn = 0 THEN IF FRAME - #ph_t0 >= 410 THEN GOSUB su_table
     IF su_drawn THEN GOSUB su_values
 END
 
@@ -126,7 +126,7 @@ summary_tick: PROCEDURE
             END IF
         END IF
     NEXT su_i
-    IF su_drawn = 0 AND FRAME - #ph_t0 >= 410 THEN GOSUB su_table
+    IF su_drawn = 0 THEN IF FRAME - #ph_t0 >= 410 THEN GOSUB su_table
     IF su_drawn THEN
         GOSUB msg_tick_run
         IF ev_btn AND su_pressed = 0 AND my_seat < 4 THEN

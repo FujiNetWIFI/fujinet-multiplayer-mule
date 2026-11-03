@@ -205,10 +205,19 @@ void production_tick(void)
     uint8_t k;
     msg_tick();
     if (pr_done) {
-        /* the production dots (the Atari shows them plot by plot) */
+        /* the production marks come one unit at a time, as the original's do */
         if (!map_dots) {
             map_dots = 1;
+            map_dotstep = 1;
+            pr_last = frame_count;
             map_draw_all();
+        } else if (map_dotstep && (uint16_t)(frame_count - pr_last) >= 7) {
+            pr_last = frame_count;
+            k = map_dotstep;
+            map_dotstep = k < 8 ? k + 1 : 0;
+            for (k = 0; k < NUM_PLOTS; ++k)
+                if (map_dotstep == 0 || (st.map.prod[k] & 15) >= map_dotstep)
+                    map_draw_plot(k);
         }
         return;
     }
@@ -254,7 +263,5 @@ void production_tick(void)
     if (pr_done) {
         fx_stop_all();
         title_show(T_PRODUCTION, rnd);
-        map_dots = 1;
-        map_draw_all();
     }
 }

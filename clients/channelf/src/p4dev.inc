@@ -1152,8 +1152,8 @@ DBT2:   LDB DV_K
         JNC DBTX
         LDB W_MULE
         NI 0FFH
-        BZ DBT3
-        LI ACT_INST
+        BZ DBTP
+DBTI:   LI ACT_INST
         LR 0,A
         LDB DV_K
         LR 1,A
@@ -1164,6 +1164,24 @@ DBT2:   LDB DV_K
         LR 0,A
         PI SNDPLAY
         LEAVE
+DBTP:   LDB DV_OFFICE           ; empty-handed on our own plot with a M.U.L.E.:
+        NI 0FFH                 ; install picks it up
+        BNZ DBT3
+        LDB DV_K
+        DCI ST+M_OWNER
+        ADC
+        LM
+        LR 4,A
+        LDB MYSEAT
+        XS 4
+        BNZ DBT3
+        LDB DV_K
+        DCI ST+M_MULE
+        ADC
+        LM
+        CI 3
+        BNC DBT3
+        BR DBTI
 DBT3:   LDB DV_OFFICE
         NI 0FFH
         BZ DBT4
@@ -1356,7 +1374,7 @@ DE1:    LDB DV_I
         ADC
         LM
         LR 4,A
-        LDB MYSEAT
+        LDB DV_SEAT             ; (the seat whose turn it is)
         XS 4
         BNZ DE2
         LDB DV_I
@@ -1413,7 +1431,10 @@ DE5:    LDW 0, 1, DV_V          ; v * x
         LR 2,A
         PI MUL8
         STW 0, 1, DV_V
-DE6:    DCI TXT                 ; "*** " and the event
+DE6:    LDB DV_MINE             ; "*** " and the event, or "NAME: " and it
+        NI 0FFH
+        BZ DE6O
+        DCI TXT
         LI '*'
         ST
         ST
@@ -1421,7 +1442,19 @@ DE6:    DCI TXT                 ; "*** " and the event
         LI ' '
         ST
         XDC
-        LDW 0, 1, DV_V
+        LIS 4
+        STB DV_N
+        BR DE6C
+DE6O:   PI DVNAMEC
+        XDC
+        LI ':'
+        ST
+        LI ' '
+        ST
+        XDC
+        INCB DV_N
+        INCB DV_N
+DE6C:   LDW 0, 1, DV_V
         STW 0, 1, EXPV1
         LDW 0, 1, DV_V2
         STW 0, 1, EXPV2
@@ -1431,7 +1464,9 @@ DE6:    DCI TXT                 ; "*** " and the event
         DCI STP
         PI STRP
         PI TXTEXP
-        AI 4
+        LR 4,A
+        LDB DV_N
+        AS 4
         LR 0,A
         LIS C_WHITE
         STB MSGCOL
@@ -1832,8 +1867,9 @@ DAMX:   LEAVE
 ; A new state, and every frame
 ; ---------------------------------------------------------------------------
 
-; SAYTURN -- "NAME'S TURN" (say_turn).
-SAYTURN: ENTER
+; DVNAMEC -- the name of seat DV_SEAT copied to TXT; DV_N = its length, DC1 =
+;   the write pointer after it.
+DVNAMEC: ENTER
         LDB DV_SEAT
         LR 0,A
         PI PLDC
@@ -1857,6 +1893,11 @@ SAY1:   LM
         BNZ SAY1
 SAY2:   LR A,5
         STB DV_N
+        LEAVE
+
+; SAYTURN -- "NAME'S TURN" (say_turn).
+SAYTURN: ENTER
+        PI DVNAMEC
         LI MS_TURN
         LR 0,A
         DCI STM
@@ -1994,7 +2035,9 @@ DS16:   LDB DV_SEAT
         LDB DV_MKIND
         XS 4
         JZ DS20
-DS17:   LDB DV_SEAT
+DS17:   CLR
+        STB DV_EVSH
+        LDB DV_SEAT
         STB DV_MSEAT
         LDB DV_K
         STB DV_MKIND
@@ -2131,6 +2174,7 @@ DT1:    CI DV_WALK
         CI DV_WAIT
         BNZ DT2
         PI DVAIMARK
+        PI DVEVENT              ; another seat's player event
 DT2:    LDB DV_FLAGS            ; watching: the bar runs down between polls
         NI TF_START
         JZ DTX

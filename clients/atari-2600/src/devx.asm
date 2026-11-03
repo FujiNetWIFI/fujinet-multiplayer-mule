@@ -503,6 +503,16 @@ MB2:
         adc     #8
         cmp     WX
         bcc     MB4
+        lda     WY              ; and y: wy - 4 <= y <= wy + 8 (develop.c)
+        clc
+        adc     #4
+        cmp     MTMP2           ; the wampus's y (DWSHOW)
+        bcc     MB4
+        lda     MTMP2
+        clc
+        adc     #8
+        cmp     WY
+        bcc     MB4
         lda     #RQWAMP
         bne     MBQ0
 MB4:    ldx     MNUM
@@ -513,7 +523,7 @@ MB4:    ldx     MNUM
         lda     #RQINST         ; install the M.U.L.E. here
         bne     MBQ
 MB5:    lda     DVOFF
-        beq     MB6
+        beq     MB5P
         lda     #0              ; the land office: list, or withdraw the one
         sta     DVOFF           ;   listed before
         stx     MTMP
@@ -530,7 +540,21 @@ MB5:    lda     DVOFF
         bne     MBQ
 MB5A:   stx     DVLIST
         bne     MBQ
-MB6:    stx     DVSMP           ; a sample, for the assay office
+; Empty-handed on my own plot that holds a M.U.L.E. (its letter is on entry
+; 4 of the plot): the same install request picks it up.
+MB5P:   stx     MNUM
+        ldy     HSEAT
+        jsr     PLOTPIX
+        beq     MB6
+        ldx     MNUM
+        ldy     #4
+        jsr     PLOTPIX
+        beq     MB6
+        ldx     MNUM
+        lda     #RQINST
+        bne     MBQ
+MB6:    ldx     MNUM            ; a sample, for the assay office
+        stx     DVSMP
         lda     #MSGSMP
         sta     DMSG
         lda     #1

@@ -7,7 +7,7 @@
         BCTA,UN DTTURN          ; E_TICK: whose turn
         BCTA,UN DVWAMP          ; E_EXTRA: the wampus, walking on the map
         BCTA,UN DVBUTTON        ; E_EXTRA+3: the button on the map
-        BCTA,UN DVMARKS         ; E_EXTRA+6: a computer's marks
+        BCTA,UN DTLATE          ; E_EXTRA+6: a late event, a computer's marks
 
         INCLUDE "src/devram.inc"
         INCLUDE "src/fxops.inc"
@@ -307,7 +307,7 @@ DTEVENT: LODA,R0 TN_EVENT
         STRA,R0 UNIONB+2
         LODI,R3 0
 DTE1:   LODA,R0 MP_OWNER,R3
-        COMA,R0 H_MYSEAT
+        COMA,R0 DVSEAT          ; the turn's seat (ours, or another's)
         BCFR,EQ DTE3
         LODA,R0 MP_MULE,R3
         STRZ    R2
@@ -370,6 +370,8 @@ DTE8:   STRA,R1 UNIONB+3        ; v, v2: SAY's numbers
         LPUT    SAYV2H
         LODA,R0 UNIONB+1
         LPUT    SAYV2L
+        LODA,R0 DVMINE
+        BCTR,EQ DTE9
         LODI,R0 1               ; said (the first step clears it)
         CPUT    DVEVSH
         SND     SND_EVENT
@@ -380,9 +382,58 @@ DTE8:   STRA,R1 UNIONB+3        ; v, v2: SAY's numbers
         LODI,R2 7
         LODI,R3 9
         ZBRR    *ZSAYBX
+DTE9:   DCOL    CWHITE          ; another's: under its name, the box's rest
+        LODA,R0 T3
+        ADDI,R0 E_1
+        STRZ    R1
+        LODA,R2 MSGROW
+        ADDI,R2 1
+        LODA,R3 MSGN
+        SUBI,R3 1
+        ZBRR    *ZSAYBX
 
 ; DTPEVX: x for each event (mekkogx pevent_x)
 DTPEVX: DB      0,0,2,4,100,4,8,2,3,6,4,2,0,0,3,101,102,6,4,4,4,0
+
+; DTEVOK: CC EQ when the turn's event can show under a name: 1-22 but 1 and
+; 5, whose texts (8 and 9 rows) are longer than the 7 the box has left.
+DTEVOK: LODA,R0 TN_EVENT
+        COMI,R0 1
+        BCTR,LT DTEVNO
+        BCTR,EQ DTEVNO
+        COMI,R0 5
+        BCTR,EQ DTEVNO
+        COMI,R0 22
+        BCTR,GT DTEVNO
+        EORZ    R0
+        RETC,UN
+DTEVNO: LODI,R0 1
+        RETC,UN
+
+; DTLATE: (E_EXTRA+6, each tick of a seat's turn we watch) a human's event
+; is rolled when he presses the button, after "<name> takes a turn" was said:
+; say the turn again with it, once. Then the computers' marks.
+DTLATE: LODI,R3 DVEVSHO
+        LODA,R0 *PRAMH,R3
+        BCFA,EQ DVMARKS
+        LODA,R0 DVMINE
+        BCFA,EQ DVMARKS
+        LODA,R0 DVSEAT
+        COMI,R0 4
+        BCFA,LT DVMARKS
+        STRZ    R3
+        LODA,R0 DTRECS,R3
+        STRZ    R3
+        LODA,R0 H_PLAYERS+PL_FLAGS,R3
+        TMI,R0  PF_AI
+        BCTA,EQ DVMARKS
+        LODA,R0 DVFLAGS
+        TMI,R0  TF_ENDED
+        BCTA,EQ DVMARKS
+        BSTA,UN DTEVOK
+        BCFA,EQ DVMARKS
+        BSTA,UN DTTURN
+        BCTA,UN DVMARKS
 
 ; ---- whose turn (say_turn) --------------------------------------------------------
 ; "<name> takes a turn" in the map's message box: the name on its first
@@ -407,7 +458,14 @@ DTTURN: LODA,R1 MSGROW
         ZBSR    *ZDPOS
         LODA,R1 DVSEAT
         ZBSR    *ZDNAME
-        DCOL    CWHITE
+        LODA,R0 DVMINE          ; another seat's event goes under its name
+        BCFA,EQ DTMT            ;  when it fits the box's 7 rows left
+        BSTA,UN DTEVOK
+        BCFA,EQ DTMT
+        LODI,R0 1               ; said (DTLATE watches for it)
+        CPUT    DVEVSH
+        BCTA,UN DTEVENT
+DTMT:   DCOL    CWHITE
         LODI,R1 M_TURN
         LODA,R2 MSGROW
         ADDI,R2 1
@@ -417,7 +475,8 @@ DTINK:  DB      CBLUE,CMAGEN,CCYAN,CWHITE
 
 ; ---- the button on the map (dv_button) -----------------------------------------------
 ; Catch a showing wampus (within 8, leading no M.U.L.E.); install the
-; M.U.L.E. we lead; list land after the land office; else take a sample.
+; M.U.L.E. we lead; list land after the land office; pick up our own
+; plot's M.U.L.E.; else take a sample.
 DVBUTTON: LODI,R0 255           ; T3: the plot under the figure's middle
         STRA,R0 T3
         LODA,R0 WX
@@ -499,7 +558,20 @@ DVBN4:  LODZ    R1
         EORZ    R0
         LPUT    DVOFFICE
         RETC,UN
-DVBN5:  LODA,R0 T3              ; a sample
+DVBN5:  LODA,R3 T3              ; empty-handed on our own plot with a
+        LODA,R0 MP_OWNER,R3     ;  M.U.L.E.: pick it up (the install request)
+        COMA,R0 H_MYSEAT
+        BCFR,EQ DVBN6
+        LODA,R0 MP_MULE,R3
+        COMI,R0 4
+        BCFR,LT DVBN6
+        LODI,R0 ACT_INST
+        LODI,R1 0
+        LODA,R2 T3
+        ZBSR    *ZACT
+        SND     SND_SELECT
+        RETC,UN
+DVBN6:  LODA,R0 T3              ; a sample
         LPUT    DVSAMPLE
         SND     SND_SAMPLE
         RETC,UN

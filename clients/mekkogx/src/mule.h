@@ -123,7 +123,7 @@ void big_num(uint8_t tx, uint8_t ty, uint16_t v, uint8_t w, uint8_t col);
 uint8_t fmt_num(char *dst, uint16_t v);
 
 /* ---- the map (map.c) -------------------------------------------------- */
-extern uint8_t map_dots, map_blink, map_blink_on;
+extern uint8_t map_dots, map_dotstep, map_blink, map_blink_on;
 void map_enter(void);
 void map_draw_plot(uint8_t p);
 void map_draw_all(void);

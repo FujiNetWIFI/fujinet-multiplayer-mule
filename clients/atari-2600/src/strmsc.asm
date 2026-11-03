@@ -49,10 +49,13 @@ ST2:    dey
         sta     MNUM
 STR9:   rts
 
-; STRPRE -- "*** " before a player event.
+; STRPRE -- "*** " before a player event; before another seat's, its "NAME: ".
 STRPRE: lda     SEVID
         cmp     #MSEV20
         bcc     SP9
+        lda     FNRPLY+STSEAT
+        cmp     HSEAT
+        bne     SP2
         ldx     #3
         lda     #'*'
 SP1:    sta     FNRSEL+FH_PATHC
@@ -61,6 +64,12 @@ SP1:    sta     FNRSEL+FH_PATHC
         lda     #' '
         sta     FNRSEL+FH_PATHC
 SP9:    rts
+SP2:    jsr     SNAME
+        lda     #':'
+        sta     FNRSEL+FH_PATHC
+        lda     #' '
+        sta     FNRSEL+FH_PATHC
+        rts
 SEVID   EQU     SCNTX
 
         INCLUDE "mlib.inc"

@@ -69,7 +69,7 @@ ST5:    sta     MTMP2           ; 100 food, 101 mining, 102 energy
         sta     SCNT
         ldx     #NPLOTS-1
 ST6:    lda     FNRPLY+SMOWNER,x
-        cmp     HSEAT
+        cmp     FNRPLY+STSEAT   ; the seat whose event it is
         bne     ST8
         lda     FNRPLY+SMMULE,x
         bmi     ST8
@@ -124,12 +124,21 @@ ST8B:   lda     MTMP2
 ST8D:   rts                     ; mining: the total is the one number
 ST9:    rts
 
-; STRPRE -- "*** " before an event.
-STRPRE: ldx     #3
+; STRPRE -- "*** " before an event; before another seat's, its "NAME: ".
+STRPRE: lda     FNRPLY+STSEAT
+        cmp     HSEAT
+        bne     SP2
+        ldx     #3
         lda     #'*'
 SP1:    sta     FNRSEL+FH_PATHC
         dex
         bne     SP1
+        lda     #' '
+        sta     FNRSEL+FH_PATHC
+        rts
+SP2:    jsr     SNAME
+        lda     #':'
+        sta     FNRSEL+FH_PATHC
         lda     #' '
         sta     FNRSEL+FH_PATHC
         rts

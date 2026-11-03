@@ -9,6 +9,7 @@
 #include "mule.h"
 
 uint8_t map_dots;               /* 1: production dots */
+uint8_t map_dotstep;            /* 1-8: production shown only up to this many units */
 uint8_t map_blink = NOBODY;     /* plot drawn outlined in white when ... */
 uint8_t map_blink_on;           /* ... this is 1 */
 
@@ -44,6 +45,8 @@ void map_draw_plot(uint8_t p)
                 if (!(k & 128)) {
                     k &= 15;
                     l.dots = k > 8 ? 8 : k;
+                    if (map_dotstep && l.dots > map_dotstep)
+                        l.dots = map_dotstep;
                 }
             }
         }

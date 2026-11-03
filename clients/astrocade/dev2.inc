@@ -146,7 +146,28 @@ DBU3:   LD      A,(DBUMP)
         LD      H,0
         LD      A,(WMULE)
         OR      A
-        JR      Z,DBU4
+        JR      Z,DBUP
+        LD      A,A_INSTAL
+        CALL    ACTSEND
+        LD      A,SNSEL
+        JP      SNDPLAY
+DBUP:   LD      A,(DVOFFICE)    ; empty-handed on our own plot with a M.U.L.E.:
+        OR      A               ; install picks it up
+        JR      NZ,DBU4
+        PUSH    HL
+        LD      DE,HOWNER
+        ADD     HL,DE
+        LD      A,(MYSEAT)
+        CP      (HL)
+        POP     HL
+        JR      NZ,DBU4
+        PUSH    HL
+        LD      DE,HMULE
+        ADD     HL,DE
+        LD      A,(HL)
+        POP     HL
+        CP      4
+        JR      NC,DBU4
         LD      A,A_INSTAL
         CALL    ACTSEND
         LD      A,SNSEL
@@ -342,7 +363,7 @@ DE1:    ADD     HL,DE
         LD      C,0
         LD      HL,HOWNER
         LD      DE,HMULE
-DE2:    LD      A,(MYSEAT)
+DE2:    LD      A,(DVSEAT)      ; (the seat whose turn it is)
         CP      (HL)
         JR      NZ,DE4
         LD      A,(DE)
@@ -403,10 +424,34 @@ DE5A:   ADD     HL,DE
         LD      (DEVV),HL
         JR      DE7
 DE6:    CALL    DEVMUL          ; v *= x
-DE7:    LD      HL,SSTARS
+DE7:    LD      A,(DVMINE)
+        OR      A
+        JR      Z,DE8
+        LD      HL,SSTARS
         LD      DE,DVNAME
         LD      BC,5
         LDIR
+        JR      DE9
+DE8:    LD      A,(DVSEAT)      ; another seat's event: "<NAME>: "
+        LD      E,0
+        CALL    WPLAYER
+        LD      DE,DVNAME
+        LD      BC,8
+        CALL    RXCOPY
+        XOR     A
+        LD      (DE),A
+        LD      HL,DVNAME
+DE8A:   LD      A,(HL)
+        OR      A
+        JR      Z,DE8B
+        INC     HL
+        JR      DE8A
+DE8B:   LD      (HL),58
+        INC     HL
+        LD      (HL),32
+        INC     HL
+        LD      (HL),0
+DE9:
         LD      HL,DVNAME
         LD      (MSGPFX),HL
         LD      HL,(DEVV)
@@ -440,6 +485,8 @@ DM2:    LD      (DEVV),HL
 DVSAYTURN: LD   A,(DVMSGK)
         CP      1
         JR      NZ,DST2
+        XOR     A
+        LD      (DVEVSH),A
         LD      A,DV_WAIT
         LD      (DVSTATE),A
         LD      B,M_COMP
@@ -467,7 +514,9 @@ DST3:   LD      HL,(DVLEFT)
         JP      NZ,MSGCLR
         LD      B,M_TIMEOUT
         JP      D2MSG0
-DST5:   LD      A,DV_WAIT       ; "<name>'S TURN"
+DST5:   XOR     A
+        LD      (DVEVSH),A
+        LD      A,DV_WAIT       ; "<name>'S TURN"
         LD      (DVSTATE),A
         LD      A,(DVSEAT)
         LD      E,0

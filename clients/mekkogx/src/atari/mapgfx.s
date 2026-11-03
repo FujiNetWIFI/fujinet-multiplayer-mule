@@ -46,6 +46,8 @@ border_l: .byte $1D, $1E, $1E, $1F
 border_r: .byte $20, $21, $21, $22
 
         .code
+tick_tab: .byte 0, 0, 0, $27, 0, 0, 0, $28, 0, 0, $29, $28, 0, 0, $2A, $28
+          .byte 0, $2B, $2A, $28, 0, $2C, $2A, $28, $2D, $2C, $2A, $28, $2E, $2C, $2A, $28
 
 ; void map_reset(void): the plot rows' colours are the players' again
 _map_reset:
@@ -300,31 +302,25 @@ _gfx_plot:
         sta     rc+1
         adc     #6
         sta     rc+2
-@dots:  ldy     #5              ; production: dots in the corners, $23-$2C
-        lda     (ptr2),y
+@dots:  ldy     #5              ; production: tick bars, two a character from the bottom
+        lda     (ptr2),y        ; ($27-$2E, the original's: 1-8 units; no dots)
         beq     @col
-        cmp     #5
-        bcc     @d4
-        pha
-        lda     #$27
-        sta     lc+3
-        pla
-        cmp     #6
-        bcc     @d5
-        inc     lc+3
-@d5:    cmp     #7
-        bcc     @d4b
-        pha
-        lda     #$2B
-        sta     lc+2
-        pla
-        cmp     #8
-        bcc     @d4b
-        inc     lc+2
-@d4b:   lda     #4
-@d4:    clc
-        adc     #$22
-        sta     rc+3
+        cmp     #9
+        bcc     @t8
+        lda     #8
+@t8:    sec
+        sbc     #1
+        asl     a
+        asl     a
+        tay
+        ldx     #0
+@tk:    lda     tick_tab,y
+        beq     @tk0
+        sta     lc,x
+@tk0:   iny
+        inx
+        cpx     #4
+        bcc     @tk
 @col:   ldx     #3
 @or:    lda     lc,x
         ora     kk

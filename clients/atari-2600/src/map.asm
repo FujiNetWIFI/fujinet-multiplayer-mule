@@ -189,9 +189,18 @@ MM4:    cmp     #PHDEV
         bcs     MM9
         txa
         ora     #$20
-        cmp     MLAST
+        cpx     HSEAT           ; (my own event is shown on the walk)
+        beq     MM4A
+        ldy     FNRPLY+STEVENT  ; its event (set once the turn has begun)
+        beq     MM4A
+        cpy     #23
+        bcs     MM4A
+        ora     #$10            ; the event is said too, once
+MM4A:   cmp     MLAST
         beq     MM9
         sta     MLAST
+        and     #$10
+        bne     MM4E
         lda     PLOFS,x
         tax
         lda     FNRPLY+SPLAYER+PLFLAGS,x
@@ -202,6 +211,13 @@ MM4:    cmp     #PHDEV
 MM5:    lda     #MSTURN
 MM8:    sta     MSGREQ
 MM9:    rts
+MM4E:   lda     FNRPLY+STEVENT  ; "<NAME>: <event>" (banks 13/14)
+        cmp     #20
+        bcs     MM4C
+        ora     #MSEVENT
+        bne     MM8
+MM4C:   adc     #MSEV20-20-1    ; carry is set
+        bne     MM8
 
 ; SLICE -- show reply slice A, and wait (bounded) for the cart to say so.
 SLICE:  pha

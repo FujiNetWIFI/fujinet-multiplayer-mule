@@ -50,7 +50,7 @@ PVP     DEFL    PHRAM
         PV      WTH,1
         PV      WIX,1           ; the stick this step: -1 / 0 / 1
         PV      WIY,1
-        PV      DVNAME,10       ; a name, for "<name>'S TURN"
+        PV      DVNAME,11       ; a name, for "<name>'S TURN"
         PV      AIX,2           ; the computer's walk: figure, M.U.L.E.
         PV      AIY,2           ;   (MOB units)
         PV      AIST,2          ;   stage
@@ -1126,6 +1126,9 @@ DT1:    CP      DV_WALK
         CALL    FARCALL
         DB      PGDEV2
         DW      DVAIMARKS
+        CALL    FARCALL         ; another seat's player event
+        DB      PGDEV2
+        DW      DVEVMSG
 DT2:    ; watching: run the bar down between polls
         LD      A,(DVFLAGS)
         AND     TF_STARTED+TF_ENDED

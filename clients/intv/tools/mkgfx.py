@@ -360,10 +360,12 @@ def plot_quadrants(icon_rows, dots, owned, mount=None):
         for (shape, x, y) in mount:
             paste(full, shape, x, y)
     if dots:
-        # Production dots: 1 cc x 2 lines each, two rows of four, bottom left.
+        # Production dots: 1 cc x 2 lines each, rows of three (the left card
+        # holds three columns; a fourth would fall in the next card and be
+        # lost, making 4 look like 3), bottom left.
         for i in range(dots):
-            x = 2 + (i % 4) * 2 - (0 if i < 4 else 1)
-            y = 22 + (i // 4) * 4
+            x = 2 + (i % 3) * 2
+            y = (22, 26, 18)[i // 3]
             full[y][x] = full[y + 1][x] = 1
     h = halve(full)
     return {"TL": crop(h, 0, 0, 8, 8), "TR": crop(h, 8, 0, 8, 8),

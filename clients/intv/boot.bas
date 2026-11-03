@@ -44,7 +44,7 @@ boot_start:
             bt_ok = 1
             FOR bt_i = 0 TO fn_len - 1
                 bt_c = PEEK(SC_NAME + bt_i) AND 255
-                IF bt_c >= 97 AND bt_c <= 122 THEN bt_c = bt_c - 32
+                IF bt_c >= 97 THEN IF bt_c <= 122 THEN bt_c = bt_c - 32
                 IF (bt_c < 65 OR bt_c > 90) AND (bt_c < 48 OR bt_c > 57) THEN bt_ok = 0
             NEXT bt_i
         END IF

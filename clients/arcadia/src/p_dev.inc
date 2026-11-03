@@ -237,6 +237,8 @@ DVS13:  LODA,R1 MSGROW
         BCTR,UN DVS20
 DVS14:  LODI,R0 DV_WAIT         ; playing: "<name> takes a turn"
         LPUT    DVSTATE
+        EORZ    R0              ; (its event not said yet)
+        CPUT    DVEVSH
         LODA,R0 DVDO
         IORI,R0 DO_TURN
         LPUT    DVDO

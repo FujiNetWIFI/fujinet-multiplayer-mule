@@ -258,7 +258,8 @@ MAPBASE equ 0B00h
 
 ; dv_button: the button on the map (mekkogx dv_button): the wampus if we
 ; stand on it and lead nothing; else the plot under us: install the M.U.L.E.
-; we lead, list it after the land office, or take an assay sample.
+; we lead, list it after the land office, pick up our own plot's M.U.L.E., or
+; take an assay sample.
 ; Clobbers A, r0-r7.
 dv_button:
     mov r0,#DV_WP
@@ -289,6 +290,22 @@ db_off:
     mov a,#ACT_SELL
     jmp db_act
 db_samp:
+    mov r0,#MB_P                ; empty-handed on our own plot with a
+    mov a,r5                    ; M.U.L.E.: pick it up (same request)
+    movx @r0,a
+    mov a,#MAP_OWNER
+    call mb_byte
+    mov r6,a
+    mov r0,#MYSEAT
+    movx a,@r0
+    xrl a,r6
+    jnz db_asy
+    mov a,#MAP_MULE
+    call mb_byte
+    jb7 db_asy
+    mov a,#ACT_INST
+    jmp db_act
+db_asy:
     mov r0,#DV_SAMPLE           ; a sample: the assay office reads it
     mov a,r5
     movx @r0,a
@@ -299,23 +316,6 @@ db_x:
     ret
 db_act0:
     mov r5,#0
-db_act:
-    mov r6,a                    ; action A, argument r5: unless one waits
-    mov r0,#ACT
-    movx a,@r0
-    jnz db_busy
-    mov a,r6
-    movx @r0,a
-    inc r0
-    mov a,r5
-    movx @r0,a
-    inc r0
-    clr a
-    movx @r0,a
-    mov a,#SND_SELECT
-    FCALL beep
-db_busy:
-    ret
 
 ; dv_plot: A = the plot under the figure's middle, 0FFh off the map.
 ; Clobbers r0, r6, r7.
@@ -542,5 +542,24 @@ dd_none:
     jmp poke_b
 seatcol2:                       ; a sprite's colour, attribute bits 3-5
     db C_RED<<3, C_GREEN<<3, C_TAN<<3, C_VIOLET<<3
+
+; db_act (here for room): queue action A, argument r5.
+db_act:
+    mov r6,a                    ; action A, argument r5: unless one waits
+    mov r0,#ACT
+    movx a,@r0
+    jnz db_busy
+    mov a,r6
+    movx @r0,a
+    inc r0
+    mov a,r5
+    movx @r0,a
+    inc r0
+    clr a
+    movx @r0,a
+    mov a,#SND_SELECT
+    FCALL beep
+db_busy:
+    ret
 
     PAGE_TAIL

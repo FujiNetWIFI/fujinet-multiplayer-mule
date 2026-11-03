@@ -496,6 +496,12 @@ function develop(v) {
     if (t.en && !t.ai) msg = 'TIME HAS RUN OUT';
     if (t.en && (t.lg || []).includes('pub')) msg = 'GAMBLING AT THE PUB';
     statusLine(v, msg);
+    if (!mine && t.et && t.el + api.since() < 400) {
+      // Another seat's turn event: same banner as our own.
+      const lines = wrap(`${who.n.toUpperCase()}: ${t.et}`);
+      gfx.rect(0, 12, W, lines.length * 10 + 4, 0x00);
+      lines.forEach((l, i) => gfx.text(l, 0, 14 + i * 10, 0x1a));
+    }
     if (t.ai) timeBar((t.ei - api.since()) / (t.ptu || 28));
     else if (t.st && !t.en) timeBar((t.lf - api.since()) / t.ptu);
     if (mine && !t.st && pressed.has(' ')) act('/turn/begin');
@@ -552,6 +558,9 @@ function mapTurn(v, t, left) {
   } else if (walk.landMode && v.map.ow[plot] === v.me) {
     walk.landMode = false;
     act((v.map.fs[plot] ? '/turn/unsell/' : '/turn/sell/') + plot);
+  } else if (!t.hm && v.map.ow[plot] === v.me && v.map.mu[plot] >= 0) {
+    // Empty-handed on our own plot with a M.U.L.E.: pick it up (same request as installing).
+    act('/turn/install/' + plot).then((r) => { if (!r.ec) log('picked up the M.U.L.E.'); });
   } else if (t.hm) {
     act('/turn/install/' + plot).then((r) => { if (r.res === 1) log('your M.U.L.E. ran away!'); });
   } else if (walk.sample < 0) {

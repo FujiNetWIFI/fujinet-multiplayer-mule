@@ -193,8 +193,8 @@ au_lbl_tick: PROCEDURE
             #w = 0
         ELSE
             #w = #au_pos(i)
-            IF au_role(i) = ROLE_BUYER AND #w <= st16(ST_AUCTION_LO) THEN #w = 0
-            IF au_role(i) = ROLE_SELLER AND #w >= st16(ST_AUCTION_HI) THEN #w = 0
+            IF au_role(i) = ROLE_BUYER THEN IF #w <= st16(ST_AUCTION_LO) THEN #w = 0
+            IF au_role(i) = ROLE_SELLER THEN IF #w >= st16(ST_AUCTION_HI) THEN #w = 0
             IF #w = 1 THEN #w = 2
         END IF
         IF #w <> (PEEK(AU_LBL + i * 2) AND 255) + (PEEK(AU_LBL + i * 2 + 1) AND 255) * 256 THEN
@@ -236,9 +236,9 @@ au_lines: PROCEDURE
     ' The sellers' line: the lowest asking price, the store's while it has
     ' stock (goods), else none.
     #w = 32767
-    IF au_kind = 2 AND st8(ST_STORE_STOCK + au_good) > 0 THEN #w = st16(ST_AUCTION_STORE_SELL)
+    IF au_kind = 2 THEN IF st8(ST_STORE_STOCK + au_good) > 0 THEN #w = st16(ST_AUCTION_STORE_SELL)
     FOR i = 0 TO 3
-        IF au_role(i) = ROLE_SELLER AND au_stage >= STAGE_LEAD AND #au_pos(i) < #w THEN #w = #au_pos(i)
+        IF au_role(i) = ROLE_SELLER THEN IF au_stage >= STAGE_LEAD THEN IF #au_pos(i) < #w THEN #w = #au_pos(i)
     NEXT i
     j = 255
     IF #w < 32767 THEN GOSUB au_price_y : j = y
@@ -246,13 +246,13 @@ au_lines: PROCEDURE
     ' (goods) or the bottom of the scale (land).
     IF au_kind = 2 THEN #w = st16(ST_AUCTION_STORE_BUY) ELSE #w = #au_base
     FOR i = 0 TO 3
-        IF au_role(i) = ROLE_BUYER AND au_stage >= STAGE_LEAD AND #au_pos(i) > #w THEN #w = #au_pos(i)
+        IF au_role(i) = ROLE_BUYER THEN IF au_stage >= STAGE_LEAD THEN IF #au_pos(i) > #w THEN #w = #au_pos(i)
     NEXT i
     GOSUB au_price_y
     ' Never below row 7: row 9 holds the BUY / SEL labels.
     IF j > 63 THEN j = 255
     IF y > 63 THEN y = 255
-    IF j = au_ln1 AND y = (PEEK(AU_LN2) AND 255) THEN RETURN
+    IF j = au_ln1 THEN IF y = (PEEK(AU_LN2) AND 255) THEN RETURN
     ' Moved: clear the old rows, draw the new.
     IF au_ln1 < 255 THEN k = au_ln1 / 8 : GOSUB au_hline_clr
     k = PEEK(AU_LN2) AND 255
@@ -316,10 +316,10 @@ END
 ' Row 11 messages.
 au_message: PROCEDURE
     k = 255
-    IF au_stage = STAGE_DECLARE AND my_seat < 4 THEN k = M_DECLARE
+    IF au_stage = STAGE_DECLARE THEN IF my_seat < 4 THEN k = M_DECLARE
     IF au_stage = STAGE_DONE THEN k = M_AUCOVER
-    IF au_kind = 1 AND au_stage = STAGE_DONE AND st8(ST_AUCTION_WINNER) < 4 THEN k = M_SOLD
-    IF au_kind = 1 AND au_stage = STAGE_DONE AND st8(ST_AUCTION_WINNER) > 3 THEN k = M_NOBIDS
+    IF au_kind = 1 THEN IF au_stage = STAGE_DONE THEN IF st8(ST_AUCTION_WINNER) < 4 THEN k = M_SOLD
+    IF au_kind = 1 THEN IF au_stage = STAGE_DONE THEN IF st8(ST_AUCTION_WINNER) > 3 THEN k = M_NOBIDS
     IF au_kind = 2 AND au_stage = STAGE_ACTIVE AND st8(ST_AUCTION_FLAGS) AND AF_COLLUDING THEN k = M_COLLUDE
     IF au_kind = 2 AND au_stage = STAGE_ACTIVE AND st8(ST_AUCTION_FLAGS) AND AF_CRITICAL THEN k = M_CRITICAL
     ' Land: the bottom of the (scrolling) scale, in green, as on the Atari.
@@ -343,7 +343,7 @@ au_land_line: PROCEDURE
     IF au_kind <> 1 THEN RETURN
     #val = st16(ST_AUCTION_START) : msg_id = M_BIDSTART
     FOR i = 0 TO 3
-        IF au_role(i) = ROLE_BUYER AND #au_pos(i) >= #val THEN #val = #au_pos(i) : msg_id = M_HIGHBID
+        IF au_role(i) = ROLE_BUYER THEN IF #au_pos(i) >= #val THEN #val = #au_pos(i) : msg_id = M_HIGHBID
     NEXT i
     IF au_stage = STAGE_DONE AND st16(ST_AUCTION_PRICE) THEN #val = st16(ST_AUCTION_PRICE) : msg_id = M_SALEPRICE
     IF #val = #au_hb THEN RETURN
@@ -366,7 +366,7 @@ au_blinkers: PROCEDURE
         END IF
         #w = st16(ST_AUCTION_START) : j = 255
         FOR i = 0 TO 3
-            IF au_role(i) = ROLE_BUYER AND #au_pos(i) >= #w THEN #w = #au_pos(i) : j = i
+            IF au_role(i) = ROLE_BUYER THEN IF #au_pos(i) >= #w THEN #w = #au_pos(i) : j = i
         NEXT i
         IF j < 4 THEN au_blink = au_bit(j)
         RETURN
@@ -375,8 +375,8 @@ au_blinkers: PROCEDURE
     ' Highest buyer, lowest seller.
     #w = 0 : j = 255 : #addr = 32767 : k = 255     ' (comparisons are signed)
     FOR i = 0 TO 3
-        IF au_role(i) = ROLE_BUYER AND #au_pos(i) >= #w THEN #w = #au_pos(i) : j = i
-        IF au_role(i) = ROLE_SELLER AND #au_pos(i) <= #addr THEN #addr = #au_pos(i) : k = i
+        IF au_role(i) = ROLE_BUYER THEN IF #au_pos(i) >= #w THEN #w = #au_pos(i) : j = i
+        IF au_role(i) = ROLE_SELLER THEN IF #au_pos(i) <= #addr THEN #addr = #au_pos(i) : k = i
     NEXT i
     IF j < 4 AND k < 4 THEN
         IF #w >= #addr THEN au_blink = au_bit(j) + au_bit(k) : RETURN
@@ -425,7 +425,7 @@ au_draw: PROCEDURE
             #iw = $0800 + (G_AU_SP + ii * 4) * 8 + (au_sp_col(ii) AND 7) + (au_sp_col(ii) AND 16) * $100
             IF #au_pos(ii) <> #au_tgt(ii) AND (FRAME AND 8) THEN #iw = #iw + (G_AU_SP2 - G_AU_SP) * 8
             ' Dealing: 16 frames on, 16 off.
-            IF (au_blink AND au_bit(ii)) <> 0 AND (FRAME AND 16) <> 0 THEN ix = 0
+            IF (au_blink AND au_bit(ii)) <> 0 THEN IF (FRAME AND 16) <> 0 THEN ix = 0
             IF ix THEN
                 SPRITE ii * 2, ix + VISIBLE, iy + DOUBLEY, #iw
                 SPRITE ii * 2 + 1, ix + VISIBLE, (iy + 8) + DOUBLEY, #iw + 16
@@ -459,7 +459,7 @@ auction_tick: PROCEDURE
         RETURN
     END IF
     IF scr_now <> SCR_AUCTION THEN RETURN
-    IF au_kind = 2 AND au_stage = STAGE_SHOW THEN GOSUB au_status_tick : RETURN
+    IF au_kind = 2 THEN IF au_stage = STAGE_SHOW THEN GOSUB au_status_tick : RETURN
     GOSUB au_lines                  ' the price lines follow the players
     GOSUB au_lbl_tick               ' and the prices under them
     IF au_stage = STAGE_DECLARE AND my_seat < 4 THEN
@@ -492,7 +492,7 @@ au_stick: PROCEDURE
     IF k = au_push OR act <> ACT_NONE THEN RETURN
     au_push = k : act = ACT_PUSH : #act_arg = k : poll_wait = 0
     ' A line let go (a land bid too) stays where we saw it stop (the server's is behind).
-    IF k = 0 AND au_stage = STAGE_ACTIVE THEN act = ACT_HOLD : #act_arg = #au_pos(my_seat) : POKE AU_HELD, FRAME AND 255
+    IF k = 0 THEN IF au_stage = STAGE_ACTIVE THEN act = ACT_HOLD : #act_arg = #au_pos(my_seat) : POKE AU_HELD, FRAME AND 255
     IF au_stage <> STAGE_ACTIVE THEN RETURN
     ' Move our own line straight away; the server confirms.
     IF k = 1 THEN
@@ -589,12 +589,12 @@ au_need: PROCEDURE
     n = 0
     IF au_good = GOOD_FOOD THEN
         IF h_k <= 12 THEN n = 3
-        IF h_k >= 4 AND h_k <= 12 THEN n = 4
-        IF h_k >= 8 AND h_k <= 12 THEN n = 5
+        IF h_k >= 4 THEN IF h_k <= 12 THEN n = 4
+        IF h_k >= 8 THEN IF h_k <= 12 THEN n = 5
     ELSEIF au_good = GOOD_ENERGY THEN
         FOR mp = 0 TO 44
             IF st8(ST_MAP_OWNER + mp) = i THEN
-                IF st8(ST_MAP_MULE + mp) < 4 AND st8(ST_MAP_MULE + mp) <> GOOD_ENERGY THEN n = n + 1
+                IF st8(ST_MAP_MULE + mp) < 4 THEN IF st8(ST_MAP_MULE + mp) <> GOOD_ENERGY THEN n = n + 1
             END IF
         NEXT mp
     END IF
