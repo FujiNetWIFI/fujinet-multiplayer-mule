@@ -21,7 +21,7 @@
 ;
 ; In the town: 4 x units a step along the street, which is two steps deep;
 ; pushing on at a door walks in (the outfitters only with a M.U.L.E.), and
-; the building's action goes to the server; its answer puts you back out.
+; the building's action goes to the server; its answer lets you go, in the doorway.
 
         CPU     6502
         INCLUDE "vcs.inc"
@@ -610,7 +610,7 @@ DWS9:   clc
         rts
 
 ; MSPRITE -- the map's figure (bank 5's shapes, devaddr.inc) and what player
-; 1 shows: the M.U.L.E. a step behind, or the wampus flashing, or nothing.
+; 1 shows: the M.U.L.E. a step behind, or the wampus (steady while it shows), or nothing.
 MSPRITE: lda    DVST
         cmp     #DVWALK
         beq     MS1
@@ -700,9 +700,6 @@ MS4:    sec
         jmp     P1SET
 MS6:    jsr     DWSHOW
         bcc     MS3A
-        lda     MFRAME          ; flashing: 8 frames on, 8 off
-        and     #8
-        beq     MS3A
         lda     MNUMH
         sec
         sbc     #12

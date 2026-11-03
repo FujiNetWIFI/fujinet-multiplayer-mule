@@ -102,6 +102,7 @@ ENDPTN  EQU     64
         VAR     SCRNOW,1
         VAR     ANIM,1
         VAR     DVSTATE,1       ; develop's state (the poll rate needs it)
+        VAR     DVASM,6         ; develop: plots seen assayed (a bit each; kept across phases)
 
 ; ---- HOT: the state the per-frame code reads (see above) --------------------
 HOTSZ   EQU     16+48+135+58

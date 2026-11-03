@@ -180,6 +180,9 @@ END
 
 walk_town: PROCEDURE
     w_cnt = 5
+    ' In a doorway (after a building) we can only walk back out to the street
+    ' (2 px a step, 8 from an outfitter): no sideways, no further in.
+    IF w_y < TOWN_Y_TOP OR w_y > TOWN_Y_BOT THEN ix = 0
     ' Along the street: 4 px a step. Out of either end: back to the map.
     IF ix = 255 THEN
         IF w_x <= TOWN_X_LEFT THEN w_event = WE_TOWN_LEFT : w_hold = 1 : RETURN
@@ -193,7 +196,7 @@ walk_town: PROCEDURE
     IF iy = 1 THEN
         IF w_y < TOWN_Y_BOT THEN
             w_y = w_y + 2
-        ELSE
+        ELSEIF w_y = TOWN_Y_BOT THEN
             FOR ii = 4 TO 7
                 IF w_x >= town_door_lo(ii) AND w_x <= town_door_hi(ii) THEN w_in = 1 : w_bldg = ii
             NEXT ii
@@ -201,7 +204,7 @@ walk_town: PROCEDURE
     ELSEIF iy = 255 THEN
         IF w_y > TOWN_Y_TOP THEN
             w_y = w_y - 2
-        ELSEIF w_mule THEN
+        ELSEIF w_mule AND w_y = TOWN_Y_TOP THEN
             FOR ii = 0 TO 3
                 IF w_x = town_door_lo(ii) THEN w_in = 2 : w_bldg = ii
             NEXT ii
@@ -209,8 +212,9 @@ walk_town: PROCEDURE
     END IF
 END
 
+    SEGMENT 2                       ' (segment 0 is full)
 ' Walking through a door: 2 px a step until inside, then the main loop takes
-' over (it runs the building's action and puts us back on the street).
+' over (it runs the building's action; we stay in the doorway).
 walk_building: PROCEDURE
     w_cnt = 5
     w_frame = w_frame XOR 1
@@ -224,6 +228,8 @@ walk_building: PROCEDURE
     GOSUB walk_frame
     GOSUB walk_draw
 END
+
+    SEGMENT 0
 
 ' w_x, w_y are the Atari's (HPOS - 40, player line / 2 - 6.5): the small
 ' figure's top-left. Its middle, (w_x + 4, w_y + 2), is the point that picks

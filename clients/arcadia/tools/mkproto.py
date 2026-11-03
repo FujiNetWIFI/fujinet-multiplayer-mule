@@ -24,8 +24,9 @@ SIZES = {"uint8_t": 1, "int8_t": 1, "char": 1, "uint16_t": 2, "int16_t": 2,
 
 # What is copied, in state order: (first state offset, length, where).
 # RAM-L is cart address 0x000-0x1FF (console $0600), RAM-H 0x200-0x3FF
-# ($2900). The map's crystite (the assay results, never drawn) and the
-# padding are left out. The header goes to a staging slot first (HSTAGE)
+# ($2900). The map's crystite (the assay results: a computer's assays are
+# shown from them) goes to the top of RAM-H, just under the staged header;
+# the padding is left out. The header goes to a staging slot first (HSTAGE)
 # and is committed last, so a phase change is never half in.
 RAML, RAMH = 0x000, 0x200
 HSTAGE = RAMH + 0x1F0          # 16 bytes at $2AF0
@@ -98,11 +99,13 @@ def main():
     cl = size_of(structs, "MuleColony")
     # (state offset, length, cart address), in state order: the reply is
     # read a 256-byte slice at a time, so this order switches slices least
+    ac = HSTAGE - 45               # the crystite (45 plots)
     a1 = RAML + 16
     a2 = a1 + (mp["crystite"] - 16)
     a3 = a2 + (turn["wampus"] - mp["prod"])
     placed = [
         (16, mp["crystite"] - 16, a1),                      # players, terrain/owner/mule
+        (mp["crystite"], 45, ac),                           # the assay results
         (mp["prod"], turn["wampus"] - mp["prod"], a2),      # prod, store, grant, auction, turn head
         (turn["wampus"], wl, RAMH),                         # the wampus list
         (top["colony"], cl, a3),                            # colony

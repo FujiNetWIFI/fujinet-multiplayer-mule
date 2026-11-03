@@ -1297,9 +1297,13 @@ AP2D:   CI PH_DEV
         BZ APBTN
         CI DV_WALK
         BNZ APX
+        IF DEVTEST
+        LEAVE                   ; (the test script walks and ends the turn)
+        ELSE
         LIS KEY_END
         STB EVKEY
         LEAVE
+        ENDIF
 AP3:    CI PH_DECL
         BNZ APX
         LI KEY_SITOUT

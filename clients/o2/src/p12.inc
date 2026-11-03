@@ -10,7 +10,10 @@
 ; nearer the middle; their letters the text lines at 64 and 160. Up or down
 ; at a door goes in (the outfitters only with a M.U.L.E.); the building's
 ; action goes to the server and the figure waits in the door for the
-; answer. Off either end of the street: the map (page 11). The row tables
+; answer, and stays there: a doorway lets the stick walk back to the
+; street and nothing else. An outfitter holds the figure 270 frames from
+; the door, the M.U.L.E. gone from 120 to 195 (as on the Atari 800). Off
+; either end of the street: the map (page 11). The row tables
 ; are left alone, so the map comes back as it was; its mountains' right
 ; halves (the statics) are built again from the state.
 
@@ -35,31 +38,42 @@ e_tick:
 on_state:
     call tw_setup
     call dv_turn
-    mov r0,#ACTSENT             ; the building's action answered: back out
+    mov r0,#ACTSENT             ; the building's action answered: let go
     movx a,@r0
     xrl a,#ACT_STATE
     jz os_x
-    mov r1,#IR_BW
-    mov a,@r1
+    mov r0,#BWH
+    movx a,@r0
     jz os_x
-    jmp tw_out
+    jb6 os_x                    ; (an outfitter's answer is in)
+    mov r1,#IR_BLD
+    mov a,@r1
+    add a,#256-4
+    jc os_rel                   ; not an outfitter: at once
+    mov r0,#HERR
+    movx a,@r0
+    jnz os_rel                  ; turned down: at once
+    mov r0,#BWH                 ; else when the 270 frames are up (tw_wait)
+    movx a,@r0
+    orl a,#40h
+    movx @r0,a
 os_x:
     ret
+os_rel:
+    jmp tw_out
 
-; tick: every frame. In a door: wait (255 frames at most); else walk.
+; tick: every frame. In a door: wait (tw_wait); else walk.
 tick:
     call tw_setup
     mov r0,#DV_ST
     movx a,@r0
     xrl a,#DV_WALK
     jnz tk_x
-    mov r1,#IR_BW
-    mov a,@r1
+    mov r0,#BWH
+    movx a,@r0
     jz tk_walk
-    dec a
-    mov @r1,a
-    jnz tk_x
-    jmp tw_out
+    call tw_wait
+    jmp tw_draw
 tk_walk:
     call tw_step
     jmp tw_draw
@@ -85,6 +99,8 @@ tw_setup:
     mov @r1,a
     mov r1,#IR_BW
     mov @r1,a
+    mov r0,#BWH
+    movx @r0,a
     mov r2,#SCRCOL>>8
     mov a,#SCRCOL&0FFh
     call poke_at
@@ -224,6 +240,38 @@ tsh_h:
 tw_shp:                         ; bit 0 the leftmost pixel
     db 060h, 0E0h, 07Fh, 03Fh, 012h, 012h, 000h, 000h   ; a M.U.L.E.
 
+; ws_door: the stick, r4, in a doorway: only back toward the street walks
+; (2 lines a step, as in), and the M.U.L.E. follows. Clobbers A, r0, r1, r5, r6.
+ws_door:
+    mov r0,#DV_Y
+    movx a,@r0
+    add a,#256-TY_TOP
+    jnc wd_up
+    mov a,r4                    ; below the street: up
+    anl a,#J_UP
+    jz wd_x
+    mov r5,#256-2
+    jmp wd_go
+wd_up:
+    mov a,r4                    ; above it: down
+    anl a,#J_DOWN
+    jz wd_x
+    mov r5,#2
+wd_go:
+    call ws_cnt
+    mov r0,#DV_X
+    movx a,@r0
+    mov r1,#DV_MX
+    movx @r1,a
+    inc r0
+    inc r1
+    movx a,@r0
+    movx @r1,a
+    add a,r5
+    movx @r0,a
+wd_x:
+    ret
+
 ; ===========================================================================
     org 0B00h
 
@@ -266,6 +314,16 @@ ws_stick:
     anl a,#J_UP|J_DOWN|J_LEFT|J_RIGHT
     jz ws_x
     mov r4,a
+    mov r0,#DV_Y                ; in a doorway: only back to the street
+    movx a,@r0
+    add a,#256-TY_TOP
+    jnc ws_dw
+    movx a,@r0
+    add a,#256-TY_BOT-1
+    jnc ws_st
+ws_dw:
+    jmp ws_door
+ws_st:
     call ws_cnt
     mov r0,#DV_X                ; the M.U.L.E. follows where we were
     movx a,@r0
@@ -460,24 +518,22 @@ ti_act:
     inc r0
     clr a
     movx @r0,a
-    mov r1,#IR_BW               ; in the door until the answer (4 s)
-    mov @r1,#255
+    clr a                       ; in the door: the frames count from here
+    mov r1,#IR_BW
+    mov @r1,a
+    mov r0,#BWH
+    mov a,#80h
+    movx @r0,a
     mov a,#SND_SELECT
     FCALL beep
     ret
 
-; tw_out: back on the street, in front of the door.
+; tw_out: let go: the stick walks again, from the doorway (ws_door).
 tw_out:
+    clr a
     mov r1,#IR_BW
-    mov @r1,#0
-    mov r0,#DV_Y
-    mov r1,#IR_BLD
-    mov a,@r1
-    add a,#256-4
-    mov a,#TY_TOP
-    jnc to_put
-    mov a,#TY_BOT
-to_put:
+    mov @r1,a
+    mov r0,#BWH
     movx @r0,a
     ret
 
@@ -501,6 +557,22 @@ tw_draw:
     mov r0,#DV_MULE
     movx a,@r0
     jz tdr_none
+    mov r0,#BWH                 ; an outfitter has it from 120 to 195
+    movx a,@r0
+    jz tdr_show
+    anl a,#3
+    jnz tdr_show
+    mov r1,#IR_BLD
+    mov a,@r1
+    add a,#256-4
+    jc tdr_show
+    mov r1,#IR_BW
+    mov a,@r1
+    add a,#256-120
+    jnc tdr_show
+    add a,#256-75
+    jnc tdr_none
+tdr_show:
     mov r0,#DV_MY
     movx a,@r0
     call poke_b
@@ -522,6 +594,42 @@ twcol:                          ; a sprite's colour, attribute bits 3-5
 
 ; ===========================================================================
     org 0D00h
+
+; tw_wait: a tick in a door: the frames it stands for count (IR_BW, and the
+; 256s in BWH's low bits). An outfitter lets go once 270 are up and its
+; answer is in (os_rel); any door gives up at 512. Clobbers A, r0-r2.
+tw_wait:
+    mov r0,#TICKN
+    movx a,@r0
+    mov r1,#IR_BW
+    add a,@r1
+    mov @r1,a
+    mov r0,#BWH
+    movx a,@r0
+    jnc tww_k
+    inc a
+    movx @r0,a
+tww_k:
+    mov r2,a
+    anl a,#2
+    jz tww_a
+    jmp tw_out
+tww_a:
+    mov r1,#IR_BLD
+    mov a,@r1
+    add a,#256-4
+    jc tww_x                    ; not an outfitter
+    mov a,r2
+    anl a,#41h                  ; answered, and 256 frames or more
+    xrl a,#41h
+    jnz tww_x
+    mov r1,#IR_BW
+    mov a,@r1
+    add a,#256-14               ; 256 + 14 = 270
+    jnc tww_x
+    jmp tw_out
+tww_x:
+    ret
 
 ; ws_cnt: a step: the next in 6 frames, its sound, the figure's other
 ; foot. Clobbers A, r0, r1, r6.

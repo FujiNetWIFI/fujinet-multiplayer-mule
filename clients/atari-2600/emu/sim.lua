@@ -132,6 +132,19 @@ _G._sim = emu.add_machine_frame_notifier(function()
     end
 end)
 
+-- M26_SHOW=a,b,...: log those zero-page cells (hex) with the frame whenever
+-- one changes.
+if os.getenv("M26_SHOW") then
+    local cells, lastv = {}, ""
+    for a in os.getenv("M26_SHOW"):gmatch("[^,]+") do cells[#cells + 1] = tonumber(a, 16) end
+    _G._simshow = emu.add_machine_frame_notifier(function()
+        local t = {}
+        for _, a in ipairs(cells) do t[#t + 1] = string.format("%d", rd(a)) end
+        local v = table.concat(t, " ")
+        if v ~= lastv then print("SHOW " .. n .. " " .. v); lastv = v end
+    end)
+end
+
 -- M26_BANKLOG=1: every bank switch as it happens, with the PC and MENT.
 if os.getenv("M26_BANKLOG") then
     local cpu = manager.machine.devices[":maincpu"]

@@ -1,0 +1,100 @@
+# watch the development phase before my turn: the computers' assays, boxed, with the result
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+zp A8 03 20000
+wait 480
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+wait 36
+text
+snap
+quit

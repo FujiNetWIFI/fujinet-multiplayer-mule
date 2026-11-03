@@ -10,7 +10,8 @@
 WX      EQU     PV+21           ; the figure's left, x units
 WY      EQU     PV+22           ; its top, y units
 WFACE   EQU     PV+23           ; 0 right, 1 left, 2 down, 3 up, 4 standing
-WFRM    EQU     PV+24           ; the walk's toggle
+OFTL    EQU     PV+24           ; an outfitter's wait: MFRAME at the door,
+OFTH    EQU     $ED             ;   16 bits (OFTEND frames later: let go)
 WCNT    EQU     PV+25           ; frames to the next step
 WTX     EQU     PV+26           ; where it was a step ago: the M.U.L.E.
 WTY     EQU     PV+27
@@ -29,7 +30,6 @@ DVLEFTH EQU     $E9
 DVEL    EQU     $EA             ; turn time elapsed at the arrival, 16 bits
 DVELH   EQU     $EB
 WSP     EQU     $EC             ; my species
-WCOL    EQU     $ED             ; my colour
 WPPLOT  EQU     $EE             ; the wampus: the plot, $FF none
 WPMNT   EQU     $EF             ;   its mountain
 WPFROM  EQU     $F0             ;   when it shows (turn jiffies), 16 bits
@@ -70,6 +70,8 @@ TWYINUP EQU     21              ; walked into an outfitter
 TWXLEFT EQU     36              ; one more step left leaves town
 TWXRGHT EQU     132
 TWXSTRT EQU     84
+
+OFTEND  EQU     270             ; frames the stick is dead at an outfitter
 
 ; Buildings: the outfitters are the goods (0-3); then these.
 BASSAY  EQU     4

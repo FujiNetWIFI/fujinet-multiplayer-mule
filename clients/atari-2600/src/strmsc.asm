@@ -53,6 +53,8 @@ STR9:   rts
 STRPRE: lda     SEVID
         cmp     #MSEV20
         bcc     SP9
+        cmp     #MSASSAY        ; (an assay's result has no name)
+        bcs     SP9
         lda     FNRPLY+STSEAT
         cmp     HSEAT
         bne     SP2

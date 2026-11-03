@@ -12,6 +12,13 @@
 ;
 ; PRODUCTION. The colony event's plot is boxed in red: blinking, or the store's
 ; for a fire; acid rain's box sweeps its row.
+;
+; DEVELOPMENT, someone else's turn. A computer's turn is played at once, so
+; its first state shows every plot it assayed (the server makes assays public:
+; the map's crystite is the level once anyone has assayed, -1 before). The
+; plots newly assayed (against AMASK) are queued, up to six with their levels;
+; 120 frames into the turn, and every 120 after, the plot is boxed in white
+; and the result said (MSASSAY + level), the previous box gone.
 
 CE_ACID EQU     3
 CE_FIRE EQU     8
@@ -24,6 +31,7 @@ MAPX:   lda     HROUND          ; a new phase (or round): afresh
         ora     HPHASE
         cmp     GPH
         beq     MX1
+        ldx     GPH
         sta     GPH
         lda     #0
         sta     GSAID
@@ -35,6 +43,18 @@ MAPX:   lda     HROUND          ; a new phase (or round): afresh
         sta     GCUR
         lda     #200
         sta     P1TOP
+        lda     HPHASE          ; development: nothing queued, none shown
+        cmp     #PHDEV
+        bne     MX0
+        lda     #0
+        sta     GNEXT
+        ldy     #AQN-1
+MX0Q:   sta     AQ0,y
+        dey
+        bpl     MX0Q
+MX0:    cpx     #$FF            ; the screen is just entered: what is assayed
+        bne     MX1             ;   already is old news
+        jsr     DVINIT
 MX1:    lda     GFRESH
         beq     MX3
         lda     #0
@@ -44,14 +64,146 @@ MX1:    lda     GFRESH
         bne     MX2
         jsr     GRSTATE
         jmp     MX3
-MX2:    jsr     PRSTATE
+MX2:    cmp     #PHDEV
+        bne     MX2A
+        jsr     DVSCAN
+        jmp     MX3
+MX2A:   jsr     PRSTATE
 MX3:    lda     HPHASE
         cmp     #PHGRANT
         bne     MX4
         jsr     GRFRAME
         jmp     XBACK
-MX4:    jsr     PRFRAME
+MX4:    cmp     #PHDEV
+        bne     MX5
+        jsr     DVFRAME
         jmp     XBACK
+MX5:    jsr     PRFRAME
+        jmp     XBACK
+
+; DVINIT -- a screen just entered: what is assayed already is old news.
+DVINIT: lda     #0
+        ldy     #AMASKN-1
+DI1:    sta     AMASK,y
+        dey
+        bpl     DI1
+        lda     #$FF            ; silent
+        sta     MTMP2
+        bne     DS0
+
+; DVSCAN -- a state in development: the plots newly assayed (a bit each in
+; AMASK: a byte a row, a bit a column, the river's column (4) has none). A new one is queued if
+; the turn is a computer's.
+DVSCAN: lda     #$FF            ; (silent unless a computer's turn)
+        sta     MTMP2
+        ldx     FNRPLY+STSEAT
+        cpx     #4
+        bcs     DS0
+        cpx     HSEAT           ; (mine is bank 5's)
+        beq     DS0
+        lda     PLOFS,x
+        tax
+        lda     FNRPLY+SPLAYER+PLFLAGS,x
+        and     #PF_AI
+        beq     DS0
+        lda     #0
+        sta     MTMP2           ; 0: queue the new ones
+DS0:    ldx     #0              ; the plot
+        ldy     #0              ; its row: AMASK's byte
+DS1:    lda     #1              ; the row's first bit
+        sta     MNUMH
+        sta     MTMP            ; (and its column, from 1: the river is 5)
+DS2:    lda     FNRPLY+SMCRYS,x
+        bmi     DS5             ; not assayed
+        lda     AMASK,y
+        and     MNUMH
+        bne     DS5             ; seen
+        lda     AMASK,y
+        ora     MNUMH
+        sta     AMASK,y
+        lda     MTMP2
+        bne     DS5             ; (silent)
+        jsr     DVADD
+DS5:    lda     MTMP
+        cmp     #5
+        beq     DS6             ; the river's column has no bit
+        asl     MNUMH
+DS6:    inx
+        inc     MTMP
+        lda     MTMP
+        cmp     #10
+        bcc     DS2
+        iny
+        cpy     #5
+        bcc     DS1
+        rts
+
+; DVADD -- queue plot X: plot + 1 + 45 * its level, in the first free entry
+; (none: dropped), and start the clock if it is stopped. Keeps X and Y.
+DVADD:  stx     MIDX
+        sty     MNUM
+        lda     FNRPLY+SMCRYS,x
+        and     #7              ; (0-4)
+        tay                     ; the level
+        txa
+        clc
+        adc     #1              ; plot + 1
+DA2:    dey
+        bmi     DA3
+        adc     #45             ; (never a carry: 225 at most)
+        bcc     DA2
+DA3:    ldy     #0
+DA4:    ldx     AQ0,y
+        beq     DA5
+        iny
+        cpy     #AQN
+        bcc     DA4
+        bcs     DA9             ; full
+DA5:    sta     AQ0,y
+        lda     GNEXT
+        bne     DA9
+        lda     #120            ; the first, 120 frames into the turn
+        sta     GNEXT
+DA9:    ldx     MIDX
+        ldy     MNUM
+        rts
+
+; DVFRAME -- development, someone else's turn: every 120 frames the next
+; assayed plot, outlined (the previous one's box gone) with the result.
+DVFRAME: lda    GNEXT
+        beq     DF8             ; nothing to show
+        dec     GNEXT
+        bne     DF8
+        lda     #$FF            ; its time: the old box off
+        sta     GCUR
+        lda     AQ0
+        beq     DF8             ; (none left)
+        sec
+        sbc     #1              ; plot + 45 * level
+        ldy     #0
+DF1:    cmp     #45
+        bcc     DF2
+        sbc     #45
+        iny
+        bne     DF1
+DF2:    sta     GCUR
+        tya
+        clc
+        adc     #MSASSAY
+        sta     MSGREQ
+        ldx     #0              ; the queue moves up
+DF3:    lda     AQ0+1,x
+        sta     AQ0,x
+        inx
+        cpx     #AQN-1
+        bcc     DF3
+        lda     #0
+        sta     AQ0+AQN-1
+        lda     #120
+        sta     GNEXT
+DF8:    lda     #CWHITE
+        sta     FIGCOL
+        jmp     XPLACE
 
 ; GRSTATE -- a state in the grant: our claim's answer, the server's cursor and
 ; countdown, and where ours may step next.

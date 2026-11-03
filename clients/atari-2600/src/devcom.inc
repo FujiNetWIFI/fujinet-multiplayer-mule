@@ -24,7 +24,6 @@ TX1:    sta     DVPTU
         sta     WSP
         ldx     HSEAT
         lda     SEATCOL,x
-        sta     WCOL
         sta     FIGCOL
         sta     BARCOL
         lda     FNRPLY+STFLAGS  ; the server says what we lead

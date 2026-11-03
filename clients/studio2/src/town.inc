@@ -174,8 +174,8 @@ town_money:
 tm9:    FRET
 
 ; ---- the buildings (mekkogx dv_building): the action goes to the server,
-; whose answer puts us back out --------------------------------------------------
-        RFIT    161
+; whose answer lets us go: we stay in the doorway and walk out (walk_door) ----------
+        RFIT    172
 dv_building:
         GETV    WK_BLDG
         XRI     B_CORRAL
@@ -223,24 +223,85 @@ dbsend1:
         PHI     R9
         GLO     RC
         FCALL   act_send
-        SETV    DV_BWAIT, 1
+        GETV    WK_BLDG                 ; waiting (1); at an outfitter (3) the
+        SMI     4                       ;  stick stays dead 270 frames too
+        LDI     3
+        BNF     dbw2
+        LDI     1
+dbw2:   PUTV    DV_BWAIT
         GETV    FCL
         PUTV    DV_BT0L
         GETV    FCH
         PUTV    DV_BT0H
         FRET
 
-; dv_street: back out on the street (mekkogx back_to_street).
+; dv_street: let go, from the doorway (mekkogx leave_building).
 dv_street:
         SETV    DV_BWAIT, 0
         GETV    DVSTATE
         XRI     DV_WALK
         BNZ     dsr9
-        SETV    WK_Y, TY_TOP+3
         LDI     SND_SELECT
         FCALL   snd_play
         FJMP    dv_resume
 dsr9:   FRET
+
+; dv_bldend: the building has answered: let us go, unless an outfitter
+; took it (then dv_outshow lets us go at 270 frames).
+        RFIT    27
+dv_bldend:
+        GETV    DV_BWAIT
+        ANI     2
+        BZ      dbe1
+        SLD     H_ERR
+        BNZ     dbe1
+        SETV    DV_BWAIT, 2
+        FRET
+dbe1:   FJMP    dv_street
+
+; dv_outshow: at an outfitter, as on the Atari 800 (measured): we stand in
+; the door while the M.U.L.E. goes into the shop (here it vanishes at 120
+; frames from reaching the door), is fitted out and comes back out (195).
+; The stick is dead for 270 frames. (mekkogx dv_outfit_show)
+        RFIT    95
+dv_outshow:
+        GETV    DV_BWAIT
+        ANI     2
+        BZ      dos9
+        GETV    DV_BT0L                 ; t = frames since the door
+        STR     R2
+        GETV    FCL
+        SM
+        PLO     RC
+        GETV    DV_BT0H
+        STR     R2
+        GETV    FCH
+        SMB
+        BZ      dos0
+        SMI     1                       ; 256 or more
+        BNZ     dos2
+        GLO     RC
+        SMI     270-256
+        BNF     dos3
+        BR      dos2
+dos0:   GLO     RC
+        SMI     120
+        BNF     dos9
+        SMI     195-120
+        BNF     dos1
+        SMI     270-195
+        BNF     dos3
+dos2:   GETV    DV_BWAIT                ; 270: go, if the server has answered
+        ANI     1
+        BNZ     dos9
+        FJMP    dv_street
+dos1:   PARS                            ; inside the shop: no M.U.L.E.
+        P       SLOTMU
+        P       100
+        P       0
+        GOP     TOP_SPRMOVE
+dos9:   FRET
+dos3:   FJMP    walk_draw               ; out again, at its old place
 
 ; dv_bldresult: what the building's answer says (mekkogx dv_building_result).
         RFIT    98
@@ -427,8 +488,8 @@ dv_pickup:
 dpk0:   LDI     0
         FRET
 
-; dv_wampus: when and where it shows: turn.wampus, by turn jiffies; it
-; flashes 8 frames on, 8 off (mekkogx dv_wampus).
+; dv_wampus: when and where it shows: turn.wampus, by turn jiffies; steady
+; while it is out (mekkogx dv_wampus).
         RFIT    123
 dv_wampus:
         SETV    DV_WP, 0FFH
@@ -543,9 +604,6 @@ dwp6:   LDA     R8                      ; plot
         ADD
         ADI     1
         PUTV    DV_WPY
-        GETV    FCL
-        ANI     8
-        BZ      dwp9
         PARS
         P       SLOTWP
         P       IM_WAMPUS
@@ -751,9 +809,10 @@ AISCR   EQU     CRAM+100H               ; the two scripts, made here
 AISTX   EQU     29                      ; in the store
 AISTY   EQU     MAPY0+35
 
-        RFIT    143
+        RFIT    148
 dv_aiwalk:
         FCALL   fx_stop_all
+        FCALL   dv_asscan
         SETV    DV_K, 0FFH              ; the plot: one that gained a M.U.L.E.,
         SETV    T1, 0                   ;  else its first
         LDI     0
@@ -1003,6 +1062,155 @@ dsa4:   GETV    T4
         GETV    T4
         PLO     RC
         FJMP    fx_draw
+
+; ---- a computer's assays: now public (the state's crystite byte is the level
+; once anyone assayed a plot, -1 before). The plots that gained one since the
+; state before are queued in AS_Q; from 120 frames in, every 120, the last
+; shown goes back to normal and the next is outlined with what it found
+; (mekkogx dv_ai_marks). The server's turn display allows 120 jiffies each.
+AS_Q    EQU     PH9                     ; 8 plots
+AS_N    EQU     PH9+8                   ; how many
+AS_I    EQU     PH9+9                   ; the next to show
+AS_T    EQU     PH9+10                  ; FCL when it was
+
+; dv_asclr: none queued.
+        RFIT    12
+dv_asclr:
+        LDR     R9, AS_N
+        LDI     0
+        STR     R9
+        INC     R9
+        STR     R9
+        FRET
+
+; dv_asscan: queue the plots assayed since the state before.
+        RFIT    80
+dv_asscan:
+        FCALL   dv_asclr
+        INC     R9
+        GETV    FCL
+        STR     R9                      ; AS_T
+        LDI     0
+        PLO     RC
+dqc1:    GLO     RC
+        ADI     LO(MP_CRYSTITE)
+        PLO     R8
+        LDI     HI(MP_CRYSTITE)
+        ADCI    0
+        PHI     R8
+        LDN     R8
+        ANI     80H
+        BNZ     dqc3                     ; not assayed
+        GHI     R8
+        ADI     HI(PRVOFF)
+        PHI     R8
+        LDN     R8
+        ANI     80H
+        BZ      dqc3                     ; it was already
+        LDR     R9, AS_N
+        LDN     R9
+        SMI     8
+        BDF     dqc3                     ; (no more than 8)
+        LDN     R9
+        ADI     LO(AS_Q)
+        PLO     R8
+        LDI     HI(AS_Q)
+        PHI     R8
+        GLO     RC
+        STR     R8
+        LDN     R9
+        ADI     1
+        STR     R9
+dqc3:    INC     RC
+        GLO     RC
+        XRI     NUM_PLOTS
+        BNZ     dqc1
+        FRET
+
+; dv_asmarks: per frame in a computer's turn.
+        RFIT    33
+dv_asmarks:
+        LDR     R9, AS_N
+        LDA     R9
+        STR     R2
+        LDN     R9
+        SD                              ; N - I: past the last?
+        BNF     dqm9
+        INC     R9
+        LDN     R9
+        STR     R2
+        GETV    FCL
+        SM
+        SMI     120
+        BNF     dqm9
+        GETV    FCL
+        STR     R9
+        FJMP    dv_asnext
+dqm9:    FRET
+
+; dv_asplot: D = the plot at AS_Q[D].
+        RFIT    10
+dv_asplot:
+        ADI     LO(AS_Q)
+        PLO     R8
+        LDI     HI(AS_Q)
+        PHI     R8
+        LDN     R8
+        FRET
+
+; dv_asnext: the last one shown as it is, the next outlined, with its level.
+        RFIT    106
+dv_asnext:
+        LDR     R9, AS_I
+        LDN     R9
+        BZ      dqn1
+        ADI     0FFH
+        FCALL   dv_asplot
+        PUTV    DV_K                    ; (the plot's, not under a walker here)
+        SETV    MAPBLON, 0
+        GETV    DV_K
+        FCALL   dv_asdraw
+dqn1:    LDR     R9, AS_I
+        LDN     R9
+        STR     R2
+        DEC     R9
+        LDN     R9                      ; N
+        SM                              ; N - I
+        BZ      dqn2                     ; (the last was shown)
+        LDR     R9, AS_I
+        LDN     R9
+        FCALL   dv_asplot
+        PUTV    DV_K
+        SETV    MAPBLON, 1
+        GETV    DV_K
+        FCALL   dv_asdraw
+        GETV    DV_K
+        ADI     LO(MP_CRYSTITE)
+        PLO     R8
+        LDI     HI(MP_CRYSTITE)
+        ADCI    0
+        PHI     R8
+        LDN     R8
+        ANI     7
+        ADI     M_ASSAY
+        FCALL   msg_show
+dqn2:    LDR     R9, AS_I
+        LDN     R9
+        ADI     1
+        STR     R9
+        FRET
+
+; dv_asdraw: plot D drawn (outlined when MAPBLON), then as it is.
+        RFIT    60
+dv_asdraw:
+        PUTV    MAPBLINK
+        HOLD1
+        GETV    MAPBLINK
+        FCALL   map_draw_plot
+        HOLD0
+        SETV    MAPBLINK, NOBODY
+        SETV    MAPBLON, 0
+        FRET
 
 ; dv_aimarks: a computer's land outlined for 40 frames as its turn starts,
 ; and the plot it works while it is there (mekkogx dv_ai_marks).

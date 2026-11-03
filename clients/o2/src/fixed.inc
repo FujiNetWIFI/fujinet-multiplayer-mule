@@ -422,6 +422,16 @@ bp_q:
 bp_x:
     ret
 
+; A computer's assays (p13.inc): the plots seen assayed at the last state (a
+; bit each), and the ones it assayed this turn with their levels. Written
+; through POKE (they are at the end of this page), read with fx6_get.
+ASMASK:
+    db 6 dup (0)
+ASQ:
+    db 8 dup (0)
+ASQL:
+    db 8 dup (0)
+
     if $ > 700h
     error "page $6's tables have left the page"
     endif

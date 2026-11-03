@@ -143,7 +143,8 @@ UNIONL  EQU     RAMNEXT         ; the phase's own, to $07FF
 UNIONLE EQU     $0800
 
 ; ---- RAM-H: the boot's and the phases' bookkeeping ----------------------------
-        ZONE    $2948,$2AF0     ; (the wampus list is $2900-$2947; the staged header $2AF0)
+        ZONE    $2948,MP_CRYSTITE ; (the wampus list is $2900-$2947; the crystite and the
+                                ;  staged header $2AF0 are above)
         VAR     SCNAME,9        ; the player's name, NUL-terminated ASCII
         VAR     SCTABLE,9       ; the table id
         VAR     SCENDPT,66      ; the server, from the room appkey (0: the build's)
@@ -152,7 +153,7 @@ UNIONLE EQU     $0800
         VAR     APV,12          ; autoplay's own (p_auto.inc)
         VAR     MUTE,1          ; 1: no sound (Select)
 UNIONH  EQU     RAMNEXT
-UNIONHE EQU     $2AF0
+UNIONHE EQU     MP_CRYSTITE
 
 ; screens (mekkogx mule.h)
 SCR_NONE EQU    0

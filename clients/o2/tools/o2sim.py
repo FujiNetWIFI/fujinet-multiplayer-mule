@@ -111,7 +111,8 @@ local autoaddr, autoval = -1, 0
 local apclaim = -1                              -- the plot our claim was for
 -- develop: buy a M.U.L.E., outfit it for food, install it on our plot, then
 -- the pub (or straight to the pub with no plot); the street's doors are at
--- x 116-128 (column 7: food above, the corral below)
+-- x 116-128 (column 7: food above, the corral below). A building leaves us in
+-- its doorway, where only the way back to the street walks.
 local function apdevelop(age)
   local st, town = xram(0x4D), xram(0x4E)
   local x, y, mule = xram(0x6D), xram(0x6E), xram(0x53)
@@ -123,7 +124,8 @@ local function apdevelop(age)
     local door, dir
     if plan and mule == 0 then door, dir = 120, 0x04         -- the corral
     elseif plan and not apdone.outfit then door, dir = 120, 0x01   -- food
-    elseif plan then return 0x08                             -- to the map
+    elseif plan then                                         -- to the map: out of
+      return y < 100 and 0x04 or 0x08                        -- the doorway first
     else door, dir = 88, 0x04 end                            -- the pub
     if x < door - 4 then return 0x02 elseif x > door + 4 then return 0x08 end
     return dir

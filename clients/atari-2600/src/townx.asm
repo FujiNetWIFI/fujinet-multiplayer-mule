@@ -21,7 +21,11 @@
 ;
 ; In the town: 4 x units a step along the street, which is two steps deep;
 ; pushing on at a door walks in (the outfitters only with a M.U.L.E.), and
-; the building's action goes to the server; its answer puts you back out.
+; the building's action goes to the server. Its answer lets you go, but you
+; stay in the doorway: only the stick back toward the street moves (the
+; outfitters' door is 8 steps from it). An outfitter holds you 270 frames
+; from the door, the M.U.L.E. out of sight from 120 to 195 (measured on the
+; Atari 800); an error lets you go at once.
 
         CPU     6502
         INCLUDE "vcs.inc"
@@ -101,24 +105,50 @@ TREADX: jsr     TURNX
         sta     MSCR
         jmp     MGOTO
 TR1:    lda     DVBW            ; waiting in a doorway (not walking in):
-        cmp     #1              ;   the answer puts us out
-        bne     TR2
+        bmi     TR2             ;   the answer lets us go
+        and     #1
+        beq     TR2
         lda     DVACT
         cmp     NREQ
         bne     TR2             ; not the answer yet
         jsr     ACTRES
-        jsr     TSTREET
+        lda     DVBW
+        and     #2
+        beq     TR1R            ; not an outfitter's
+        lda     FNRPLY+SHERR
+        bne     TR1R            ; refused: at once
+        lda     #6              ; held till 270 frames (OFTICK)
+        sta     DVBW
+        bne     TR2
+TR1R:   lda     #0
+        sta     DVBW
 TR2:    lda     #1
         sta     MCOMP
         jmp     TSPRITE
 
-; TSTREET -- back out on the street.
-TSTREET: lda    #0
+; OFTICK -- an outfitter's wait: the stick is let go 270 frames after the
+; door, if the answer is in (DVBW 6).
+OFTICK: lda     DVBW
+        cmp     #6
+        bne     OT9
+        jsr     OFTEL
+        cpx     #(OFTEND)>>8
+        bcc     OT9
+        cmp     #OFTEND&$FF
+        bcc     OT9
+        lda     #0
         sta     DVBW
-        lda     #TWYTOP+2
-        sta     WY
-        lda     #4
-        sta     WFACE
+OT9:    rts
+
+; OFTEL -- the frames since the door (OFTL/H, MFRAME then): X high, A low.
+OFTEL:  lda     MFRAME
+        sec
+        sbc     OFTL
+        pha
+        lda     MFRAMEH
+        sbc     OFTH
+        tax
+        pla
         rts
 
 ; TFRAMEX -- a frame in the town.
@@ -131,7 +161,7 @@ TFRAMEX: lda    MINP            ; SELECT ends the turn
         jsr     QACT
 TF1:    lda     DVBW            ; waiting in a doorway for the server
         bmi     TF2             ; (walking in)
-        bne     TF9
+        bne     TFW
 TF2:    lda     WCNT
         beq     TF3
         dec     WCNT
@@ -146,7 +176,16 @@ TF4:    lda     INCUR
         lda     #4
         sta     WFACE
 TF9:    jmp     TSPRITE
-TF5:    jsr     STEPX
+TFW:    jsr     OFTICK
+        jmp     TSPRITE
+TF5:    lda     WY              ; in a doorway: only back toward the street
+        cmp     #TWYTOP
+        bcs     TF5B
+        jmp     TFDU
+TF5B:   cmp     #TWYBOT+1
+        bcc     TF5S
+        jmp     TFDD
+TF5S:   jsr     STEPX
         lda     INCUR
         and     #IN_LEFT
         beq     TF6
@@ -222,6 +261,24 @@ TF8B:   lda     WX              ; anywhere under the building (DOORLO..HI)
 TF8D:   dex
         bpl     TF8B
 TF8X:   jmp     TSPRITE
+TFDU:   lda     INCUR           ; an outfitter's door: down
+        and     #IN_DOWN
+        beq     TF8X
+        jsr     STEPX
+        lda     #2
+        jsr     SETFACE
+        inc     WY
+        inc     WY
+        jmp     TSPRITE
+TFDD:   lda     INCUR           ; a lower door: up
+        and     #IN_UP
+        beq     TF8X
+        jsr     STEPX
+        lda     #3
+        jsr     SETFACE
+        dec     WY
+        dec     WY
+        jmp     TSPRITE
 TF8C:   lda     DOORC,x         ; in through the middle of the door
         sta     WX
         txa                     ; walking in, up
@@ -270,8 +327,12 @@ TBLDG:  lda     DVBW
         bne     TBQ
 TB1:    cpx     #BASSAY
         bcs     TB2
-        txa                     ; an outfitter: the good
-        tax
+        lda     #3              ; an outfitter (X the good): held 270
+        sta     DVBW            ;   frames from the door
+        lda     MFRAME          ; (the frames are counted from here)
+        sta     OFTL
+        lda     MFRAMEH
+        sta     OFTH
         lda     #RQOUTF
         bne     TBQX
 TB2:    bne     TB3
@@ -296,7 +357,9 @@ TBQX:   sta     DVACT
 TBOUT:  sta     DMSG
         lda     #1
         sta     MCOMP
-        jmp     TSTREET
+        lda     #0              ; nothing sent: let go, in the doorway
+        sta     DVBW
+        rts
 
 ; TLEAVE -- off one end of the street: the map.
 TLEAVE: lda     #ENTOWN
@@ -360,6 +423,18 @@ TS3:    sta     FIGNUS
         beq     TS5
         lda     WTX
         beq     TS5
+        lda     DVBW            ; at an outfitter, the M.U.L.E. is in the
+        bmi     TS4             ;   shop from frame 120 to 195
+        and     #2
+        beq     TS4
+        jsr     OFTEL
+        cpx     #0
+        bne     TS4
+        cmp     #120
+        bcc     TS4
+        cmp     #195
+        bcc     TS5
+TS4:    lda     WTX
         sec
         sbc     #4
         sta     MULX

@@ -219,7 +219,7 @@ class Player:
             elif self.inside:
                 self.dv = "pub"
             else:
-                return self.door(x, 116, DOWN)
+                return self.door(x, y, 116, DOWN)
         if self.dv == "shop":
             c = self.b(CARRYING)
             if c == self.good:
@@ -228,12 +228,12 @@ class Player:
             elif self.inside:
                 self.dv = "pub"
             else:
-                return self.door(x, DOOR[self.good], UP)
+                return self.door(x, y, DOOR[self.good], UP)
         if self.dv == "out":
             if not town:
                 self.dv = "plot"
             else:
-                return self.side
+                return self.street(y) or self.side
         if self.dv == "plot":
             if not mule:
                 self.log("develop: installed on", self.plot)
@@ -258,7 +258,7 @@ class Player:
             if not town:
                 self.dv = "home"
                 return 0
-            return self.door(x, 88, DOWN)
+            return self.door(x, y, 88, DOWN)
         return 0
 
     def plan(self, seat, left):
@@ -281,8 +281,12 @@ class Player:
         self.log("develop: plot", p, "for", ["food", "energy", "smithore", "crystite"][self.good])
 
     @staticmethod
-    def door(x, at, push):
-        return RIGHT if x < at else LEFT if x > at else push
+    def street(y):
+        """In a doorway (after a building) the stick only walks back out to the street."""
+        return UP if y > 41 else DOWN if y < 37 else 0
+
+    def door(self, x, y, at, push):
+        return self.street(y) or (RIGHT if x < at else LEFT if x > at else push)
 
 
 def main():

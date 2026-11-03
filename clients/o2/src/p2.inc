@@ -101,6 +101,14 @@ ml_tick:
     call phase_page
     mov a,#E_TICK
     FCALL farcall
+    mov r0,#PHS                 ; the development's words page has a tick too
+    movx a,@r0
+    xrl a,#PHASE_DEVELOP
+    jnz ml_tw
+    mov r7,#13
+    mov a,#E_TICK
+    FCALL farcall
+ml_tw:
     call tb_frame
     call snd_go
 ml_say:

@@ -44,6 +44,13 @@ TS3:    LODA,R0 TSTW,R3,+
         COMI,R3 TSTWN-1
         BCFR,EQ TS3
         BSTA,UN RAMPEND
+        CPTR    MP_CRYSTITE     ; nothing assayed
+        LODI,R3 45
+TS3B:   LODI,R0 $FF
+        BSTA,UN RAMPUT1
+        SUBI,R3 1
+        BCFR,EQ TS3B
+        BSTA,UN RAMPEND
 ; what the test asked for
         LODA,R0 TESTHK+1        ; the phase: + 1, or 0 for the development
         SUBI,R0 1

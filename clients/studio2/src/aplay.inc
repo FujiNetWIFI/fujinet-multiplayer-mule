@@ -36,7 +36,7 @@ APS_PROMPT EQU  9
 APS_OFF EQU     10
 
 ; autoplay: once a frame, before the phase's frame sees the keys.
-        RFIT    155
+        RFIT    165
 autoplay:
         GETV    MYSEAT
         SMI     4
@@ -50,7 +50,10 @@ autoplay:
         PUTV    AP_PH
         SETV    AP_ST, APS_OFF
         FCALL   ap_t0
-apl1:   SETV    AP_KEY, K_NONE
+apl1:   GETV    AP_ST                   ; (a test pokes $EE: the keypad is left alone)
+        XRI     0EEH
+        BZ      apl9
+        SETV    AP_KEY, K_NONE
         SETV    AP_EDGE, K_NONE
         GETV    PHASE
         BZ      apl2
@@ -690,10 +693,19 @@ apf1:   GLO     R9
         BNZ     apf1
 apf9:   FRET
 
-; ap_door: the key to door x D along the street, then in (RB.0: 2 up, 8 down).
-        RFIT    29
+; ap_door: the key to door x D along the street, then in (RB.0: 2 up, 8 down);
+; out of a doorway first (down from above the street, up from below).
+        RFIT    50
 ap_door:
         STR     R2
+        GETV    WK_Y
+        SMI     TY_TOP
+        LDI     8
+        BNF     apdr1
+        GETV    WK_Y
+        SMI     TY_BOT+1
+        LDI     2
+        BDF     apdr1
         GETV    WK_X
         SM
         BZ      apdr2
@@ -707,7 +719,7 @@ apdr2:  GLO     RB
         FRET
 
 ; the turn's parts
-        RFIT    117
+        RFIT    129
 ap_corral:
         GETV    WK_MULE                 ; ours: to the outfitter
         BZ      apc1
@@ -747,9 +759,13 @@ aps_2:  LDI     2
 ap_out: GETV    WK_TOWN                 ; out of town on the plot's side
         BNZ     apo1
         SETV    AP_ST, APS_PLOT
-apo1:   GETV    AP_SIDE
+        GETV    AP_SIDE
         PUTV    AP_KEY
         FRET
+apo1:   GETV    AP_SIDE                 ; (out of the doorway first)
+        PLO     RB
+        GETV    WK_X
+        FJMP    ap_door
 
         RFIT    105
 ap_plot:

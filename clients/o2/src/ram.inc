@@ -145,6 +145,12 @@ AV_LN1  equ 07Bh                ; the sellers' line's Y on screen (0FFh none)
 AV_LN2  equ 07Ch                ; the buyers'
 AV_MSG  equ 07Dh                ; the message on screen (0FFh none, 0 units)
 AV_TRD  equ 07Eh                ; units traded so far (a click each)
+; a computer's assays (p13.inc): in the gaps of the lines above, used only
+; in the development
+AS_T    equ 012h                ; frames since the last step
+AS_I    equ 013h                ; the next step + 1 (0: none under way)
+AS_N    equ 035h                ; plots to show
+AS_F    equ 04Fh                ; 1: the next state is a computer's first
 ; the map's set pieces (p15.inc), over the auction's and the development's
 FX_PC   equ 077h                ; the actor's script: its op (0: stopped)
 FX_X    equ 078h                ; its top left
@@ -177,6 +183,7 @@ DV_WP   equ 078h                ; the wampus showing (0FFh none) ...
 DV_WPX  equ 079h                ; ... and where
 DV_WPY  equ 07Ah
 DV_SPEC equ 07Bh                ; our species (its figure: p11.inc dv_fig)
+BWH     equ 07Ch                ; town: in a door: 80h, 40h answered, 0-2 the 256s of frames
 
 SAY_ID  equ 0                   ; the string (S_*, T_*, M_*; 0 none)
 SAY_LN  equ 1                   ; its first line (L_*), and lines << 4

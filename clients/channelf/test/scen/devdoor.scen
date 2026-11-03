@@ -1,0 +1,58 @@
+# live, with AUTOPLAY=1 DEVTEST=1: our turn walks the town by script:
+# corral (buy), the doorway, out again, an outfitter (the 270-frame wait),
+# then the turn ends and the computers' assays are watched.
+waitfor DVSTATE 2
+wait 30
+snap d0
+hold r
+wait 45
+hold none
+hold d
+show 150 W_X W_Y W_IN W_HOLD W_MULE DV_BWAIT
+snap d1
+hold r
+wait 30
+hold l
+wait 30
+hold none
+peek W_X 2
+hold d
+wait 30
+peek W_Y 1
+hold u
+show 120 W_Y W_IN
+hold none
+snap d2
+show 1 W_X W_Y W_MULE DVSTATE
+hold l
+waitfor W_X 72 1200
+show 1 W_X W_Y W_MULE DVSTATE
+hold none
+hold u
+waitfor W_IN 2 600
+waitfor DV_SHOW 1 600
+hold none
+wait 55
+snap o1
+wait 75
+snap o2
+wait 80
+snap o3
+hold d
+show 120 W_Y W_HOLD DV_SHOW DV_BWAIT
+hold none
+poke EVKEY 13
+poke DV_ASN 0
+waitfor DV_ASN 1
+show 1 DV_ASN DV_ASI
+wait 122
+snap a1
+show 1 DV_ASN DV_ASI
+wait 120
+snap a2
+show 1 DV_ASN DV_ASI
+wait 120
+snap a3
+show 1 DV_ASN DV_ASI
+wait 120
+snap a4

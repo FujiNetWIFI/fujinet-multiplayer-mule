@@ -59,7 +59,9 @@ def main():
     misc += ["OVERALL, " + r for r in rat]      # 19-25
     misc += [msg("THE SHIP WILL BE BACK")]      # 26
     misc += pev[19:]                            # 27-29: player events 20-22
-    assert len(misc) == 30
+    # 30-34: a computer's assay, as the walk says your own (compose.asm DM13-17)
+    misc += ["NO CRYSTITE", "LOW CRYSTITE", "MEDIUM", "HIGH", "VERY HIGH"]
+    assert len(misc) == 35
 
     def emit(f, prefix, strs):
         for i, s in enumerate(strs):

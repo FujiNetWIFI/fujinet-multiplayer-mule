@@ -149,6 +149,7 @@ develop_tick: PROCEDURE
     IF #w < #dv_left THEN bar_px = (#dv_left - #w) / dv_ptu / 2 ELSE bar_px = 0
     GOSUB bar_draw
     GOSUB dv_event_msg
+    IF PEEK(DV_SHOW) AND 255 THEN GOSUB dv_outfit_show
     IF w_event THEN GOSUB dv_walk_event : RETURN
     IF w_town = 0 THEN
         GOSUB dv_wampus
@@ -210,6 +211,7 @@ END
 dv_start_walk: PROCEDURE
     dv_state = DV_WALK
     dv_sample = 255 : dv_office = 0 : dv_evshown = 0 : dv_msg_seat = 255
+    POKE DV_SHOW, 0
     w_sp = pl8(my_seat, S_PLAYER_SPECIES) AND 7
     w_col = pl_mobcol(pl8(my_seat, S_PLAYER_COLOR) AND 3)
     bar_colr = w_col
@@ -222,6 +224,7 @@ END
 dv_stop_walk: PROCEDURE
     anim = AN_NONE
     w_hold = 1
+    POKE DV_SHOW, 0
     dv_state = DV_OVER
     SPRITE MOB_PL, 0, 0, 0 : SPRITE MOB_PL + 1, 0, 0, 0 : SPRITE MOB_MULE, 0, 0, 0
     SPRITE MOB_WAMPUS, 0, 0, 0
@@ -272,10 +275,13 @@ dv_resume: PROCEDURE
 END
 
 ' ---------------------------------------------------------------------------
-' Buildings. The action goes to the server; then we step back out onto the
-' street.
+' Buildings. The action goes to the server; then we stay in the doorway and
+' walk out (walk_town). At an outfitter the stick is dead for 270 frames
+' from reaching the door, and the M.U.L.E. is in the shop from 120 to 195
+' (measured on the Atari 800): dv_outfit_show.
 ' ---------------------------------------------------------------------------
 dv_building: PROCEDURE
+    #w = FRAME : POKE DV_BT0, #w AND 255 : POKE DV_BT0 + 1, #w / 256
     msg_row = 200 : #msg_col = C_WHITE + fgbg_bg(C_BLACK)
     IF w_bldg = B_CORRAL THEN
         IF w_mule THEN act = ACT_RETURN ELSE act = ACT_BUYMULE
@@ -298,12 +304,29 @@ dv_building: PROCEDURE
         poll_wait = 0
         GOSUB net_poll               ' do it now, while we stand in the door
         GOSUB dv_building_result
+        IF w_bldg <= B_CRYSTITE THEN
+            IF net_have = 1 THEN
+                IF st8(ST_ERR) = 0 THEN POKE DV_SHOW, 1 : RETURN
+            END IF
+        END IF
     END IF
-    ' Back out onto the street.
     IF dv_state = DV_WALK THEN
-        w_y = TOWN_Y_TOP + 2
         GOSUB snd_select
         GOSUB dv_resume
+    END IF
+END
+
+dv_outfit_show: PROCEDURE
+    #w = FRAME - (PEEK(DV_BT0) AND 255) - (PEEK(DV_BT0 + 1) AND 255) * 256
+    k = PEEK(DV_SHOW) AND 255
+    IF #w >= 270 THEN
+        POKE DV_SHOW, 0
+        GOSUB snd_select
+        GOSUB dv_resume
+    ELSEIF #w >= 195 THEN
+        IF k = 2 THEN POKE DV_SHOW, 3 : GOSUB walk_draw
+    ELSEIF #w >= 120 THEN
+        IF k = 1 THEN POKE DV_SHOW, 2 : SPRITE MOB_MULE, 0, 0, 0
     END IF
 END
 
@@ -326,7 +349,8 @@ END
 
 ' dv_ai_marks (per frame in a computer's turn): the Atari outlines the
 ' computer's land in white for 40 frames as its turn starts, and the plot it
-' works on while it is there (the walker's FX_SIG 3 and 4).
+' works on while it is there (the walker's FX_SIG 3 and 4). Then each plot it
+' assayed, outlined with what it found: 120 frames each, the first after 120.
 dv_ai_marks: PROCEDURE
     k = PEEK(DV_AI) AND 255
     IF k = 1 THEN
@@ -340,6 +364,20 @@ dv_ai_marks: PROCEDURE
         IF fx_flag = 3 THEN map_blink = mp : map_blink_on = 1
         IF mp < 45 THEN GOSUB map_draw_plot
         map_blink = 255 : fx_flag = 0
+    END IF
+    k = PEEK(DV_ASI) AND 255 : n = PEEK(DV_ASN) AND 255
+    IF k <= n THEN
+        IF ((FRAME - PEEK(DV_AST)) AND 255) >= 120 THEN
+            POKE DV_AST, FRAME
+            IF k THEN mp = PEEK(DV_ASQ + k - 1) AND 255 : GOSUB map_draw_plot
+            IF k < n THEN
+                mp = PEEK(DV_ASQ + k) AND 255
+                map_blink = mp : map_blink_on = 1 : GOSUB map_draw_plot : map_blink = 255
+                msg_row = ROW_MSG : #msg_col = C_WHITE
+                msg_id = M_ASSAY + (PEEK(STATE + ST_MAP_CRYSTITE + mp) AND 7) : GOSUB msg_show
+            END IF
+            POKE DV_ASI, k + 1
+        END IF
     END IF
 END
 
@@ -369,7 +407,15 @@ END
 dv_ai_walk: PROCEDURE
     GOSUB fx_stop_all
     j = 255 : n = 0
+    POKE DV_ASN, 0 : POKE DV_ASI, 0 : POKE DV_AST, FRAME
     FOR mp = 0 TO 44
+        ' the plots it assayed: crystite known now, not before
+        IF (PEEK(STATE + ST_MAP_CRYSTITE + mp) AND 128) = 0 THEN
+            IF PEEK(PREV + ST_MAP_CRYSTITE + mp) AND 128 THEN
+                k = PEEK(DV_ASN) AND 255
+                IF k < 8 THEN POKE DV_ASQ + k, mp : POKE DV_ASN, k + 1
+            END IF
+        END IF
         IF st8(ST_MAP_OWNER + mp) = dv_seat AND mp <> STORE_PLOT THEN
             IF j = 255 THEN j = mp
             IF st8(ST_MAP_MULE + mp) < 4 THEN
@@ -402,43 +448,33 @@ dv_ai_walk: PROCEDURE
     ' plot. Facing (FLIPX) follows the direction.
     IF (PEEK(DV_AI) AND 255) = 2 THEN GOSUB map_draw_all    ' the last one's land
     POKE DV_AIP, j : POKE DV_AI, 1
-    FOR fa = 0 TO 1
-        IF fa = 0 OR n THEN
-            #addr = FXS + fa * 48
-            k = 0
-            IF fa THEN POKE #addr, FX_WAIT : POKE #addr + 1, 24 : k = 2
-            IF x >= c THEN
-                POKE #addr + k, FX_YATTR : POKE #addr + k + 1, 0
-                POKE #addr + k + 2, FX_MOVE : POKE #addr + k + 3, 2 : h_c = (x - c) / 2
-            ELSE
-                POKE #addr + k, FX_YATTR : POKE #addr + k + 1, 8
-                POKE #addr + k + 2, FX_MOVE : POKE #addr + k + 3, 254 : h_c = (c - x) / 2
-            END IF
-            POKE #addr + k + 4, 0 : POKE #addr + k + 5, 6 : POKE #addr + k + 6, h_c + 1
-            POKE #addr + k + 7, FX_MOVE : POKE #addr + k + 8, 0
-            IF y >= 52 THEN POKE #addr + k + 9, 1 : h_i = y - 52 ELSE POKE #addr + k + 9, 255 : h_i = 52 - y
-            POKE #addr + k + 10, 6 : POKE #addr + k + 11, h_i + 1
-            IF fa THEN
-                ' The M.U.L.E. is installed: it goes no further.
-                POKE #addr + k + 12, FX_WAIT : POKE #addr + k + 13, 20
-                POKE #addr + k + 14, FX_HIDE : POKE #addr + k + 15, FX_END
-            ELSE
-                POKE #addr + 12, FX_SIG : POKE #addr + 13, 3
-                POKE #addr + 14, FX_WAIT : POKE #addr + 15, 90
-                POKE #addr + 16, FX_SIG : POKE #addr + 17, 4
-                ' ... and back: vertical first, then across, facing home.
-                POKE #addr + 18, FX_MOVE : POKE #addr + 19, 0
-                POKE #addr + 20, 256 - PEEK(#addr + 9) : POKE #addr + 21, 6 : POKE #addr + 22, h_i + 1
-                POKE #addr + 23, FX_YATTR : POKE #addr + 24, (PEEK(#addr + 1) XOR 8)
-                POKE #addr + 25, FX_MOVE : POKE #addr + 26, 256 - PEEK(#addr + 3)
-                POKE #addr + 27, 0 : POKE #addr + 28, 6 : POKE #addr + 29, h_c + 1
-                POKE #addr + 30, FX_WAIT : POKE #addr + 31, 255
-                POKE #addr + 32, FX_LOOP : POKE #addr + 33, 200 : POKE #addr + 34, 2
-            END IF
-            GOSUB fx_start
-        END IF
-    NEXT fa
+    IF x >= c THEN
+        h_k = 0 : h_c = (x - c) / 2 + 1 : x = 2
+    ELSE
+        h_k = 8 : h_c = (c - x) / 2 + 1 : x = 254
+    END IF
+    IF y >= 52 THEN h_i = y - 51 : y = 1 ELSE h_i = 53 - y : y = 255
+    FOR k = 0 TO 34 : POKE FXS + k, dv_ai_fig(k) : NEXT k
+    POKE FXS + 1, h_k : POKE FXS + 3, x : POKE FXS + 6, h_c
+    POKE FXS + 9, y : POKE FXS + 11, h_i : POKE FXS + 20, 256 - y : POKE FXS + 22, h_i
+    POKE FXS + 24, h_k XOR 8 : POKE FXS + 26, 256 - x : POKE FXS + 29, h_c
+    fa = 0 : #addr = FXS : GOSUB fx_start
+    IF n THEN
+        FOR k = 0 TO 17 : POKE FXS + 48 + k, dv_ai_mul(k) : NEXT k
+        POKE FXS + 51, h_k : POKE FXS + 53, x : POKE FXS + 56, h_c
+        POKE FXS + 59, y : POKE FXS + 61, h_i
+        fa = 1 : #addr = FXS + 48 : GOSUB fx_start
+    END IF
 END
+
+' The scripts' templates (dv_ai_walk fills in the facing, steps and counts):
+' the figure goes across, down, waits 90 on the plot (FX_SIG outlines it)
+' and comes back; its M.U.L.E. follows 24 frames later and stops there.
+dv_ai_fig: DATA FX_YATTR, 0, FX_MOVE, 2, 0, 6, 0, FX_MOVE, 0, 1, 6, 0
+    DATA FX_SIG, 3, FX_WAIT, 90, FX_SIG, 4, FX_MOVE, 0, 255, 6, 0
+    DATA FX_YATTR, 0, FX_MOVE, 254, 0, 6, 0, FX_WAIT, 255, FX_LOOP, 200, 2
+dv_ai_mul: DATA FX_WAIT, 24, FX_YATTR, 0, FX_MOVE, 2, 0, 6, 0
+    DATA FX_MOVE, 0, 1, 6, 0, FX_WAIT, 20, FX_HIDE, FX_END
 
 ' What the server said about a map action we just sent.
 dv_map_result: PROCEDURE
@@ -526,13 +562,9 @@ dv_wampus: PROCEDURE
     ' On the plot's mountains (top-left card): x + 1 + 2c, y + 1 + 2c.
     wp_x = (mp % 9) * 16 + 16 + 1 + c * 2
     wp_y = (mp / 9) * 16 + 16 + 1 + c * 2
-    ' It flashes: 8 frames on, 8 off.
-    IF FRAME AND 8 THEN
-        SPRITE MOB_WAMPUS, wp_x + VISIBLE, wp_y + ZOOMY2, gram_word(G_WAMPUS, C_WHITE)
-        wp_on = 1
-    ELSE
-        SPRITE MOB_WAMPUS, 0, 0, 0
-    END IF
+    ' Shown steadily while it is out, as on the Atari.
+    SPRITE MOB_WAMPUS, wp_x + VISIBLE, wp_y + ZOOMY2, gram_word(G_WAMPUS, C_WHITE)
+    wp_on = 1
 END
 
 ' ---------------------------------------------------------------------------

@@ -1,0 +1,30 @@
+# live: a computer's turn: each plot it assayed boxed in turn with the
+# result (AS_I $13: the step under way; AS_N $35 the plots; AS_T $12). The
+# computers go first in the development, before our prompt.
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+until 7E 135 1500   # (FXSH 87h: the ship has landed)
+wait 60
+press fire          # seen
+until 3C 3 12000    # the development
+until 13 1 2500     # a computer that assayed: the show starts
+xram 35 1
+snap a0
+until 13 2 200      # the first plot boxed
+wait 8
+snap a1
+until 13 3 200      # (the next, if it assayed more)
+wait 8
+snap a2
+until 13 4 200
+wait 8
+snap a3
+until 13 5 200
+wait 8
+snap a4
+until 13 0 800      # the box away, the turn's words back
+wait 10
+snap a5

@@ -1,0 +1,22 @@
+# live: our turn on the map: the wampus shows steadily while it is out
+# (DV_WP $78: 0FFh none; its plot's mountain's sprite); a burst of frames
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+until 7E 135 1500   # (FXSH 87h: the ship has landed)
+wait 60
+press fire          # seen
+until 3C 3 12000    # the development
+until 4D 1 12000    # DV_ST: our prompt
+wait 30
+press fire
+until 4E 1 300      # DV_TOWN: in town
+wait 30
+hold left 110       # off the street's west end: the map
+until 4E 0 300
+wait 10
+xram 78 3
+burst wp 1000
+xram 78 3

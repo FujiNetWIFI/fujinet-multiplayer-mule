@@ -305,10 +305,12 @@ APB3:   jmp     RSTCHK
 APB:    jsr     INSCAN
         jmp     RSTCHK
 
-; STICK -- the grant and production: bank 12, once a frame (it comes back
+; STICK -- the grant, development and production: bank 12, once a frame (it comes back
 ; to SLOOP1 with ENPOST).
 STICK:  lda     HPHASE
         cmp     #PHGRANT
+        beq     STK1
+        cmp     #PHDEV          ; (a computer's assays)
         beq     STK1
         cmp     #PHPROD
         bne     STK9

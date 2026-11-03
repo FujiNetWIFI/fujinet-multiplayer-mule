@@ -5,20 +5,30 @@
 ; and the store's M.U.L.E.s.
 
 E_STATE equ 0
+SPR_WHITE equ C_WHITE<<3        ; a sprite's colour, attribute bits 3-5
 
     PAGE_HEAD
-    db e_state&0FFh, e_none&0FFh
+    db e_state&0FFh, e_tick&0FFh
 e_state:
     jmp on_state
-e_none:
-    ret
+e_tick:
+    jmp as_tick                 ; (the main loop runs it each frame of the
+                                ; development, after the walking page's)
 
     include "sayq.inc"
 
-; on_state: the time bar; by DV_ST: our turn under way, the answers and the
+CUR_XYONLY equ 1
+    include "cursor.inc"
+
+; on_state: the turn's words (on_state2), then the assays seen (as_scan).
+on_state:
+    call on_state2
+    jmp as_scan
+
+; on_state2: the time bar; by DV_ST: our turn under way, the answers and the
 ; wampus (map) or the money line (town); else what to say of the turn,
 ; once a seat and kind (DV_MSG = seat * 4 + kind).
-on_state:
+on_state2:
     call dv_tbar
     mov r0,#DV_ST
     movx a,@r0
@@ -85,6 +95,9 @@ ot_same:
     jnz ot_x
     jmp ot_ev
 ot_cpu:
+    mov r0,#AS_F                ; its assays are in this state (as_scan)
+    mov a,#1
+    movx @r0,a
     SAY M_CPU, L_MAP+1, 2, C_WHITE
     ret
 ot_over:                        ; ours: what the pub paid, or out of time
@@ -427,6 +440,56 @@ wc_x:
     ret
 
 ; ===========================================================================
+; as_put: the mask byte just done (r4) to its place: the one before plot r7's.
+; Clobbers A, r0-r2.
+as_put:
+    mov a,r7
+    add a,#255
+    rr a
+    rr a
+    rr a
+    anl a,#1Fh
+    add a,#ASMASK&0FFh
+    mov r2,#ASMASK>>8
+    call poke_at
+    mov a,r4
+    jmp poke_b
+
+; as_off: nothing under way: the box away. Clobbers A, r0-r2.
+as_off:
+    mov r0,#AS_I
+    movx a,@r0
+    jz ao_x
+    clr a
+    movx @r0,a
+    mov r2,#SPRTAB>>8
+    mov a,#(SPRTAB+9)&0FFh
+    call poke_at
+    mov a,#0F8h
+    jmp poke_b
+ao_x:
+    ret
+
+; as_load: sprite 3's shape: a box 8 x 8. Clobbers A, r0, r1, r6.
+as_load:
+    mov a,#P1_VDC
+    outl p1,a
+    mov r0,#vdc_spr0_shape+24
+    mov r1,#as_shp&0FFh
+    mov r6,#8
+al_l:
+    mov a,r1
+    movp a,@a
+    movx @r0,a
+    inc r0
+    inc r1
+    djnz r6,al_l
+    mov a,#P1_MAIN
+    outl p1,a
+    ret
+as_shp:
+    db 0FFh, 081h, 081h, 081h, 081h, 081h, 081h, 0FFh
+
     org 0C00h
 
 ; wc_got: the wampus on plot WX_P's mountain WX_M: x 10 + 16 col + 2 m,
@@ -547,6 +610,49 @@ dvcol:
     db C_RED, C_GREEN, C_TAN, C_VIOLET
 
 ; ===========================================================================
+; ---------------------------------------------------------------------------
+; A computer's assays. The server plays its turn at once, so the first state
+; of it has every plot it assayed (the map's crystite, -1 till anyone does);
+; each state's assayed plots are kept as bits (ASMASK) to tell those from the
+; ones seen before. From 120 frames in, every 120 a plot is boxed (sprite 3)
+; and its level said, as the Atari does; the server's turn display allows it.
+
+; as_new: plot r7, level r6 is new: queued (ASQ, ASQL, AS_N) while a computer's
+; first state is read (AS_F), 8 at most. Clobbers A, r0-r3.
+as_new:
+    mov r0,#AS_F
+    movx a,@r0
+    jz an_x
+    mov r0,#AS_N
+    movx a,@r0
+    mov r3,a
+    add a,#256-8
+    jc an_x
+    mov a,r3
+    add a,#ASQ&0FFh
+    mov r2,#ASQ>>8
+    call poke_at
+    mov a,r7
+    call poke_b
+    mov a,r3
+    add a,#ASQL&0FFh
+    mov r2,#ASQL>>8
+    call poke_at
+    mov a,r6
+    anl a,#7
+    call poke_b
+    mov r0,#AS_N
+    movx a,@r0
+    inc a
+    movx @r0,a
+an_x:
+    ret
+
+at_end:
+    call as_off
+    SAY M_CPU, L_MAP+1, 2, C_WHITE
+    ret
+
     org 0D00h
 
 ; dv_tbar: the turn's time bar (tbar.inc), as mekkogx dv_bar: while a turn
@@ -623,6 +729,113 @@ dd_l:
     jnz dd_l
 dd_x:
     ret
+
+; as_scan: every state, last in on_state: the map's crystite, a plot a bit.
+; The first state of a computer's turn (AS_F) also queues the plots not in
+; ASMASK and starts the show. Any other state of another kind of turn stops
+; one. Clobbers A, r0-r7.
+as_scan:
+    mov r0,#AS_F
+    movx a,@r0
+    jz as_nc
+    clr a
+    mov r0,#AS_N
+    movx @r0,a
+    call as_off
+    jmp as_go
+as_nc:
+    mov r0,#DV_MSG
+    movx a,@r0
+    anl a,#3
+    xrl a,#1
+    jz as_go
+    call as_off
+as_go:
+    mov r7,#0                   ; the plot
+as_b:
+    mov a,r7                    ; its byte of the old mask
+    rr a
+    rr a
+    rr a
+    anl a,#1Fh
+    add a,#ASMASK&0FFh
+    FCALL fx6_get
+    mov r5,a
+    clr a
+    mov r4,a                    ; the new one
+as_p:
+    mov a,r7
+    add a,#(ST_MAP+MAP_CRYSTITE)&0FFh
+    mov r2,a
+    mov r3,#(ST_MAP+MAP_CRYSTITE)>>8
+    call st_byte
+    jb7 as_nx                   ; -1: not assayed
+    mov r6,a
+    mov a,r7
+    anl a,#7
+    add a,#as_bits&0FFh
+    movp a,@a
+    mov r1,a
+    orl a,r4
+    mov r4,a
+    mov a,r5
+    anl a,r1
+    jnz as_nx                   ; seen before
+    call as_new
+as_nx:
+    inc r7
+    mov a,r7
+    xrl a,#NUM_PLOTS
+    jz as_last
+    mov a,r7
+    anl a,#7
+    jnz as_p
+    call as_put
+    jmp as_b
+as_last:
+    call as_put
+    mov r0,#AS_F
+    movx a,@r0
+    jz as_x
+    clr a
+    movx @r0,a
+    mov r0,#AS_N
+    movx a,@r0
+    jz as_x                     ; none assayed: nothing to show
+    call as_load
+    clr a
+    mov r0,#AS_T
+    movx @r0,a
+    inc a
+    mov r0,#AS_I
+    movx @r0,a
+as_x:
+    ret
+as_bits:
+    db 1, 2, 4, 8, 10h, 20h, 40h, 80h
+
+; as_tick: every frame of the development: the show's next step is due 120
+; frames after the last: the box on the next plot with what was found there
+; (W_ASSAY0 + level), after the last the box off and the turn's words back.
+; Clobbers A, r0-r7.
+as_tick:
+    mov r0,#AS_I
+    movx a,@r0
+    jz at_x
+    mov r0,#TICKN
+    movx a,@r0
+    mov r2,a
+    mov r0,#AS_T
+    movx a,@r0
+    add a,r2
+    add a,#256-120
+    jc at_f
+    add a,#120
+    movx @r0,a
+at_x:
+    ret
+at_f:
+    jmp at_fire
 
     org 0E00h                   ; (its table must sit on its MOVP's page)
 
@@ -760,5 +973,45 @@ de_go:
 
 pev_x:                          ; factors: 0 none; 80h-82h per M.U.L.E.
     db 0, 0, 2, 4, 80h, 4, 8, 2, 3, 6, 4, 2, 0, 0, 3, 81h, 82h, 6, 4, 4, 4, 0
+
+
+at_fire:
+    movx @r0,a                  ; (what went over 120 counts to the next)
+    mov r0,#AS_I
+    movx a,@r0
+    mov r3,a
+    inc a
+    movx @r0,a                  ; (r3: this step + 1)
+    mov r0,#AS_N
+    movx a,@r0
+    inc a
+    xrl a,r3
+    jnz at_s
+    jmp at_end
+at_s:
+    mov a,r3
+    add a,#(ASQ-1)&0FFh
+    FCALL fx6_get
+    call plot_xy                ; r7 X, r6 Y: the 16 x 14 box's corner
+    mov r2,#SPRTAB>>8
+    mov a,#(SPRTAB+9)&0FFh
+    call poke_at
+    mov a,r6                    ; our 8 x 8 one is in the middle of it
+    add a,#3
+    call poke_b
+    mov a,r7
+    add a,#4
+    call poke_b
+    mov a,#SPR_WHITE
+    call poke_b
+    mov a,r3
+    add a,#(ASQL-1)&0FFh
+    FCALL fx6_get
+    add a,#W_ASSAY0
+    mov r5,a
+    mov r6,#(L_MAP+1)|(2<<4)
+    mov r7,#C_WHITE
+    jmp say_q
+
 
     PAGE_TAIL

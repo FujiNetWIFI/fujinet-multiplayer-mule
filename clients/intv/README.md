@@ -68,7 +68,7 @@ If you join a table whose game has already started (or you leave a game), you wa
 | Land auction | Button: skip the plot display. Disc up/down: raise/lower your bid; let go to hold |
 | Development | Button: start your turn. Disc: walk. Keypad ENTER: end the turn |
 | In town | Walk into a building: down into the assay office, land office, pub or corral; up into an outfitter (only while leading a M.U.L.E.). The corral sells you a M.U.L.E. (or takes it back) |
-| On the map | Button on your own plot: install the M.U.L.E. you lead. Near the flashing wampus: catch it. Anywhere else: take an assay sample (for the assay office). After a visit to the land office: the button on your plot lists it for sale |
+| On the map | Button on your own plot: install the M.U.L.E. you lead. Near the wampus: catch it. Anywhere else: take an assay sample (for the assay office). After a visit to the land office: the button on your plot lists it for sale |
 | Declare | Disc up: seller. Disc down: buyer. Keypad 0: sit out |
 | Trading | Disc up/down: move your line. Button: collude |
 

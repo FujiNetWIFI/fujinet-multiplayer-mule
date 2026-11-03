@@ -422,5 +422,6 @@ MSRATE  EQU     19              ; + rating: overall, ... (19-25)
 MSSHIP  EQU     26              ; the ship will be back in 12 months
 MSEV20  EQU     27              ; player events 20-22 (27-29): bank 14 has
                                 ;   room, bank 13 has not
+MSASSAY EQU     30              ; + level 0-4: a computer's assay (30-34)
 MSEVENT EQU     64              ; + turn.event (1-19)
 TICKRATE EQU    8               ; frames a character, scrolling

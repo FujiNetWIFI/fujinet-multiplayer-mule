@@ -29,6 +29,14 @@
     CONST GR_PARK = $881C       ' grant.bas: 1: our claim came too early, sent
                                 ' again when the server's cursor gets there
 
+    ' develop.bas: the outfitter wait and the computer's assays
+    CONST DV_SHOW = $8900       ' outfitter wait: 1 waiting, 2 M.U.L.E. in the shop, 3 back out
+    CONST DV_BT0 = $8901        ' 2 bytes: FRAME when we reached the door
+    CONST DV_ASN = $8903        ' plots the computer assayed this turn (up to 8)
+    CONST DV_ASI = $8904        ' the next to show
+    CONST DV_AST = $8905        ' FRAME AND 255 when the last was shown
+    CONST DV_ASQ = $8906        ' 8 bytes: those plots
+
     ' ---- Intellivision colours ----------------------------------------------
     CONST C_BLACK = 0
     CONST C_BLUE = 1

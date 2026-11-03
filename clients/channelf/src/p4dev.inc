@@ -65,6 +65,11 @@ DV_IY   EQU PV+59
 DV_COL  EQU PV+60
 DV_SPTR EQU PV+61               ; 2: a script's start
 AISCR   EQU PV+64               ; 2 x 40: a computer's walk scripts
+DV_ASQ  EQU PV+144              ; 8: the plots a computer assayed this turn
+DV_ASN  EQU PV+152              ; how many
+DV_ASI  EQU PV+153              ; the next to show (9: none)
+DV_AST  EQU PV+154              ; when (frame low byte)
+DV_SHOW EQU PV+155              ; an outfitter has our M.U.L.E.
 
 SLOT_PL EQU 0
 SLOT_MULE EQU 1
@@ -120,7 +125,11 @@ DEVE:   ENTER
         STB MAPDOTS
         STB DV_AI
         STB DV_BWAIT
+        STB DV_SHOW
+        STB DV_ASN
         STB SCRNOW
+        LIS 9
+        STB DV_ASI
         LEAVE
 
 ; DVMSG -- message r0, no numbers.
@@ -350,7 +359,27 @@ WTX:    LEAVE
 WTOWN:  ENTER
         LIS 5
         STB W_CNT
-        LDB DV_IX
+        LDB W_Y                 ; in a doorway: only back out to the street
+        CI TOWN_Y_TOP-1
+        BNC WTD1
+        LDB DV_IY               ; (upper: down walks out)
+        CI 1
+        BNZ WTDX
+        LDB W_Y
+        AI 2
+        STB W_Y
+WTDX:   LEAVE
+WTD1:   LDB W_Y
+        CI TOWN_Y_BOT
+        BC WTD2
+        LDB DV_IY               ; (lower: up walks out)
+        CI 0FFH
+        BNZ WTDX
+        LDB W_Y
+        AI 0FEH
+        STB W_Y
+        LEAVE
+WTD2:        LDB DV_IX
         NI 080H
         BZ WTW2
         LDB W_X
@@ -827,6 +856,7 @@ DVSTART: ENTER
         STB DV_OFFICE
         STB DV_EVSH
         STB DV_BWAIT
+        STB DV_SHOW
         LDB MYSEAT
         LR 0,A
         PI PLDC
@@ -891,15 +921,15 @@ DST1:   LEAVE
 ; The buildings: the action goes to the server, its answer puts us out.
 ; ---------------------------------------------------------------------------
 
-; BACKST -- back on the street (back_to_street).
+; BACKST -- let go from a building (leave_building): we stay in the doorway
+;   and walk out (WTOWN).
 BACKST: ENTER
         CLR
         STB DV_BWAIT
+        STB DV_SHOW
         LDB DVSTATE
         CI DV_WALK
         BNZ BSX
-        LI TOWN_Y_TOP+2
-        STB W_Y
         LIS SND_SELECT
         LR 0,A
         PI SNDPLAY
@@ -961,10 +991,57 @@ DB9:    LDB DV_A                ; stand in the door until the server answers
         PI ACTSEND
         LIS 1
         STB DV_BWAIT
+        LDB DV_A                ; an outfitter: the M.U.L.E. goes in (DVOUTF)
+        XI ACT_OUTF
+        LIS 0
+        BNZ DB9S
+        LIS 1
+DB9S:   STB DV_SHOW
         LDW 0, 1, FRAMES
         STW 0, 1, DV_BT0
         LEAVE
 DB10:   PI BACKST
+        LEAVE
+
+; DVOUTF -- at an outfitter, as on the Atari 800 (measured): we stand in the
+;   door while the M.U.L.E. goes into the shop (hidden from 120 frames),
+;   is fitted out and comes back out (195). The stick is dead for the 270
+;   frames from reaching the door (dv_outfit_show).
+DVOUTF: ENTER
+        LDW 0, 1, FRAMES
+        LDW 2, 3, DV_BT0
+        PI SUB16
+        STW 0, 1, DV_V
+        LI 270&0FFH
+        LR 2,A
+        LI 270>>8
+        LR 3,A
+        PI GE16
+        BNC DO1
+        LDB DV_BWAIT            ; else when the answer comes
+        NI 0FFH
+        BNZ DOX
+        PI BACKST
+DOX:    LEAVE
+DO1:    LDW 0, 1, DV_V
+        LI 195
+        LR 2,A
+        CLR
+        LR 3,A
+        PI GE16
+        BC DO2
+        LDW 0, 1, DV_V
+        LI 120
+        LR 2,A
+        CLR
+        LR 3,A
+        PI GE16
+        BNC DOX
+        LIS SLOT_MULE
+        LR 0,A
+        PI SPRHIDE
+        LEAVE
+DO2:    PI WALKDRAW
         LEAVE
 
 ; DVBRES -- what the server said about a building (dv_building_result).
@@ -1218,7 +1295,7 @@ DBT4:   LDB DV_K
 DBTX:   LEAVE
 
 ; DVWAMP -- the wampus (dv_wampus): the turn lists when (turn jiffies) and
-;   where it shows; it flashes, 8 frames on and 8 off.
+;   where it shows; steadily while out.
 DVWAMP: ENTER
         LI 0FFH
         STB DV_WP
@@ -1301,13 +1378,6 @@ DW4:    SL 1                    ; on its plot's mountains
         AI 17
         AS 8
         STB WP_Y
-        LDB FRAMES
-        NI 8
-        BNZ DW5
-        LIS SLOT_WAMP
-        LR 0,A
-        PI SPRHIDE
-        LEAVE
 DW5:    LIS SLOT_WAMP
         STB SPA_SL
         LIS SH_WAMPUS
@@ -1529,6 +1599,38 @@ DL2:    INCB DV_I
 ; DVAIWALK -- dv_ai_walk.
 DVAIWALK: ENTER
         PI FXSTOP
+        CLR                     ; the plots it assayed this turn: crystite
+        STB DV_ASN              ; known now, not in the last state (up to 8)
+        STB DV_ASI
+        STB DV_I
+DAS1:   LDB DV_I
+        DCI ST+M_CRYS
+        ADC
+        LM
+        NI 080H
+        BNZ DAS3
+        LDB DV_I
+        DCI PREV+M_CRYS
+        ADC
+        LM
+        NI 080H
+        BZ DAS3
+        LDB DV_ASN
+        CI 7
+        BNC DAS3
+        LDB DV_I
+        LR 4,A
+        LDB DV_ASN
+        DCI DV_ASQ
+        ADC
+        LR A,4
+        ST
+        INCB DV_ASN
+DAS3:   INCB DV_I
+        CI NPLOTS-1
+        BC DAS1
+        LDB FRAMES
+        STB DV_AST
         LI 0FFH
         STB DV_J
         CLR
@@ -1861,7 +1963,63 @@ DAM6:   LI NOBODY
         STB MAPBLNK
         CLR
         STB FXFLAG
-DAMX:   LEAVE
+DAMX:   LDB DV_ASI              ; each plot it assayed, outlined, with what
+        COM                     ; it found: 120 frames each, the first after
+        INC                     ; 120 (the server's turn display allows it)
+        LR 4,A
+        LDB DV_ASN
+        AS 4
+        NI 080H
+        BNZ DAMZ                ; asn < asi: all shown (asi 9: none)
+        LDB DV_AST
+        COM
+        INC
+        LR 4,A
+        LDB FRAMES
+        AS 4
+        CI 119
+        BC DAMZ
+        LDB FRAMES
+        STB DV_AST
+        LDB DV_ASI
+        NI 0FFH
+        BZ DAM7
+        AI 0FFH                 ; the one before back to normal
+        DCI DV_ASQ
+        ADC
+        LM
+        LR 0,A
+        PI MAPPLOT
+DAM7:   LDB DV_ASI
+        LR 4,A
+        LDB DV_ASN
+        XS 4
+        BZ DAM8
+        LDB DV_ASI
+        DCI DV_ASQ
+        ADC
+        LM
+        STB DV_A
+        STB MAPBLNK
+        LIS 1
+        STB MAPBON
+        LDB DV_A
+        LR 0,A
+        PI MAPPLOT
+        LI NOBODY
+        STB MAPBLNK
+        LDB DV_A
+        DCI ST+M_CRYS
+        ADC
+        LM
+        NI 7
+        AI MS_ASSAY
+        LR 0,A
+        LIS C_WHITE
+        STB MSGCOL
+        PI DVMSG
+DAM8:   INCB DV_ASI
+DAMZ:   LEAVE
 
 ; ---------------------------------------------------------------------------
 ; A new state, and every frame
@@ -1964,8 +2122,16 @@ DS4:    STB W_MULE
         BZ DS5
         CI ACT_PUB
         BNZ DS6
-DS5:    PI DVBRES
-        PI BACKST
+DS5:    CLR
+        STB DV_BWAIT
+        PI DVBRES
+        LDB DV_SHOW             ; an outfitter lets us go when the M.U.L.E.
+        NI 0FFH                 ; is back out (DVOUTF), unless it refused
+        BZ DS5B
+        LDB ST+H_ERR
+        NI 0FFH
+        JZ DS6
+DS5B:   PI BACKST
 DS6:    LDB SCRNOW
         CI SCR_MAP
         JNZ DSX
@@ -2185,7 +2351,11 @@ DT2:    LDB DV_FLAGS            ; watching: the bar runs down between polls
         JMP DTX
 DT3:    PI DVBAR                ; our own turn
         PI DVEVENT
-        LDB DV_BWAIT
+        LDB DV_SHOW
+        NI 0FFH
+        BZ DT3A
+        PI DVOUTF
+DT3A:        LDB DV_BWAIT
         NI 0FFH
         BZ DT5
         LDW 0, 1, FRAMES        ; no answer in 10 s: stop waiting
@@ -2199,7 +2369,10 @@ DT3:    PI DVBAR                ; our own turn
         JNC DTX
         PI BACKST
         JMP DTX
-DT5:    LDB W_EVENT
+DT5:    LDB DV_SHOW
+        NI 0FFH
+        JNZ DTX
+        LDB W_EVENT
         NI 0FFH
         JZ DT10
         CI WE_TOWNL

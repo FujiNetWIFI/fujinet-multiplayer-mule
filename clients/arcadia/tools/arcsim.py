@@ -23,6 +23,10 @@ one per line (# comments); `-` reads it from stdin:
     poke ADDR V ...     write memory (console RAM)
     until ADDR V [N]    wait (at most N frames, default 3600) until ADDR == V
     watch ADDR N [LEN]  for N frames, print ADDR (LEN bytes) when it changes
+    trace N ADDR.. [@ADDR=V=NAME ..]
+                        for N frames, print every listed byte when any of them
+                        changes (TRACE frame values); each @ADDR=V=NAME[+D] takes
+                        a screenshot NAME_k D frames after ADDR becomes V
     test PH [ARG [PEV]] the offline test mode: at the title, phase PH, its
                         argument (event, stage, seat) and player event
     pc                  the PC
@@ -70,6 +74,8 @@ local untila, untilv, untilleft = 0, 0, 0
 local burstname, burstk, burstleft = "", 0, 0
 local watcha, watchleft, watchlen, watchlast = 0, 0, 1, ""
 local teststage, testargs = 0, nil
+local pend = {}
+local tracea, tracet, traceleft, tracelast, tracek = {}, {}, 0, "", 0
 
 local function field(port, mask)
   local p = ports[port]
@@ -118,6 +124,27 @@ _G.ARCSIM_SUB = emu.add_machine_frame_notifier(function()
     snap(string.format("%%s_%%03d", burstname, burstk))
     burstk = burstk + 1
     burstleft = burstleft - 1
+  end
+  for k = #pend, 1, -1 do
+    if frames >= pend[k][1] then snap(pend[k][2]); table.remove(pend, k) end
+  end
+  if traceleft > 0 then
+    local t = {}
+    for _, a in ipairs(tracea) do t[#t + 1] = string.format("%%02X", mem:read_u8(a)) end
+    local v = table.concat(t, " ")
+    if v ~= tracelast then
+      print(string.format("TRACE %%d %%s", frames, v))
+      for _, tr in ipairs(tracet) do
+        if mem:read_u8(tr[1]) == tr[2] and (tracelast == "" or tr.was ~= tr[2]) then
+          tracek = tracek + 1
+          pend[#pend + 1] = { frames + tr[4], string.format("%%s_%%d", tr[3], tracek) }
+        end
+        tr.was = mem:read_u8(tr[1])
+      end
+      tracelast = v
+    end
+    traceleft = traceleft - 1
+    if traceleft > 0 then return end
   end
   if watchleft > 0 then
     local v = hex(watcha, watchlen)
@@ -171,6 +198,8 @@ _G.ARCSIM_SUB = emu.add_machine_frame_notifier(function()
     elseif op == "poke" then for k = 3, #s do mem:write_u8(s[2] + k - 3, s[k]) end
     elseif op == "until" then untila, untilv, untilleft = s[2], s[3], s[4]; return
     elseif op == "watch" then watcha, watchleft, watchlen, watchlast = s[2], s[3], s[4], ""; return
+    elseif op == "trace" then
+      tracea, tracet, traceleft, tracelast = s[2], s[3], s[4], ""; return
     elseif op == "test" then testargs = { s[2], s[3], s[4] }; teststage = 1; return
     elseif op == "pc" then print(string.format("PC %%04X", cpu.state["PC"].value))
     elseif op == "reset" then print("RESET " .. frames); manager.machine:soft_reset()
@@ -264,6 +293,15 @@ def main():
             steps.append('{"until",%d,%d,%d}' % (num(w[1]), num(w[2]), int(w[3]) if len(w) > 3 else 3600))
         elif op == "watch":
             steps.append('{"watch",%d,%d,%d}' % (num(w[1]), int(w[2]), int(w[3]) if len(w) > 3 else 1))
+        elif op == "trace":
+            addrs = [num(x) for x in w[2:] if not x.startswith("@")]
+            trig = []
+            for x in w[2:]:
+                if x.startswith("@"):
+                    ad, v, nm = x[1:].split("=")
+                    nm, _, dl = nm.partition("+")
+                    trig.append('{%d,%d,"%s",%d}' % (num(ad), num(v), nm, int(dl or 0)))
+            steps.append('{"trace",{%s},{%s},%d}' % (",".join(map(str, addrs)), ",".join(trig), int(w[1])))
         elif op == "test":
             a = [int(x) for x in w[1:]] + [0, 0]
             steps.append('{"test",%d,%d,%d}' % (a[0], a[1], a[2]))

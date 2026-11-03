@@ -428,7 +428,17 @@ APD4:   LODA,R0 WHOLD
         RETC,GT
         LODA,R0 WDOOR
         RETC,GT
-        LODA,R1 RXFRH           ; T3: the time left, in 256ths
+        LODA,R0 WY              ; in a doorway: back out to the street first
+        COMI,R0 88              ;  (the town's street is lines 88-96)
+        BCFR,LT APD4A
+        LODI,R0 D_DOWN
+        BCTR,UN APD4B
+APD4A:  COMI,R0 97
+        BCFR,GT APD4C
+        LODI,R0 D_UP
+APD4B:  STRA,R0 INDIR
+        RETC,UN
+APD4C:  LODA,R1 RXFRH           ; T3: the time left, in 256ths
         LODA,R2 RXFRL
         ZBSR    *ZSINCE
         LODA,R0 DVLEFTL

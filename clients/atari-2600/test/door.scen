@@ -1,0 +1,49 @@
+# my turn: the corral and an outfitter leave you in the doorway; walk out
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+bank 5 20000
+wait 30
+press fire
+bank 6 600
+wait 60
+# the corral (door 116, below the street): in, bought; in the doorway nothing but "up" moves
+walkto 116 41
+hold down 10
+zp D5 00 600
+wait 100
+text
+snap
+hold left 30
+hold right 30
+hold down 30
+wait 20
+snap
+# out: 8 steps up
+walkto 116 41 600
+wait 20
+# an outfitter (food, 120, above), with the M.U.L.E.: the stick is dead 270 frames
+walkto 120 39 600
+hold up 10
+zp D5 03 600
+hold down 100
+hold down 54
+snap
+hold down 40
+hold down 20
+snap
+hold down 60
+snap
+hold down 120
+wait 60
+text
+quit

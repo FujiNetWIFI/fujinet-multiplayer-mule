@@ -46,6 +46,8 @@ DVENTER: LODA,R0 H_PHASE
         LPUT    DVBWAIT
         EORZ    R0
         LPUT    DVDO
+        LODI,R0 255             ; (no assays to show)
+        CPUT    DVASI
         LODI,R0 SCR_NONE
         LPUT    SCRNOW
         BSTA,UN DVPCOPY
@@ -66,6 +68,18 @@ DVPCOPY: CPTR   DVPMULE
 DVPC1:  STRA,R0 T3
         STRZ    R3
         LODA,R0 MP_MULE,R3
+        ANDI,R0 $7F             ; (none is $FF)
+        STRA,R0 T2
+        LODZ    R3              ; + bit 7 when it is assayed
+        ADDI,R0 CRYSO
+        STRZ    R3
+        LODA,R0 *PRAMH2,R3
+        TMI,R0  $80
+        BCTR,EQ DVPC1A
+        LODA,R0 T2
+        IORI,R0 $80
+        STRA,R0 T2
+DVPC1A: LODA,R0 T2
         BSTA,UN RAMPUT1
         LODA,R0 T3
         ADDI,R0 1

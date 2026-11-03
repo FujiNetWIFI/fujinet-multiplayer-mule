@@ -70,7 +70,11 @@ game_start:
 ; loop that calls keeps its count in RAM.
 
 ; ---- the frame loop (mekkogx main.c main) ----------------------------------------
+        IF      AUTOPLAY
+        RFIT    121
+        ELSE
         RFIT    109
+        ENDIF
 mainlp: FCALL   frame_wait
         FCALL   snd_tick
         FCALL   keys

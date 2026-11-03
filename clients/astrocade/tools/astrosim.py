@@ -11,6 +11,7 @@ The scenario language is the other sims' (clients/mekkogx/tools/cocosim):
     test PHASE [ARG [PEVENT]]   offline test mode (test.inc): phase number,
                                 colony event / auction stage / seat, player event
     wait N                      let N frames pass
+    waitfor SYMBOL[+OFF] V [N]  wait until that byte is V (>V: above V; at most N frames, 3000)
     snap NAME                   save OUTDIR/NAME.png
     hold DIRS                   hold directions: any of u d l r (or 'none')
     press                       tap the button
@@ -80,6 +81,10 @@ def main():
             steps.append(("test", sym("TESTHK"), args[0] + 1, args[1], args[2]))
         elif c == "wait":
             steps.append(("wait", int(w[1])))
+        elif c == "waitfor":
+            gt = w[2].startswith(">")
+            steps.append(("waitfor", sym(w[1]), int(w[2].lstrip(">"), 0) + (1000 if gt else 0),
+                          int(w[3]) if len(w) > 3 else 3000))
         elif c == "snap":
             steps.append(("snap", w[1]))
         elif c == "hold":
@@ -119,6 +124,8 @@ def main():
             lua.append('{"poke", %d, %d},' % (s[1], s[2]))
         elif s[0] == "wait":
             lua.append('{"wait", %d},' % s[1])
+        elif s[0] == "waitfor":
+            lua.append('{"waitfor", %d, %d, %d},' % s[1:])
         elif s[0] == "snap":
             lua.append('{"snap", "%s"},' % s[1])
         elif s[0] == "peek":
@@ -149,6 +156,7 @@ end
 local started = false
 local i = 1
 local wait_until = nil
+local wf_until = nil
 local frames = 0
 local asked = false
 local untap = {}
@@ -188,6 +196,10 @@ emu.register_frame_done(function()
     if s[1] == "wait" then
       if wait_until == nil then wait_until = (now + s[2]) & 0xFFFF end
       if ((now - wait_until) & 0xFFFF) < 0x8000 then wait_until = nil; i = i + 1 else return end
+    elseif s[1] == "waitfor" then
+      if wf_until == nil then wf_until = frames + s[4] end
+      local v = mem:read_u8(s[2])
+      if (s[3] >= 1000 and v > s[3] - 1000) or v == s[3] or frames >= wf_until then wf_until = nil; i = i + 1 else return end
     elseif s[1] == "poke" then
       mem:write_u8(s[2], s[3]); i = i + 1
     elseif s[1] == "snap" then

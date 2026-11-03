@@ -31,6 +31,11 @@ PVP     DEFL    PHRAM
         PV      DVAI,1          ; a computer's plot marks
         PV      DVAIT,1
         PV      DVAIP,1
+        PV      DVSHOW,1        ; an outfitter has our M.U.L.E. (DVOUTSHOW)
+        PV      DVASQ,16        ; a computer's new assays: plot, level
+        PV      DVASN,1         ;   how many, the next to show, when
+        PV      DVASI,1
+        PV      DVAST,1
         PV      WX,1            ; walking
         PV      WY,1
         PV      WTOWN,1
@@ -125,6 +130,11 @@ D5ENTER: LD     A,255
         LD      (MAPDOTS),A
         LD      (DVAI),A
         LD      (DVBWAIT),A
+        LD      (DVSHOW),A
+        LD      (DVASN),A
+        INC     A
+        LD      (DVASI),A       ; (no queue)
+        XOR     A
         LD      (SCRNOW),A
         LD      (AIST),A
         LD      (AIST+1),A
@@ -346,6 +356,29 @@ WT9:    RET
 ; WALKTOWN: a step in town (WIX, WIY).
 WALKTOWN: LD    A,5
         LD      (WCNT),A
+        ; in a doorway the only way is back out to the street: on into it
+        ; does nothing (a held stick can't walk us in again); from an
+        ; outfitter it is 8 steps
+        LD      A,(WY)
+        CP      TOWNYTOP
+        JR      NC,WTD1
+        LD      A,(WIY)
+        DEC     A
+        RET     NZ
+        LD      A,(WY)
+        ADD     A,2
+        LD      (WY),A
+        RET
+WTD1:   CP      TOWNYBOT+1
+        JR      C,WTD2
+        LD      A,(WIY)
+        INC     A
+        RET     NZ
+        LD      A,(WY)
+        SUB     2
+        LD      (WY),A
+        RET
+WTD2:
         ; along the street: 4 a step; out of either end: back to the map
         LD      A,(WIX)
         OR      A
@@ -749,6 +782,7 @@ DVSTARTW: LD    A,DV_WALK
         LD      (DVOFFICE),A
         LD      (DVEVSH),A
         LD      (DVBWAIT),A
+        LD      (DVSHOW),A
         LD      A,(MYSEAT)
         LD      E,HP_SPEC
         CALL    DVPLB
@@ -834,17 +868,46 @@ DVPLC:  PUSH    HL
         POP     HL
         RET
 
-; ---- buildings: the action goes to the server; its answer puts us back out ----
+; ---- buildings: the action goes to the server; its answer lets us go. We
+; stay in the doorway and walk out (WALKTOWN) ----
 BACKSTREET: XOR A
         LD      (DVBWAIT),A
+        LD      (DVSHOW),A
         LD      A,(DVSTATE)
         CP      DV_WALK
         RET     NZ
-        LD      A,TOWNYTOP+2
-        LD      (WY),A
         LD      A,SNSEL
         CALL    SNDPLAY
         JP      DVRESUME
+
+; DVOUTSHOW: at an outfitter, as on the Atari 800 (measured): we stand in the
+; door while the M.U.L.E. goes into the shop (gone from 120 frames), is
+; fitted out and comes back out (195). The stick is dead for the 270 frames
+; from reaching the door.
+DVOUTSHOW: LD   HL,(FRAMES)
+        LD      DE,(DVBT0)
+        OR      A
+        SBC     HL,DE
+        LD      A,H
+        OR      A
+        JR      Z,DOS1
+        DEC     A
+        JR      NZ,DOS2
+        LD      A,L
+        CP      14
+        JR      C,DOS3
+DOS2:   LD      A,(DVBWAIT)    ; 270 up: free, if the server has answered
+        OR      A
+        RET     NZ
+        JP      BACKSTREET
+DOS1:   LD      A,L
+        CP      120
+        RET     C
+        CP      195
+        JR      NC,DOS3
+        LD      A,SLOTMULE
+        JP      SPRHIDE
+DOS3:   JP      WALKDRAW
 
 DVBLDG: LD      A,(WBLDG)
         CP      B_CORRAL
@@ -859,6 +922,8 @@ DB1:    CP      4
         JR      NC,DB2
         LD      L,A             ; an outfitter: the good
         LD      H,0
+        LD      A,1
+        LD      (DVSHOW),A
         LD      A,A_OUTFIT
         JR      DBSEND0
 DB2:    CP      B_ASSAY
@@ -934,7 +999,10 @@ DBR5:   LD      A,SNBUY
 DBR9:   JP      TOWNMONEY
 
 ; ---- a new state ---------------------------------------------------------------------
-DVSTATEF: LD    HL,W_TURN
+DVSTATEF: CALL  FARCALL         ; the assays seen (a computer's are shown)
+        DB      PGDEV2
+        DW      DVASSCAN
+        LD      HL,W_TURN
         CALL    RXGETB
         LD      (DVSEAT),A
         INC     HL
@@ -992,8 +1060,17 @@ DSF3:   LD      (WMULE),A
         JR      Z,DSF4
         CP      A_WAMPUS
         JR      Z,DSF4
+        XOR     A
+        LD      (DVBWAIT),A
         CALL    DVBRESULT
-        CALL    BACKSTREET
+        LD      A,(DVSHOW)
+        OR      A
+        JR      Z,DSF3A
+        LD      HL,W_ERR
+        CALL    RXGETB
+        OR      A
+        JR      Z,DSF4          ; (else when the M.U.L.E. is back out)
+DSF3A:  CALL    BACKSTREET
 DSF4:   LD      A,(SCRNOW)
         CP      SCR_MAP
         RET     NZ
@@ -1142,9 +1219,12 @@ DT3:    ; our own turn
         CALL    FARCALL
         DB      PGDEV2
         DW      DVEVMSG
+        LD      A,(DVSHOW)
+        OR      A
+        CALL    NZ,DVOUTSHOW
         LD      A,(DVBWAIT)
         OR      A
-        JR      Z,DT4
+        JR      Z,DT3B
         LD      HL,(FRAMES)     ; no answer in 600: give up waiting
         LD      DE,(DVBT0)
         OR      A
@@ -1154,6 +1234,9 @@ DT3:    ; our own turn
         SBC     HL,DE
         RET     C
         JP      BACKSTREET
+DT3B:   LD      A,(DVSHOW)
+        OR      A
+        RET     NZ
 DT4:    LD      A,(WEVENT)
         OR      A
         JR      Z,DT9

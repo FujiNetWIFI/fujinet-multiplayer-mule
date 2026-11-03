@@ -1,0 +1,24 @@
+# my turn: the corral and an outfitter leave you in the doorway; walk out
+wait 60
+press fire
+bank 8
+wait 60
+press fire
+bank 1
+wait 60
+press fire
+bank 3 3000
+wait 560
+press fire
+bank 4 3000
+bank 5 20000
+wait 30
+press fire
+bank 6 600
+wait 60
+# the wampus: on the map with nothing in tow, it shows steadily
+hold left 450
+bank 5 300
+wait 2400
+text
+quit

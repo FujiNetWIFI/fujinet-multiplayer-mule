@@ -38,6 +38,7 @@ player/missile registers.
 | Town street | player top y 87–95. Pushing past it is blocked, except at a door |
 | Doors, lower row (HPOS) | assay 88, land office 108, pub 128, corral 148–164. Pushing down walks in: 4 lines per step, to y 123 |
 | Doors, outfitter shops (HPOS) | crystite 88, smithore 112, energy 136, food 160, centred on the signs (checked by outfitting at each). They open only while you lead a M.U.L.E. |
+| After a building | you stay in its doorway and walk back out (8 steps from an outfitter); there only the way back to the street moves. At an outfitter the stick is dead for 270 jiffies from reaching the door, and the M.U.L.E. is in the shop from 120 to 195 |
 | Leaving town | walking past HPOS 72 (left) or 176 (right). The screen blanks for 20–26 jiffies, then the map shows with you beside the store |
 | Map step | 2 cc or 2 lines every 6 jiffies. The wait is set by what the figure touches where it stands (collision test at `$5837`): overlapping a mountain (player 2) with no playfield pixel makes it 21; overlapping the river (player 3) makes it 14. So only brushing a mountain slows you, not the whole plot |
 | Map figure | on the map the player is a small figure, not the species sprite: boot `$9215`, 8 species (server order) x 10 frames x 8 bytes (byte 0 a flag). Frames: right 0/1, left 2/3, standing 4/5, down 6/7, up 8/9. Single width, one line per row |

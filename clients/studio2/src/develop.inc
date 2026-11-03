@@ -43,7 +43,8 @@ DV_ELH  EQU     PH+12
 DV_WP   EQU     PH+13                   ; the wampus showing (255 none)
 DV_WPX  EQU     PH+14
 DV_WPY  EQU     PH+15
-DV_BWAIT EQU    PH+16                   ; in a doorway, the server asked
+DV_BWAIT EQU    PH+16                   ; in a doorway: bit 0 the server asked, bit 1 an
+                                        ;  outfitter's (dv_outshow lets us go)
 DV_BT0L EQU     PH+17
 DV_BT0H EQU     PH+18
 DV_AI   EQU     PH+19                   ; a computer's land marks: 1 to show, 2 shown
@@ -86,7 +87,7 @@ develop_enter:
         FRET
 
 ; develop_state: a new state (mekkogx develop_state).
-        RFIT    222
+        RFIT    224
 develop_state:
         SLD     TN_SEAT
         PUTV    DV_SEAT
@@ -131,11 +132,12 @@ ds2:    GETV    DV_FLAGS                ; the server's view of what we lead wins
         LDI     1
 ds3:    PUTV    WK_MULE
         GETV    DV_BWAIT                ; a building answered
+        ANI     1
         BZ      ds4
         FCALL   dv_bldact
         BZ      ds4
         FCALL   dv_bldresult
-        FCALL   dv_street
+        FCALL   dv_bldend
 ds4:    GETV    SCRNOW
         XRI     SCR_MAP
         BNZ     ds9
@@ -193,7 +195,7 @@ dn4:    FJMP    dv_others
 
 ; dv_others: someone's turn: said once a turn, and once more when it ends;
 ; a computer's plays out until the next seat's.
-        RFIT    229
+        RFIT    235
 dv_others:
         GETV    DV_SEAT                 ; someone's turn: once a turn, once
         SMI     4                       ; more when it ends; a computer's
@@ -231,6 +233,8 @@ dn7:    GETV    DV_SEAT
         PUTV    DV_MSEAT
         GLO     RC
         PUTV    DV_MKIND
+        FCALL   dv_asclr                ; (a computer's assays, if any, follow)
+        GLO     RC
         XRI     1
         BZ      dn_ai
         XRI     1!2
@@ -376,7 +380,7 @@ dvb3:   GETV    DV_PX
         FJMP    bar_draw
 
 ; ---- walking (mekkogx walk_isr): every frame, more to catch up ------------------
-        RFIT    143
+        RFIT    160
 walk_isr:
         GETV    WK_HOLD
         BNZ     wi9
@@ -428,7 +432,12 @@ wy3:    PUTV    WK_IY
         FJMP    walk_draw
 wi10:   GETV    WK_TOWN
         BZ      wi11
-        FCALL   walk_town
+        FCALL   walk_door
+        BZ      wi10a
+        SMI     1                       ; 1: in a doorway, no way to go
+        BZ      wi9
+        BR      wi12                    ; 2: a step out
+wi10a:  FCALL   walk_town
         BR      wi12
 wi11:   FCALL   walk_map
 wi12:   GETV    WK_HOLD
@@ -436,6 +445,39 @@ wi12:   GETV    WK_HOLD
         FJMP    walk_stepped
 ; keydir: key -> bits 0-1 x (1 left, 2 right), 2-3 y (4 up, 8 down)
 keydir: DB      0, 1+4, 4, 2+4, 1, 0, 2, 1+8, 8, 2+8
+
+; walk_door: after a building we stand in its doorway (above or below the
+; street) and the only way is back out: one street step (3 lines, 6 frames)
+; the other way. D = 0 on the street, 1 in a doorway and not moved, 2 moved
+; (the step still to be drawn). (mekkogx walk_town's doorway rule)
+        RFIT    65
+walk_door:
+        GETV    WK_Y
+        SMI     TY_TOP
+        BNF     wdr3                    ; above the street
+        GETV    WK_Y
+        SMI     TY_BOT+1
+        LDI     0
+        BNF     wdr9                    ; on it
+        GETV    WK_IY                   ; below: up is out
+        BZ      wdr1
+        ANI     80H
+        BZ      wdr1
+        GETV    WK_Y
+        SMI     3
+        BR      wdr4
+wdr3:   GETV    WK_IY                   ; above: down is out
+        BZ      wdr1
+        ANI     80H
+        BNZ      wdr1
+        GETV    WK_Y
+        ADI     3
+wdr4:   STR     RA
+        SETV    WK_CNT, 5
+        LDI     2
+        FRET
+wdr1:   LDI     1
+wdr9:   FRET
 
 ; walk_stepped: a step made: the frame, the facing, the M.U.L.E.'s trail.
         RFIT    73
@@ -899,7 +941,7 @@ dbl1:   FCALL   frame_wait
         FJMP    w_clear
 
 ; develop_tick: the phase's frame (mekkogx develop_tick).
-        RFIT    138
+        RFIT    152
 develop_tick:
         FCALL   msg_tick
         GETV    DVSTATE
@@ -919,6 +961,7 @@ dt2:    GETV    DVSTATE
         XRI     DV_WAIT
         BNZ     dt3
         FCALL   dv_aimarks
+        FCALL   dv_asmarks
 dt3:    GETV    DV_FLAGS
         ANI     TF_STARTED|TF_ENDED
         XRI     TF_STARTED
@@ -926,6 +969,7 @@ dt3:    GETV    DV_FLAGS
         FJMP    dv_bar
 dt4:    FCALL   dv_bar                  ; our own turn
         FCALL   dv_eventmsg
+        FCALL   dv_outshow
         GETV    DV_BWAIT
         BZ      dt5
         GETV    DV_BT0L                 ; no answer for 600: out again

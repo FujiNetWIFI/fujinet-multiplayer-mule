@@ -354,16 +354,12 @@ dp_off:
     ret
 
 ; dv_wampus: the wampus, from the state's list of when and where it shows
-; (turn.wampus, in turn jiffies): its sprite flashes 8 frames on, 8 off on
-; its mountain. Clobbers A, r0-r7.
+; (turn.wampus, in turn jiffies): its sprite shows steadily on its
+; mountain (as on the Atari 800). Clobbers A, r0-r7.
 dv_wampus:
     mov r0,#DV_WP
     movx a,@r0
     jb7 dw_hide
-    mov r1,#FRAMES
-    mov a,@r1
-    anl a,#8
-    jz dw_hide
     mov r2,#(SPRTAB+6)>>8
     mov a,#(SPRTAB+6)&0FFh
     call poke_at

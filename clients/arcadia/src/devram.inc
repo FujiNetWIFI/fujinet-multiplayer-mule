@@ -52,7 +52,19 @@
         VAR     DVAIS0,52       ; a computer's walk: its figure's script ...
         VAR     DVAIS1,28       ;  ... and its M.U.L.E.'s (p_fx.inc runs them;
                                 ;  CPTR/CPUT reach them, PRAMH doesn't)
-DVPMULEO EQU    DVPMULE-$2900
+        VAR     DVASQ,8         ; the plots a computer assayed this turn,
+        VAR     DVASN,1         ;  how many, the next to show (255 none),
+        VAR     DVASI,1
+        VAR     DVAST,1         ;  and when (frame, low byte): PRAMH2 reads
+DVPMULEO EQU    DVPMULE-$2900           ; (bit 7: the plot was assayed at that state)
+DVASQO   EQU    DVASQ-$2A00
+DVASNO   EQU    DVASN-$2A00
+DVASIO   EQU    DVASI-$2A00
+DVASTO   EQU    DVAST-$2A00
+CRYSO    EQU    MP_CRYSTITE-$2A00       ; (the assay results through PRAMH2)
+        IF      (DVASQ < $2A00) || (DVAST-$2A00 > $FF)
+        ERROR   "the assays' RAM-H past PRAMH2's reach"
+        ENDIF
 DVEVSHO  EQU    DVEVSH-$2900
 WFIGSO   EQU    WFIGS-$2900
 DVMSGSO  EQU    DVMSGS-$2900

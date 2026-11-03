@@ -292,10 +292,7 @@ DW4B:   ADD     A,A             ; (mp % 9) * 16 + 16 + 1 + c * 2
 DW5:    LD      A,(DVWP)
         CP      12
         JR      NC,DWHIDE
-        ; it flashes: 8 frames on, 8 off
-        LD      A,(FRAMES)
-        AND     8
-        JR      Z,DWHIDE
+        ; shown steadily while it is out, as on the Atari (measured)
         LD      A,(WPX)
         SUB     8
         LD      L,A
@@ -596,6 +593,8 @@ AW4:    LD      (DVAIP),A
         LD      A,(DVSEAT)
         CALL    D2PLC
         LD      (AICOL),A
+        LD      A,(FRAMES)
+        LD      (DVAST),A
         LD      A,(DVAI)
         CP      2
         CALL    Z,MAPALL        ; the last one's land
@@ -869,7 +868,8 @@ AID3:   LD      (SPA_FL),A
 
 ; DVAIMARKS: per frame in a computer's turn: its land outlined in white for
 ; 40 frames as the turn starts, and the plot it works while it is there.
-DVAIMARKS: LD   A,(DVAI)
+DVAIMARKS: CALL DVASSHOW
+        LD      A,(DVAI)
         CP      1
         JR      NZ,DAM1
         LD      A,1
@@ -938,4 +938,152 @@ AL3:    INC     B
         LD      A,B
         CP      NPLOTS
         JR      C,AL1
+        RET
+
+; DVASSCAN: every state: DVASM holds the plots seen assayed (the server makes
+; every assay public). A computer's new ones (8 at most) queue, with their
+; levels, for DVASSHOW.
+DVASSCAN: LD    HL,W_TURN
+        CALL    RXGETB
+        LD      C,0
+        CP      4
+        JR      NC,DAS0
+        LD      E,HP_FLAG
+        CALL    D2PLB
+        AND     PF_AI
+        LD      C,A
+DAS0:   LD      A,C
+        OR      A
+        JR      NZ,DAS1
+        LD      (DVASN),A       ; not a computer's turn: no queue
+        INC     A
+        LD      (DVASI),A
+DAS1:   LD      B,0
+DAS2:   LD      E,B
+        LD      D,0
+        LD      HL,W_CRYS
+        ADD     HL,DE
+        CALL    RXGETB
+        PUSH    AF              ; the level, -1 not assayed
+        LD      A,B
+        RRCA
+        RRCA
+        RRCA
+        AND     1FH
+        LD      E,A
+        LD      HL,DVASM
+        ADD     HL,DE
+        LD      A,B
+        AND     7
+        LD      E,A
+        PUSH    HL
+        LD      HL,DASBIT
+        ADD     HL,DE
+        LD      D,(HL)          ; the plot's bit
+        POP     HL
+        POP     AF
+        OR      A
+        JP      P,DAS3
+        LD      A,D             ; not assayed: forget it
+        CPL
+        AND     (HL)
+        LD      (HL),A
+        JR      DAS9
+DAS3:   LD      E,A             ; E the level
+        LD      A,(HL)
+        AND     D
+        JR      NZ,DAS9
+        LD      A,(HL)
+        OR      D
+        LD      (HL),A
+        LD      A,C
+        OR      A
+        JR      Z,DAS9
+        LD      A,(DVASI)       ; a finished queue starts over
+        LD      HL,DVASN
+        CP      (HL)
+        JR      C,DAS4
+        JR      Z,DAS4
+        XOR     A
+        LD      (HL),A
+        LD      (DVASI),A
+DAS4:   LD      A,(HL)
+        CP      8
+        JR      NC,DAS9
+        INC     (HL)
+        LD      L,A
+        LD      H,0
+        ADD     HL,HL
+        LD      D,0
+        PUSH    DE
+        LD      DE,DVASQ
+        ADD     HL,DE
+        POP     DE
+        LD      (HL),B
+        INC     HL
+        LD      (HL),E
+DAS9:   INC     B
+        LD      A,B
+        CP      NPLOTS
+        JR      C,DAS2
+        RET
+DASBIT: DB      1,2,4,8,16,32,64,128
+
+; DVASSHOW: per frame in a computer's turn: from 120 frames after it starts,
+; every 120, the plot it assayed outlined in white with what it found (the
+; one before back as it was). The server's turn display allows for them.
+DVASSHOW: LD    A,(DVASI)
+        LD      HL,DVASN
+        CP      (HL)
+        JR      Z,DSW0
+        RET     NC
+DSW0:   LD      A,(DVAST)
+        LD      B,A
+        LD      A,(FRAMES)
+        SUB     B
+        CP      120
+        RET     C
+        LD      A,(FRAMES)
+        LD      (DVAST),A
+        LD      A,(DVASI)
+        OR      A
+        JR      Z,DSW1
+        DEC     A
+        CALL    DSWPLOT
+        CALL    MAPPLOT
+DSW1:   LD      A,(DVASI)
+        LD      HL,DVASN
+        CP      (HL)
+        JR      NC,DSW2
+        CALL    DSWPLOT
+        LD      B,A             ; the plot
+        INC     HL
+        LD      E,(HL)
+        LD      A,B
+        LD      (MAPBLK),A
+        LD      A,1
+        LD      (MAPBLON),A
+        LD      A,B
+        PUSH    DE
+        CALL    MAPPLOT
+        POP     DE
+        LD      A,NOBODY
+        LD      (MAPBLK),A
+        LD      A,E
+        AND     7
+        ADD     A,M_ASSAY
+        LD      B,A
+        LD      A,CW
+        LD      (MSGCOL),A
+        CALL    D2MSG0
+DSW2:   LD      HL,DVASI
+        INC     (HL)
+        RET
+; DSWPLOT: A = queue index -> A the plot, HL its entry.
+DSWPLOT: LD     L,A
+        LD      H,0
+        ADD     HL,HL
+        LD      DE,DVASQ
+        ADD     HL,DE
+        LD      A,(HL)
         RET

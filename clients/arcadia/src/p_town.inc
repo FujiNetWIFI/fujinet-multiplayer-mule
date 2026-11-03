@@ -228,17 +228,19 @@ TWSTATE: LODA,R0 TN_SEAT
 TWS1:   LPUT    DVPTU
         LODA,R0 TN_SEAT         ; still our walk?
         COMA,R0 H_MYSEAT
-        BCFR,EQ TWS5
+        BCFA,EQ TWS5
         LODA,R0 DVFLAGS
         ANDI,R0 TF_STARTED|TF_ENDED
         COMI,R0 TF_STARTED
-        BCFR,EQ TWS5
+        BCFA,EQ TWS5
         LODA,R0 DVFLAGS         ; what we lead, as the server sees it
         ANDI,R0 TF_HASMULE
         BCTR,EQ TWS2
         LODI,R0 1
 TWS2:   LPUT    WMULE
         LODA,R0 DVBWAIT         ; in a doorway: the building's answer
+        BCTR,EQ TWS4            ;  (0 none, 3 an outfitter's answered)
+        COMI,R0 3
         BCTR,EQ TWS4
         LODA,R0 ACTSENT
         COMI,R0 ACT_BUYMU
@@ -254,7 +256,15 @@ TWS2:   LPUT    WMULE
         COMI,R0 ACT_WAMPUS
         BCTR,EQ TWS4
         BSTA,UN TWRESULT
-        BSTA,UN TWSTREET
+        LODA,R0 DVBWAIT         ; an outfitter's goes on to the shop's show
+        COMI,R0 2
+        BCFR,EQ TWS3
+        LODA,R0 H_ERR
+        BCFR,EQ TWS3
+        LODI,R0 3
+        LPUT    DVBWAIT
+        BCTR,UN TWS4
+TWS3:   BSTA,UN TWSTREET
 TWS4:   BCTA,UN TWMONEY
 TWS5:   LODI,R0 DV_OVER         ; the turn is over: the map's (dv_stop_walk)
         LPUT    DVSTATE
@@ -299,15 +309,13 @@ TWR4:   COMI,R0 ACT_BUYMU
 TWR5:   SND     SND_BUY
         RETC,UN
 
-; TWSTREET: out of the doorway onto the street (back_to_street).
+; TWSTREET: let go in the doorway (leave_building): we walk out ourselves.
 TWSTREET: EORZ  R0
         LPUT    DVBWAIT
         LODA,R0 DVSTATE
         COMI,R0 DV_WALK
         RETC,LT
         RETC,GT
-        LODI,R0 TWYST
-        LPUT    WY
         SND     SND_SELECT
         EORZ    R0
         LPUT    WHOLD
@@ -334,7 +342,13 @@ TWTICK: LODA,R0 DVDO            ; our turn's event: said in the street
 TWT1:   BSTA,UN TWBAR
         LODA,R0 DVBWAIT         ; in a doorway: 10 seconds at most
         BCTR,EQ TWT2
-        LODA,R1 DVBT0H
+        COMI,R0 2
+        BCTR,LT TWT0
+        BSTA,UN TWSHOW          ; an outfitter's show
+        LODA,R0 DVBWAIT
+        COMI,R0 2
+        BCFR,EQ TWT2            ; (let go, or answered: nothing to wait for)
+TWT0:   LODA,R1 DVBT0H
         LODA,R2 DVBT0L
         ZBSR    *ZSINCE
         COMI,R1 600>>8
@@ -352,6 +366,32 @@ TWT2:   BSTA,UN TWWALK
         LODI,R1 0
         LODI,R2 0
         ZBRR    *ZACT
+
+; TWSHOW: at an outfitter (dv_outfit_show), 270 frames from the door: the
+; M.U.L.E. goes into the shop (hidden 120-195), comes back out at its old
+; place; the stick is dead throughout, and the end waits for the answer.
+TWSHOW: LODA,R1 DVBT0H
+        LODA,R2 DVBT0L
+        ZBSR    *ZSINCE
+        COMI,R1 0
+        BCFR,EQ TWSH3
+        LODZ    R2
+        COMI,R0 195
+        BCTA,GT TWDRAW
+        BCTA,EQ TWDRAW
+        COMI,R0 120
+        RETC,LT
+        LODI,R1 SL_MULE
+        ZBRR    *ZSPRHID
+TWSH3:  COMI,R1 1
+        BCFR,EQ TWSH4
+        LODZ    R2
+        COMI,R0 14
+        BCTA,LT TWDRAW
+TWSH4:  LODA,R0 DVBWAIT         ; 270 on: let go (if the server has answered)
+        COMI,R0 3
+        RETC,LT
+        BCTA,UN TWSTREET
 
 ; TWBAR: the turn's time bar on row 25 (dv_bar): units left, a block
 ; column each two (45 at most), ticking under 30.
@@ -462,7 +502,30 @@ TWW2:   STRA,R0 T3              ; T3: the directions held
         LODI,R1 7
         LODI,R3 9
         ZBSR    *ZDCLR
-TWW2A:  LODA,R0 T3              ; along the street; out of either end
+TWW2A:  LODA,R0 WY              ; in a doorway the only way is back to the street
+        COMI,R0 TWYTOP
+        BCFR,LT TWW2B
+        LODA,R0 T3
+        TMI,R0  D_DOWN
+        RETC,LT
+        LODI,R0 D_DOWN
+        STRA,R0 T3
+        LODA,R0 WY
+        ADDI,R0 4
+        LPUT    WY
+        BCTA,UN TWW9
+TWW2B:  COMI,R0 TWYBOT+1
+        BCFR,GT TWW2C
+        LODA,R0 T3
+        TMI,R0  D_UP
+        RETC,LT
+        LODI,R0 D_UP
+        STRA,R0 T3
+        LODA,R0 WY
+        SUBI,R0 4
+        LPUT    WY
+        BCTA,UN TWW9
+TWW2C:  LODA,R0 T3              ; along the street; out of either end
         TMI,R0  D_LEFT
         BCFR,EQ TWW4
         LODA,R0 WX
@@ -644,8 +707,13 @@ TWA6:   LODI,R0 ACT_PUB
 TWA9:   LODI,R2 0
 TWA9A:  LODI,R1 0
         ZBSR    *ZACT
-        LODI,R0 1
-        LPUT    DVBWAIT
+        LODA,R0 WBLDG           ; (an outfitter's: 2)
+        COMI,R0 B_ASSAY
+        BCFR,LT TWA9B
+        LODI,R0 2
+        BCTR,UN TWA9C
+TWA9B:  LODI,R0 1
+TWA9C:  LPUT    DVBWAIT
         LODA,R0 FRMH
         LPUT    DVBT0H
         LODA,R0 FRML

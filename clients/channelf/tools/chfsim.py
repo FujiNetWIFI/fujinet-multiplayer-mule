@@ -95,6 +95,8 @@ def main():
             steps.append('{"wait", %d}' % int(w[1]))
         elif c == "snap":
             steps.append('{"snap", "%s"}' % w[1])
+        elif c == "waitfor":        # waitfor SYM VAL [MAXFRAMES]: until the byte is VAL
+            steps.append('{"waitfor", %d, %d, %d}' % (sym(w[1]), int(w[2], 0), int(w[3]) if len(w) > 3 else 36000))
         elif c == "hold":
             bits = 0 if w[1] == "none" else sum(DIRBITS[ch] for ch in w[1])
             steps.append('{"poke", %d, 1}' % sym("INPHK"))
@@ -178,6 +180,11 @@ _G._chfsim = emu.add_machine_frame_notifier(function()
     if s[1] == "wait" then
       if wait_until == nil then wait_until = frames + s[2] end
       if frames >= wait_until then wait_until = nil; i = i + 1 else return end
+    elseif s[1] == "waitfor" then
+      if wait_until == nil then wait_until = frames + s[4] end
+      if mem:readv_u8(s[2]) == s[3] then wait_until = nil; i = i + 1
+      elseif frames >= wait_until then print("CHFSIM: waitfor timed out"); manager.machine:exit()
+      else return end
     elseif s[1] == "poke" then
       mem:write_u8(s[2], s[3]); i = i + 1
     elseif s[1] == "snap" then

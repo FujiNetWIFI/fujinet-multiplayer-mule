@@ -19,7 +19,8 @@
 ; the store, to wait. Scripts for the fx page, written into RAM-H: across
 ; a pixel every 6 frames, then a line every 6; 90 frames on the plot
 ; (signals 3 and 4: outlined, then not).
-DTAIWALK: LODI,R0 255           ; T2: the plot; T1: 1 a M.U.L.E. went in
+DTAIWALK: BSTA,UN DTASY         ; what it assayed
+        LODI,R0 255             ; T2: the plot; T1: 1 a M.U.L.E. went in
         STRA,R0 T2
         EORZ    R0
         STRA,R0 T1
@@ -41,6 +42,7 @@ DTA2:   LODA,R0 MP_MULE,R3
         ADDI,R0 DVPMULEO
         STRZ    R3
         LODA,R0 *PRAMH,R3
+        ANDI,R0 $7F             ; (bit 7: assayed)
         LODA,R3 UNIONB
         COMA,R0 MP_MULE,R3
         BCTR,EQ DTA3
@@ -234,6 +236,18 @@ DTPCOPY: CPTR   DVPMULE
 DTPC1:  STRA,R0 T3
         STRZ    R3
         LODA,R0 MP_MULE,R3
+        ANDI,R0 $7F             ; (none is $FF)
+        STRA,R0 T2
+        LODZ    R3              ; + bit 7 when it is assayed
+        ADDI,R0 CRYSO
+        STRZ    R3
+        LODA,R0 *PRAMH2,R3
+        TMI,R0  $80
+        BCTR,EQ DTPC1A
+        LODA,R0 T2
+        IORI,R0 $80
+        STRA,R0 T2
+DTPC1A: LODA,R0 T2
         BSTA,UN RAMPUT1
         LODA,R0 T3
         ADDI,R0 1
@@ -586,7 +600,7 @@ DVABS:  TMI,R0  $80
 
 ; ---- the wampus (dv_wampus) -----------------------------------------------------------
 ; turn.wampus lists when (the turn's jiffies) and where it shows: on a
-; plot's peaks, flashing 8 frames on, 8 off.
+; plot's peaks, shown steadily while it is out.
 DVWAMP: LODA,R1 RXFRH           ; T0:T1 = the turn's jiffies now
         LODA,R2 RXFRL
         ZBSR    *ZSINCE
@@ -666,12 +680,7 @@ DVWP8:  LODA,R3 T2              ; on its plot's peaks: plot, mountain
         LODA,R0 PLROW,R3
         ADDA,R0 UNIONB+1
         LPUT    WPY
-        LODA,R0 FRML            ; flashing
-        ANDI,R0 8
-        BCFR,EQ DVWP9
         LODI,R1 SL_WAMP
-        ZBRR    *ZSPRHID
-DVWP9:  LODI,R1 SL_WAMP
         LODA,R2 WPY
         LODA,R3 WPX
         ZBRR    *ZSPRSET
@@ -679,7 +688,9 @@ DVWP9:  LODI,R1 SL_WAMP
 
 ; DVMARKS: a computer's land outlined in white for 40 frames as its turn
 ; starts, and the plot it works while it stands there (dv_ai_marks).
-DVMARKS: LODA,R0 DVAI
+DVMARKS: BSTA,UN DVMARK0
+        BCTA,UN DTASHOW         ; (then the assays, if any)
+DVMARK0: LODA,R0 DVAI
         COMI,R0 1
         BCFR,EQ DVM2
         LODA,R0 DVSEAT
@@ -715,6 +726,98 @@ DVM4:   COMI,R0 4
 DVM5:   EORZ    R0
         LPUT    FXFLAG
         RETC,UN
+
+; DTASY: (a computer's turn starts) the plots that are assayed now and were
+; not at the last state: up to 8, into DVASQ; the first is shown 120 frames
+; on (DTASHOW). Scratch: UNIONB.
+DTASY:  EORZ    R0
+        STRA,R0 T2              ; T2: how many
+        LODI,R3 0
+DTS1:   STRA,R3 T3              ; T3: the plot
+        LODZ    R3
+        ADDI,R0 DVPMULEO
+        STRZ    R3
+        LODA,R0 *PRAMH,R3
+        TMI,R0  $80
+        BCTR,EQ DTS3            ; seen before
+        LODA,R3 T3
+        LODZ    R3
+        ADDI,R0 CRYSO
+        STRZ    R3
+        LODA,R0 *PRAMH2,R3
+        TMI,R0  $80
+        BCTR,EQ DTS3            ; (negative: nobody has)
+        LODA,R3 T2
+        COMI,R3 8
+        BCTR,EQ DTS3
+        LODA,R0 T3
+        STRA,R0 UNIONB,R3
+        ADDI,R3 1
+        STRA,R3 T2
+DTS3:   LODA,R3 T3
+        ADDI,R3 1
+        COMI,R3 NUM_PLOTS
+        BCFR,EQ DTS1
+        CPTR    DVASQ
+        LODI,R3 0
+DTS4:   LODA,R0 UNIONB,R3
+        BSTA,UN RAMPUT1
+        ADDI,R3 1
+        COMI,R3 8
+        BCFR,EQ DTS4
+        LODA,R0 T2              ; DVASN
+        BSTA,UN RAMPUT1
+        EORZ    R0              ; DVASI
+        BSTA,UN RAMPUT1
+        LODA,R0 FRML            ; DVAST
+        BSTA,UN RAMPUT1
+        BCTA,UN RAMPEND
+
+; DTASHOW: each 120 frames, the plot it assayed: the last one redrawn, the
+; next outlined, with what it found (dv_ai_marks). The first is 120 frames
+; after the turn's display starts (the server allows 120 jiffies each).
+DTASHOW: LODI,R3 DVASIO
+        LODA,R0 *PRAMH2,R3
+        STRA,R0 T2              ; T2: the next to show (255 none)
+        LODI,R3 DVASNO
+        LODA,R0 *PRAMH2,R3
+        COMA,R0 T2
+        RETC,LT                 ; past the last
+        LODI,R3 DVASTO
+        LODA,R0 *PRAMH2,R3
+        STRA,R0 T3
+        LODA,R0 FRML
+        SUBA,R0 T3
+        COMI,R0 120
+        RETC,LT
+        LODA,R0 FRML
+        CPUT    DVAST
+        LODA,R0 T2
+        ADDI,R0 1
+        CPUT    DVASI
+        LODI,R3 DVASNO
+        LODA,R0 *PRAMH2,R3
+        COMA,R0 T2
+        BCTR,GT DTH1
+        LODI,R0 255             ; the last one done: normal again
+        LPUT    MAPBLINK
+        RETC,UN
+DTH1:   LODA,R0 T2
+        ADDI,R0 DVASQO
+        STRZ    R3
+        LODA,R0 *PRAMH2,R3
+        STRA,R0 T1              ; T1: the plot
+        LPUT    MAPBLINK
+        LODI,R0 1
+        LPUT    MAPBLON
+        LODA,R0 T1
+        ADDI,R0 CRYSO
+        STRZ    R3
+        LODA,R0 *PRAMH2,R3
+        ANDI,R0 7
+        ADDI,R0 M_ASSAY
+        STRZ    R1
+        ZBRR    *ZSAY
 
 
         INCLUDE "src/plots.inc"

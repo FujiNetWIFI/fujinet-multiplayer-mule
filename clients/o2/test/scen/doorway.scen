@@ -1,0 +1,76 @@
+# live: the doorways: the corral's, then an outfitter's (270 dead frames, the
+# M.U.L.E. gone from 120 to 195), the stick only walks back out
+wait 240
+press fire          # the first table
+wait 120
+press fire          # ready
+until 3C 7 3000     # the summary
+until 7E 135 1500   # (FXSH 87h: the ship has landed)
+wait 60
+press fire          # seen
+until 3C 3 12000    # the development
+until 4D 1 12000    # DV_ST: our prompt
+wait 30
+press fire
+until 4E 1 300      # DV_TOWN: in town
+wait 30
+hold right 60       # along to the corral's door (column 7)
+xram 6D 4
+hold down 110       # down, and in: the corral
+xram 6D 4
+wait 20
+snap w0             # in the corral's door
+xram 6D 4
+xram 7C 1           # BWH
+xram 53 1           # DV_MULE
+wait 60
+xram 6D 4
+xram 7C 1
+xram 53 1
+snap w1             # the answer: still in the door, a M.U.L.E.
+hold down 40        # in the door: nothing
+xram 6D 4
+hold left 40
+xram 6D 4
+hold right 40
+xram 6D 4
+snap w2
+hold up 30          # back out: 12 steps of 6 frames
+xram 6D 4
+hold up 50
+xram 6D 4
+snap w3             # on the street
+hold up 40          # up the street, in: an outfitter (food)
+xram 6D 4
+iram 38 3
+hold up 60
+xram 6D 4
+iram 38 3
+xram 7C 1
+snap o0             # in the outfitter's door
+iram 3A 1
+hold up 20          # (the stick is dead)
+xram 6D 4
+iram 3A 1
+snap o1
+wait 40
+iram 3A 1
+snap o2             # t ~ 130: the M.U.L.E. is in the shop
+wait 50
+iram 3A 1
+snap o3             # t ~ 190
+wait 20
+iram 3A 1
+snap o4             # t ~ 210: back out
+wait 50
+iram 3A 1
+xram 7C 1
+snap o5             # t ~ 260
+hold down 10
+xram 6D 4           # still dead
+wait 20
+xram 7C 1
+xram 6D 4
+hold down 40        # let go: down the doorway to the street
+xram 6D 4
+snap o6
