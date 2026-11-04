@@ -37,10 +37,11 @@ clients:
 	$(MAKE) -C clients/o2 -B ENDPOINT=$(ENDPOINT)
 	$(MAKE) -C clients/arcadia -B ENDPOINT=$(ENDPOINT)
 	$(MAKE) -C clients/studio2 -B ENDPOINT=$(ENDPOINT)
+	$(MAKE) -C clients/coleco -B ENDPOINT=$(ENDPOINT)
 
 dist: clients
 	rm -rf $(DIST)
-	mkdir -p $(addprefix $(DIST)/,$(MEKKOGX_PLATFORMS) intv astrocade atari-2600 channelf o2 arcadia studio2)
+	mkdir -p $(addprefix $(DIST)/,$(MEKKOGX_PLATFORMS) intv astrocade atari-2600 channelf o2 arcadia studio2 coleco)
 	cp clients/mekkogx/r2r/apple2/mule.po $(DIST)/apple2/
 	cp clients/mekkogx/r2r/coco/mule.dsk $(DIST)/coco/
 	cp clients/mekkogx/r2r/msdos/mule.img $(DIST)/msdos/
@@ -63,6 +64,7 @@ dist: clients
 	cp clients/o2/build/mule.bin $(DIST)/o2/
 	cp clients/arcadia/build/mule.bin $(DIST)/arcadia/
 	cp clients/studio2/build/mule.st2 $(DIST)/studio2/
+	cp clients/coleco/build/mule.rom $(DIST)/coleco/mule.col
 
 deploy-clients: dist
 	ssh $(DEPLOY_HOST) 'mkdir -p $(DEPLOY_DIR)'

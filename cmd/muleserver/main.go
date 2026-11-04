@@ -70,6 +70,7 @@ func main() {
 			{Platform: "o2", Url: "tnfs://irata.online/mule/o2/mule.bin"},
 			{Platform: "arcadia", Url: "tnfs://irata.online/mule/arcadia/mule.bin"},
 			{Platform: "studio2", Url: "tnfs://irata.online/mule/studio2/mule.st2"},
+			{Platform: "coleco", Url: "tnfs://irata.online/mule/coleco/mule.col"},
 		})
 		log.Println("updating lobby at", lobby.Endpoint)
 	}
